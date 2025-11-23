@@ -1,0 +1,28 @@
+<?php
+
+// 配置文件
+// 存储敏感信息和全局配置
+
+return [
+    // Gemini API Key
+    'api_key' => 'your-api-key',
+
+    // 模型名称
+    'model_name' => 'gemini-3-pro-image-preview',
+
+    // 默认生成配置
+    'generation_config' => [
+        'responseModalities' => ['TEXT', 'IMAGE'],
+        'imageConfig' => [
+            'aspectRatio' => '1:1', // 默认 1:1
+            'imageSize' => '1K',    // 默认 1K
+        ]
+    ],
+
+    // 图片保存路径 (相对于项目根目录)
+    'upload_dir' => 'uploads/',
+    'output_dir' => 'images/',
+    
+    // 调试模式
+    'debug' => true,
+];
