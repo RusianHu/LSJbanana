@@ -204,10 +204,15 @@ class SecurityUtils {
         }
 
         $value = trim($input);
-        // 去掉常见控制字符，避免注入意外的不可见字符
+        // 去掉常见控制字符，避免注入意外的不可见字符 (保留换行符 \n 和回车符 \r)
         $value = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', ' ', $value);
-        // 压缩连续空白
-        $value = preg_replace('/\s{2,}/u', ' ', $value);
+        // 压缩连续空白 (但保留单个换行符)
+        // 先统一换行符为 \n
+        $value = str_replace(["\r\n", "\r"], "\n", $value);
+        // 压缩连续的空格和制表符,但不压缩换行符
+        $value = preg_replace('/[ \t]{2,}/u', ' ', $value);
+        // 压缩连续的换行符(超过2个换行符压缩为2个)
+        $value = preg_replace('/\n{3,}/u', "\n\n", $value);
 
         if ($maxLength > 0) {
             if (function_exists('mb_substr')) {

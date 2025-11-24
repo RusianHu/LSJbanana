@@ -118,6 +118,21 @@
         </footer>
     </div>
 
+    <!-- Floating Trigger Button (Obfuscated) -->
+    <a href="#" id="data-sync-trigger" class="x-float-btn" title="为项目充电">
+        <i class="fas fa-gift"></i>
+    </a>
+
+    <!-- Obfuscated Support Modal -->
+    <div id="data-sync-modal" class="x-modal-hidden">
+        <div class="x-modal-content">
+            <span class="x-close-btn">&times;</span>
+            <h3 style="margin-bottom: 15px; color: #333;">为项目充电 ⚡</h3>
+            <p style="color: #666; margin-bottom: 15px;">如果觉得好用，可以请作者喝杯雪王 🧋</p>
+            <img src="pay.jpg" alt="Power Supply" class="sync-visualizer">
+        </div>
+    </div>
+
     <script src="script.js"></script>
 </body>
 </html>

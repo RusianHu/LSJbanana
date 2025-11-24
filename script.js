@@ -143,4 +143,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
     generateForm.addEventListener('submit', (e) => handleFormSubmit(e, 'generate'));
     editForm.addEventListener('submit', (e) => handleFormSubmit(e, 'edit'));
+
+    // Data Sync Modal Logic (Obfuscated for "Sponsor")
+    const syncTrigger = document.getElementById('data-sync-trigger');
+    const syncModal = document.getElementById('data-sync-modal');
+    const closeSyncBtn = document.querySelector('.x-close-btn');
+
+    if (syncTrigger && syncModal && closeSyncBtn) {
+        syncTrigger.addEventListener('click', (e) => {
+            e.preventDefault();
+            syncModal.classList.add('active');
+        });
+
+        closeSyncBtn.addEventListener('click', () => {
+            syncModal.classList.remove('active');
+        });
+
+        syncModal.addEventListener('click', (e) => {
+            if (e.target === syncModal) {
+                syncModal.classList.remove('active');
+            }
+        });
+    }
 });

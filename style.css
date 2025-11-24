@@ -248,3 +248,114 @@ textarea {
         font-size: 2rem;
     }
 }
+
+/* Data Sync Modal (Obfuscated Styles) */
+#data-sync-modal {
+    position: fixed;
+    z-index: 9999;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    backdrop-filter: blur(3px);
+}
+
+#data-sync-modal.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.x-modal-content {
+    background-color: #fff;
+    padding: 25px;
+    border-radius: 16px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    width: 90%;
+    max-width: 380px;
+    text-align: center;
+    position: relative;
+    transform: scale(0.9);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+#data-sync-modal.active .x-modal-content {
+    transform: scale(1);
+}
+
+.x-close-btn {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    color: #999;
+    font-size: 24px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: color 0.2s;
+    line-height: 1;
+    padding: 5px;
+}
+
+.x-close-btn:hover {
+    color: #333;
+}
+
+.sync-visualizer {
+    width: 100%;
+    height: auto;
+    border-radius: 8px;
+    margin-top: 10px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+/* Floating Trigger Button */
+.x-float-btn {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    width: 60px;
+    height: 60px;
+    background-color: #ff6b6b;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 24px;
+    box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
+    cursor: pointer;
+    z-index: 9990;
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.3s;
+    text-decoration: none;
+}
+
+.x-float-btn:hover {
+    transform: scale(1.1) rotate(10deg);
+    box-shadow: 0 8px 25px rgba(255, 107, 107, 0.6);
+}
+
+.x-float-btn i {
+    animation: float-pulse 2s infinite;
+}
+
+@keyframes float-pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+    100% { transform: scale(1); }
+}
+
+@media (max-width: 600px) {
+    .x-float-btn {
+        bottom: 20px;
+        right: 20px;
+        width: 50px;
+        height: 50px;
+        font-size: 20px;
+    }
+}

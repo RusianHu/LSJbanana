@@ -4,8 +4,11 @@
 // 设置响应头
 header('Content-Type: application/json; charset=utf-8');
 
-// 增加执行时间限制，防止超时
-set_time_limit(180); // 设置为 180 秒 (3分钟)
+// 增加执行时间和内存限制，防止超时和内存不足
+set_time_limit(300); // 设置为 300 秒 (5分钟)
+ini_set('memory_limit', '512M'); // 增加内存限制到 512MB
+ini_set('max_execution_time', '300'); // 确保最大执行时间为 300 秒
+ini_set('max_input_time', '300'); // 增加输入时间限制
 
 require_once __DIR__ . '/security_utils.php';
 
@@ -157,6 +160,8 @@ $ch = curl_init($apiUrl);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_POST, true);
 curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($requestData));
+curl_setopt($ch, CURLOPT_TIMEOUT, 300); // 设置 cURL 超时为 300 秒
+curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 30); // 连接超时 30 秒
 curl_setopt($ch, CURLOPT_HTTPHEADER, [
     'Content-Type: application/json'
 ]);
