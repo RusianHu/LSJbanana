@@ -56,7 +56,7 @@ $requestData = [
 // 处理宽高比和分辨率
 $aspectRatio = SecurityUtils::validateAllowedValue(
     SecurityUtils::sanitizeTextInput($_POST['aspect_ratio'] ?? '', 10),
-    ['1:1', '16:9', '9:16', '4:3', '3:4'],
+    ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'],
     ''
 );
 $resolution = SecurityUtils::validateAllowedValue(
@@ -70,6 +70,13 @@ if ($aspectRatio !== '') {
 }
 if ($resolution !== '') {
     $requestData['generationConfig']['imageConfig']['imageSize'] = $resolution;
+}
+
+// 处理 Google 搜索工具 (Grounding)
+if (isset($_POST['use_search']) && $_POST['use_search'] === 'on') {
+    $requestData['tools'] = [
+        ['google_search' => new stdClass()]
+    ];
 }
 
 // 根据操作类型构建 contents
@@ -189,6 +196,12 @@ if ($httpCode !== 200) {
 $responseData = json_decode($response, true);
 $resultImages = [];
 $resultText = '';
+$groundingMetadata = null;
+
+// 提取 Grounding Metadata
+if (isset($responseData['candidates'][0]['groundingMetadata'])) {
+    $groundingMetadata = $responseData['candidates'][0]['groundingMetadata'];
+}
 
 // 确保输出目录存在
 if (!is_dir($config['output_dir'])) {
@@ -220,5 +233,6 @@ if (isset($responseData['candidates'][0]['content']['parts'])) {
 echo json_encode([
     'success' => true,
     'images' => $resultImages,
-    'text' => trim($resultText)
+    'text' => trim($resultText),
+    'groundingMetadata' => $groundingMetadata
 ]);

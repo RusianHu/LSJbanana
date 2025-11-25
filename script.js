@@ -118,6 +118,36 @@ document.addEventListener('DOMContentLoaded', () => {
                     outputContainer.appendChild(textDiv);
                 }
 
+                // 显示 Grounding Metadata (搜索来源)
+                if (data.groundingMetadata) {
+                    const groundingDiv = document.createElement('div');
+                    groundingDiv.className = 'output-item';
+                    groundingDiv.style.textAlign = 'left';
+                    groundingDiv.style.backgroundColor = '#f0f4f8';
+                    groundingDiv.style.padding = '15px';
+                    groundingDiv.style.borderRadius = '8px';
+                    groundingDiv.style.marginTop = '15px';
+                    
+                    let groundingHtml = '<h4><i class="fab fa-google"></i> 搜索来源信息</h4>';
+                    
+                    if (data.groundingMetadata.searchEntryPoint && data.groundingMetadata.searchEntryPoint.renderedContent) {
+                        groundingHtml += `<div class="search-entry-point" style="margin-top: 10px;">${data.groundingMetadata.searchEntryPoint.renderedContent}</div>`;
+                    }
+
+                    if (data.groundingMetadata.groundingChunks && data.groundingMetadata.groundingChunks.length > 0) {
+                        groundingHtml += '<ul style="margin-top: 10px; padding-left: 20px; list-style-type: disc;">';
+                        data.groundingMetadata.groundingChunks.forEach(chunk => {
+                            if (chunk.web && chunk.web.uri && chunk.web.title) {
+                                groundingHtml += `<li style="margin-bottom: 5px;"><a href="${chunk.web.uri}" target="_blank" style="color: #1a73e8; text-decoration: none;">${chunk.web.title}</a></li>`;
+                            }
+                        });
+                        groundingHtml += '</ul>';
+                    }
+                    
+                    groundingDiv.innerHTML = groundingHtml;
+                    outputContainer.appendChild(groundingDiv);
+                }
+
                 // 显示耗时信息
                 const timeDiv = document.createElement('div');
                 timeDiv.className = 'output-item';

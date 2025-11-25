@@ -38,6 +38,11 @@
                                 <option value="9:16">9:16 (竖屏)</option>
                                 <option value="4:3">4:3</option>
                                 <option value="3:4">3:4</option>
+                                <option value="2:3">2:3</option>
+                                <option value="3:2">3:2</option>
+                                <option value="4:5">4:5</option>
+                                <option value="5:4">5:4</option>
+                                <option value="21:9">21:9</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -48,6 +53,13 @@
                                 <option value="4K">4K</option>
                             </select>
                         </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: normal;">
+                            <input type="checkbox" name="use_search" style="width: auto;">
+                            <span><i class="fab fa-google"></i> 使用 Google 搜索增强 (Grounding) - <small style="color: #666;">基于实时数据生成</small></span>
+                        </label>
                     </div>
 
                     <button type="submit" class="btn-primary"><i class="fas fa-magic"></i> 生成图片</button>
@@ -80,6 +92,13 @@
                                 <option value="1:1">1:1</option>
                                 <option value="16:9">16:9</option>
                                 <option value="9:16">9:16</option>
+                                <option value="4:3">4:3</option>
+                                <option value="3:4">3:4</option>
+                                <option value="2:3">2:3</option>
+                                <option value="3:2">3:2</option>
+                                <option value="4:5">4:5</option>
+                                <option value="5:4">5:4</option>
+                                <option value="21:9">21:9</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -91,6 +110,13 @@
                                 <option value="4K">4K</option>
                             </select>
                         </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: normal;">
+                            <input type="checkbox" name="use_search" style="width: auto;">
+                            <span><i class="fab fa-google"></i> 使用 Google 搜索增强 (Grounding)</span>
+                        </label>
                     </div>
 
                     <button type="submit" class="btn-primary"><i class="fas fa-paint-brush"></i> 开始编辑</button>
