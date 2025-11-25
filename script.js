@@ -16,38 +16,118 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // 文件上传预览
-    const fileInput = document.getElementById('edit-image');
-    const filePreview = document.getElementById('image-preview');
+	    // 文件上传预览（编辑面板，多次选择累积）
+	    const fileInput = document.getElementById('edit-image');
+	    const filePreview = document.getElementById('image-preview');
+	    const selectedEditFiles = [];
+	    const MAX_EDIT_IMAGES = 14;
 
-    fileInput.addEventListener('change', function() {
-        if (this.files && this.files.length > 0) {
-            filePreview.innerHTML = ''; // Clear previous content
-            filePreview.style.padding = '10px';
-            filePreview.style.display = 'flex';
-            filePreview.style.flexWrap = 'wrap';
-            filePreview.style.gap = '10px';
-            filePreview.style.justifyContent = 'center';
+	    function renderEditPreview() {
+	        if (!filePreview) {
+	            return;
+	        }
 
-            Array.from(this.files).forEach(file => {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const img = document.createElement('img');
-                    img.src = e.target.result;
-                    img.style.maxHeight = '100px';
-                    img.style.maxWidth = '100px';
-                    img.style.objectFit = 'cover';
-                    img.style.borderRadius = '4px';
-                    filePreview.appendChild(img);
-                }
-                reader.readAsDataURL(file);
-            });
-        } else {
-            filePreview.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> 点击或拖拽上传图片';
-            filePreview.style.padding = '30px';
-            filePreview.style.display = 'block';
-        }
-    });
+	        if (selectedEditFiles.length === 0) {
+	            filePreview.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> 点击或拖拽上传图片';
+	            filePreview.style.padding = '30px';
+	            filePreview.style.display = 'block';
+	            filePreview.style.flexWrap = '';
+	            filePreview.style.gap = '';
+	            filePreview.style.justifyContent = '';
+	            return;
+	        }
+
+	        filePreview.innerHTML = '';
+	        filePreview.style.padding = '10px';
+	        filePreview.style.display = 'flex';
+	        filePreview.style.flexWrap = 'wrap';
+	        filePreview.style.gap = '10px';
+	        filePreview.style.justifyContent = 'center';
+
+	        selectedEditFiles.forEach((file, index) => {
+	            const wrapper = document.createElement('div');
+	            wrapper.style.position = 'relative';
+	            wrapper.style.display = 'inline-block';
+
+	            const img = document.createElement('img');
+	            img.style.maxHeight = '100px';
+	            img.style.maxWidth = '100px';
+	            img.style.objectFit = 'cover';
+	            img.style.borderRadius = '4px';
+	            img.style.display = 'block';
+
+	            const reader = new FileReader();
+	            reader.onload = function (e) {
+	                img.src = e.target.result;
+	            };
+	            reader.readAsDataURL(file);
+
+	            const removeBtn = document.createElement('button');
+	            removeBtn.type = 'button';
+	            removeBtn.textContent = '×';
+	            removeBtn.className = 'preview-remove-btn';
+	            removeBtn.dataset.index = String(index);
+	            removeBtn.style.position = 'absolute';
+	            removeBtn.style.top = '2px';
+	            removeBtn.style.right = '2px';
+	            removeBtn.style.width = '18px';
+	            removeBtn.style.height = '18px';
+	            removeBtn.style.border = 'none';
+	            removeBtn.style.borderRadius = '50%';
+	            removeBtn.style.background = 'rgba(0, 0, 0, 0.6)';
+	            removeBtn.style.color = '#fff';
+	            removeBtn.style.cursor = 'pointer';
+	            removeBtn.style.fontSize = '12px';
+	            removeBtn.style.lineHeight = '18px';
+	            removeBtn.style.padding = '0';
+
+	            wrapper.appendChild(img);
+	            wrapper.appendChild(removeBtn);
+	            filePreview.appendChild(wrapper);
+	        });
+	    }
+
+	    if (fileInput && filePreview) {
+	        fileInput.addEventListener('change', function () {
+	            const files = Array.from(this.files || []);
+	            if (!files.length) {
+	                return;
+	            }
+
+	            let remaining = MAX_EDIT_IMAGES - selectedEditFiles.length;
+	            if (remaining <= 0) {
+	                alert(`最多支持 ${MAX_EDIT_IMAGES} 张参考图片`);
+	                this.value = '';
+	                return;
+	            }
+
+	            files.slice(0, remaining).forEach(file => {
+	                selectedEditFiles.push(file);
+	            });
+
+	            // 清空原生 file input，方便下次从其他文件夹继续选择
+	            this.value = '';
+
+	            renderEditPreview();
+	        });
+
+	        filePreview.addEventListener('click', function (e) {
+	            const target = e.target;
+	            if (!target || !(target instanceof Element)) {
+	                return;
+	            }
+	            const removeBtn = target.closest('.preview-remove-btn');
+	            if (!removeBtn) return;
+	            const index = parseInt(removeBtn.dataset.index || '-1', 10);
+	            if (!Number.isNaN(index) && index >= 0 && index < selectedEditFiles.length) {
+	                selectedEditFiles.splice(index, 1);
+	                renderEditPreview();
+	            }
+	        });
+	    }
+
+	    // 初始渲染一次
+	    renderEditPreview();
 
     // 表单提交处理
     const generateForm = document.getElementById('generate-form');
@@ -58,29 +138,82 @@ document.addEventListener('DOMContentLoaded', () => {
     const outputContainer = document.getElementById('output-container');
     const timerDisplay = document.getElementById('timer');
 
-    // 通用提交函数
-    async function handleFormSubmit(event, type) {
-        event.preventDefault();
-        
-        // UI 状态更新
-        resultArea.classList.remove('hidden');
-        loading.classList.remove('hidden');
-        errorMessage.classList.add('hidden');
-        outputContainer.innerHTML = '';
-        
-        // 重置并启动计时器
-        if (timerDisplay) timerDisplay.textContent = "已耗时: 0.00 s";
-        let startTime = Date.now();
-        let timerInterval = setInterval(() => {
-            const elapsedTime = (Date.now() - startTime) / 1000;
-            if (timerDisplay) timerDisplay.textContent = `已耗时: ${elapsedTime.toFixed(2)} s`;
-        }, 10);
-        
-        // 滚动到结果区域
-        resultArea.scrollIntoView({ behavior: 'smooth' });
+	    // 通用提交函数
+	    async function handleFormSubmit(event, type) {
+	        event.preventDefault();
 
-        const formData = new FormData(event.target);
-        formData.append('action', type); // 添加操作类型
+	        if (errorMessage) {
+	            errorMessage.classList.add('hidden');
+	            errorMessage.textContent = '';
+	        }
+
+	        // 编辑模式下，至少需要一张图片
+	        if (type === 'edit' && selectedEditFiles.length === 0) {
+	            if (resultArea) {
+	                resultArea.classList.remove('hidden');
+	            }
+	            if (loading) {
+	                loading.classList.add('hidden');
+	            }
+	            if (errorMessage) {
+	                errorMessage.textContent = '请先选择至少一张参考图片（可多次从不同文件夹添加）。';
+	                errorMessage.classList.remove('hidden');
+	            }
+	            return;
+	        }
+
+	        // UI 状态更新
+	        if (resultArea) {
+	            resultArea.classList.remove('hidden');
+	        }
+	        if (loading) {
+	            loading.classList.remove('hidden');
+	        }
+	        if (outputContainer) {
+	            outputContainer.innerHTML = '';
+	        }
+	        
+	        // 重置并启动计时器
+	        if (timerDisplay) {
+	            timerDisplay.textContent = "已耗时: 0.00 s";
+	        }
+	        let startTime = Date.now();
+	        let timerInterval = setInterval(() => {
+	            const elapsedTime = (Date.now() - startTime) / 1000;
+	            if (timerDisplay) {
+	                timerDisplay.textContent = `已耗时: ${elapsedTime.toFixed(2)} s`;
+	            }
+	        }, 10);
+	        
+	        // 滚动到结果区域
+	        if (resultArea) {
+	            resultArea.scrollIntoView({ behavior: 'smooth' });
+	        }
+
+	        let formData;
+	        if (type === 'edit') {
+	            formData = new FormData();
+	            
+	            const editPromptEl = document.getElementById('edit-prompt');
+	            const editAspectEl = document.getElementById('edit-aspect_ratio');
+	            const editResolutionEl = document.getElementById('edit-resolution');
+	            const editUseSearchEl = editForm ? editForm.querySelector('input[name="use_search"]') : null;
+	            
+	            formData.append('prompt', editPromptEl ? (editPromptEl.value || '') : '');
+	            formData.append('aspect_ratio', editAspectEl ? (editAspectEl.value || '') : '');
+	            formData.append('resolution', editResolutionEl ? (editResolutionEl.value || '') : '');
+	            if (editUseSearchEl && editUseSearchEl.checked) {
+	                formData.append('use_search', 'on');
+	            }
+
+	            selectedEditFiles.forEach(file => {
+	                formData.append('image[]', file, file.name);
+	            });
+	        } else {
+	            formData = new FormData(event.target);
+	        }
+
+	        formData.append('action', type); // 添加操作类型
 
         try {
             const response = await fetch('api.php', {

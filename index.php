@@ -69,11 +69,11 @@
             <!-- 图生图/编辑面板 -->
             <section id="edit-panel" class="panel">
                 <form id="edit-form">
-                    <div class="form-group">
-                        <label for="edit-image">上传参考图片 (支持多选，最多14张):</label>
-                        <div class="file-upload-wrapper">
-                            <input type="file" id="edit-image" name="image[]" accept="image/*" multiple required>
-                            <div class="file-upload-preview" id="image-preview">
+	                    <div class="form-group">
+	                        <label for="edit-image">上传参考图片 (支持多选/多次添加，最多14张):</label>
+	                        <div class="file-upload-wrapper">
+	                            <input type="file" id="edit-image" name="image[]" accept="image/*" multiple>
+	                            <div class="file-upload-preview" id="image-preview">
                                 <i class="fas fa-cloud-upload-alt"></i> 点击或拖拽上传图片
                             </div>
                         </div>
