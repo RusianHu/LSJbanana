@@ -186,14 +186,22 @@ if ($curlError) {
     sendError("cURL 错误: " . $curlError);
 }
 
+// 解析响应
+$responseData = json_decode($response, true);
+if (json_last_error() !== JSON_ERROR_NONE) {
+    sendError('API 返回格式错误: ' . json_last_error_msg() . " (HTTP {$httpCode})");
+}
+
 if ($httpCode !== 200) {
-    $errorResponse = json_decode($response, true);
-    $errorMessage = $errorResponse['error']['message'] ?? 'API 请求失败';
+    $errorMessage = is_array($responseData) && isset($responseData['error']['message'])
+        ? $responseData['error']['message']
+        : 'API 请求失败';
     sendError("API 错误 ({$httpCode}): " . $errorMessage);
 }
 
-// 解析响应
-$responseData = json_decode($response, true);
+if (!isset($responseData['candidates'][0])) {
+    sendError('API 未返回任何候选结果', 502);
+}
 $resultImages = [];
 $resultText = '';
 $groundingMetadata = null;
