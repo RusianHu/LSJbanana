@@ -438,27 +438,38 @@ document.addEventListener('DOMContentLoaded', () => {
 
 /**
  * 语音输入功能模块
- * 使用 MediaRecorder API 录音，通过 Gemini API 转文字
+ * 优先使用 Web Speech API 进行实时语音识别
+ * 回退方案: MediaRecorder + Gemini API 转文字
  */
 function initVoiceInput() {
     const voiceButtons = document.querySelectorAll('.voice-input-btn');
 
-    // 检查浏览器是否支持 MediaRecorder
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
-        // 隐藏所有语音按钮
+    // 检测 Web Speech API 支持
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const webSpeechSupported = !!SpeechRecognition;
+
+    // 检测 MediaRecorder 支持 (回退方案)
+    const mediaRecorderSupported = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+
+    // 如果两种方案都不支持，隐藏语音按钮
+    if (!webSpeechSupported && !mediaRecorderSupported) {
         voiceButtons.forEach(btn => btn.style.display = 'none');
         console.warn('当前浏览器不支持语音录入功能');
         return;
     }
 
+    console.log(`语音识别: Web Speech API ${webSpeechSupported ? '可用' : '不可用'}, MediaRecorder ${mediaRecorderSupported ? '可用' : '不可用'}`);
+
     // 状态管理
-    let mediaRecorder = null;
-    let audioChunks = [];
-    let isRecording = false;
+    let isListening = false;      // Web Speech API 监听状态
+    let isRecording = false;      // MediaRecorder 录音状态
     let activeButton = null;
-    let recordingStartTime = null;
-    const MAX_RECORDING_TIME = 60000; // 最大录音时间 60 秒
+    let recognition = null;       // SpeechRecognition 实例
+    let mediaRecorder = null;     // MediaRecorder 实例
+    let audioChunks = [];
     let recordingTimeout = null;
+    let interimTranscript = '';   // 临时识别结果
+    const MAX_RECORDING_TIME = 60000; // 最大录音时间 60 秒
 
     // 为每个语音按钮绑定事件
     voiceButtons.forEach(btn => {
@@ -469,21 +480,199 @@ function initVoiceInput() {
      * 处理语音按钮点击
      */
     async function handleVoiceButtonClick(btn) {
-        if (isRecording) {
-            // 如果正在录音，停止录音
-            stopRecording();
+        if (isListening || isRecording) {
+            // 正在识别/录音，停止
+            stopVoiceInput();
         } else {
-            // 开始录音
-            await startRecording(btn);
+            // 开始语音输入
+            await startVoiceInput(btn);
         }
     }
 
     /**
-     * 开始录音
+     * 开始语音输入
+     * 优先使用 Web Speech API，不支持时回退到 MediaRecorder
      */
-    async function startRecording(btn) {
+    async function startVoiceInput(btn) {
+        activeButton = btn;
+
+        if (webSpeechSupported) {
+            // 使用 Web Speech API
+            startWebSpeechRecognition(btn);
+        } else if (mediaRecorderSupported) {
+            // 回退到 MediaRecorder + Gemini API
+            await startMediaRecording(btn);
+        }
+    }
+
+    /**
+     * 停止语音输入
+     */
+    function stopVoiceInput() {
+        if (isListening && recognition) {
+            recognition.stop();
+        }
+        if (isRecording) {
+            stopMediaRecording();
+        }
+    }
+
+    // ==================== Web Speech API 实现 ====================
+
+    /**
+     * 启动 Web Speech API 语音识别
+     */
+    function startWebSpeechRecognition(btn) {
         try {
-            // 请求麦克风权限
+            recognition = new SpeechRecognition();
+
+            // 配置识别参数
+            recognition.lang = 'zh-CN';           // 默认中文，会自动识别其他语言
+            recognition.continuous = true;        // 持续识别
+            recognition.interimResults = true;    // 显示临时结果
+            recognition.maxAlternatives = 1;      // 只取最佳结果
+
+            const targetId = btn.dataset.target;
+            const targetTextarea = document.getElementById(targetId);
+            const originalValue = targetTextarea ? targetTextarea.value : '';
+            interimTranscript = '';
+
+            // 更新按钮状态
+            btn.classList.add('recording');
+            btn.querySelector('i').className = 'fas fa-stop';
+            btn.title = '点击停止识别 (Web Speech)';
+            isListening = true;
+
+            // 识别结果处理
+            recognition.onresult = (event) => {
+                let finalTranscript = '';
+                interimTranscript = '';
+
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        finalTranscript += transcript;
+                    } else {
+                        interimTranscript += transcript;
+                    }
+                }
+
+                if (targetTextarea) {
+                    // 实时更新文本框 (最终结果 + 临时结果)
+                    const baseText = originalValue.trim();
+                    const newText = (finalTranscript + interimTranscript).trim();
+
+                    if (baseText && newText) {
+                        targetTextarea.value = baseText + ' ' + newText;
+                    } else {
+                        targetTextarea.value = baseText + newText;
+                    }
+
+                    // 触发 input 事件
+                    targetTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+
+                // 如果有最终结果，更新原始值基准
+                if (finalTranscript) {
+                    // 不在这里重置 originalValue，让用户可以继续说话追加内容
+                }
+            };
+
+            // 识别开始
+            recognition.onstart = () => {
+                console.log('Web Speech API: 开始识别');
+            };
+
+            // 识别结束
+            recognition.onend = () => {
+                console.log('Web Speech API: 识别结束');
+                // 如果还在监听状态但识别结束了（可能是静默超时），自动重启
+                if (isListening) {
+                    // 用户可能还想继续说，但我们选择结束以保持一致性
+                    resetButtonState(btn);
+                    if (targetTextarea) {
+                        targetTextarea.focus();
+                        targetTextarea.setSelectionRange(targetTextarea.value.length, targetTextarea.value.length);
+                    }
+                }
+            };
+
+            // 错误处理
+            recognition.onerror = (event) => {
+                console.error('Web Speech API 错误:', event.error);
+
+                let shouldFallback = false;
+                let errorMsg = '';
+
+                switch (event.error) {
+                    case 'not-allowed':
+                        errorMsg = '麦克风权限被拒绝';
+                        // 不回退，因为回退方案也需要麦克风权限
+                        break;
+                    case 'no-speech':
+                        // 没有检测到语音，静默处理
+                        break;
+                    case 'network':
+                        errorMsg = '网络错误，切换到离线模式';
+                        shouldFallback = true;
+                        break;
+                    case 'service-not-allowed':
+                    case 'not-allowed':
+                        // 服务不可用，尝试回退
+                        shouldFallback = true;
+                        break;
+                    default:
+                        errorMsg = '语音识别出错: ' + event.error;
+                }
+
+                if (errorMsg && event.error !== 'no-speech') {
+                    console.warn(errorMsg);
+                }
+
+                // 如果需要回退且 MediaRecorder 可用
+                if (shouldFallback && mediaRecorderSupported && isListening) {
+                    console.log('回退到 MediaRecorder + Gemini API');
+                    isListening = false;
+                    recognition = null;
+                    startMediaRecording(btn);
+                    return;
+                }
+
+                if (event.error !== 'no-speech' && event.error !== 'aborted') {
+                    resetButtonState(btn);
+                }
+            };
+
+            // 设置最大识别时间
+            recordingTimeout = setTimeout(() => {
+                if (isListening) {
+                    stopVoiceInput();
+                }
+            }, MAX_RECORDING_TIME);
+
+            // 开始识别
+            recognition.start();
+
+        } catch (error) {
+            console.error('启动 Web Speech API 失败:', error);
+            // 回退到 MediaRecorder
+            if (mediaRecorderSupported) {
+                console.log('回退到 MediaRecorder + Gemini API');
+                startMediaRecording(btn);
+            } else {
+                alert('无法启动语音识别');
+                resetButtonState(btn);
+            }
+        }
+    }
+
+    // ==================== MediaRecorder + Gemini API 回退方案 ====================
+
+    /**
+     * 启动 MediaRecorder 录音 (回退方案)
+     */
+    async function startMediaRecording(btn) {
+        try {
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     echoCancellation: true,
@@ -492,51 +681,39 @@ function initVoiceInput() {
                 }
             });
 
-            // 确定支持的 MIME 类型
             const mimeType = getSupportedMimeType();
 
-            mediaRecorder = new MediaRecorder(stream, {
-                mimeType: mimeType
-            });
+            mediaRecorder = new MediaRecorder(stream, { mimeType });
             audioChunks = [];
-            activeButton = btn;
             isRecording = true;
-            recordingStartTime = Date.now();
 
-            // 更新按钮状态
+            // 更新按钮状态 - 使用不同的图标表示录音模式
             btn.classList.add('recording');
             btn.querySelector('i').className = 'fas fa-stop';
-            btn.title = '点击停止录音';
+            btn.title = '点击停止录音 (Gemini API)';
 
-            // 收集音频数据
             mediaRecorder.ondataavailable = (event) => {
                 if (event.data.size > 0) {
                     audioChunks.push(event.data);
                 }
             };
 
-            // 录音停止时处理
             mediaRecorder.onstop = async () => {
-                // 停止所有音轨
                 stream.getTracks().forEach(track => track.stop());
 
-                // 处理录音数据
                 if (audioChunks.length > 0) {
                     const audioBlob = new Blob(audioChunks, { type: mimeType });
-                    await transcribeAudio(audioBlob, btn);
+                    await transcribeWithGemini(audioBlob, btn);
                 }
 
-                // 重置状态
                 resetButtonState(btn);
             };
 
-            // 开始录音
-            mediaRecorder.start(100); // 每 100ms 收集一次数据
+            mediaRecorder.start(100);
 
-            // 设置最大录音时间
             recordingTimeout = setTimeout(() => {
                 if (isRecording) {
-                    stopRecording();
+                    stopMediaRecording();
                 }
             }, MAX_RECORDING_TIME);
 
@@ -554,9 +731,9 @@ function initVoiceInput() {
     }
 
     /**
-     * 停止录音
+     * 停止 MediaRecorder 录音
      */
-    function stopRecording() {
+    function stopMediaRecording() {
         if (recordingTimeout) {
             clearTimeout(recordingTimeout);
             recordingTimeout = null;
@@ -566,18 +743,6 @@ function initVoiceInput() {
             mediaRecorder.stop();
         }
         isRecording = false;
-    }
-
-    /**
-     * 重置按钮状态
-     */
-    function resetButtonState(btn) {
-        btn.classList.remove('recording', 'processing');
-        btn.querySelector('i').className = 'fas fa-microphone';
-        btn.title = '语音输入';
-        btn.disabled = false;
-        isRecording = false;
-        activeButton = null;
     }
 
     /**
@@ -599,13 +764,13 @@ function initVoiceInput() {
             }
         }
 
-        return 'audio/webm'; // 默认
+        return 'audio/webm';
     }
 
     /**
-     * 调用后端 API 进行语音转文字
+     * 调用 Gemini API 进行语音转文字
      */
-    async function transcribeAudio(audioBlob, btn) {
+    async function transcribeWithGemini(audioBlob, btn) {
         const targetId = btn.dataset.target;
         const targetTextarea = document.getElementById(targetId);
 
@@ -617,7 +782,7 @@ function initVoiceInput() {
         // 显示处理中状态
         btn.classList.add('processing');
         btn.querySelector('i').className = 'fas fa-spinner fa-spin';
-        btn.title = '正在转换...';
+        btn.title = '正在转换 (Gemini API)...';
         btn.disabled = true;
 
         try {
@@ -633,21 +798,16 @@ function initVoiceInput() {
             const result = await response.json();
 
             if (result.success && result.text) {
-                // 将转录文本追加到输入框
                 const currentText = targetTextarea.value.trim();
                 const transcribedText = result.text.trim();
 
                 if (currentText) {
-                    // 如果已有内容，追加新内容
                     targetTextarea.value = currentText + ' ' + transcribedText;
                 } else {
                     targetTextarea.value = transcribedText;
                 }
 
-                // 触发 input 事件以便其他监听器能响应
                 targetTextarea.dispatchEvent(new Event('input', { bubbles: true }));
-
-                // 聚焦到输入框末尾
                 targetTextarea.focus();
                 targetTextarea.setSelectionRange(targetTextarea.value.length, targetTextarea.value.length);
             } else if (result.message) {
@@ -659,5 +819,28 @@ function initVoiceInput() {
             console.error('语音转换请求失败:', error);
             alert('语音转换失败，请检查网络连接后重试');
         }
+    }
+
+    // ==================== 通用函数 ====================
+
+    /**
+     * 重置按钮状态
+     */
+    function resetButtonState(btn) {
+        if (recordingTimeout) {
+            clearTimeout(recordingTimeout);
+            recordingTimeout = null;
+        }
+
+        btn.classList.remove('recording', 'processing');
+        btn.querySelector('i').className = 'fas fa-microphone';
+        btn.title = webSpeechSupported ? '语音输入 (Web Speech)' : '语音输入 (Gemini API)';
+        btn.disabled = false;
+
+        isListening = false;
+        isRecording = false;
+        activeButton = null;
+        recognition = null;
+        interimTranscript = '';
     }
 }
