@@ -30,6 +30,44 @@ return [
     'upload_dir' => 'uploads/',
     'output_dir' => 'images/',
     
+    // 系统限制配置
+    'limits' => [
+        'memory_limit' => '768M',      // 内存限制
+        'max_execution_time' => 60,   // 最大执行时间 (秒)
+    ],
+
     // 调试模式
     'debug' => true,
+
+    // 语音转文字配置
+    'speech_to_text' => [
+        // 服务提供商配置 (按优先级排序，当启用回退机制时会依次尝试)
+        // 目前支持: 'gemini'
+        // 未来计划支持: 'whisper', 'azure', 'google_cloud'
+        'providers' => ['gemini'],
+
+        // 是否启用回退机制 (当主提供商失败时尝试下一个)
+        'enable_fallback' => false,
+
+        // Gemini 提供商配置
+        'model' => 'gemini-2.5-flash',  // 使用快速模型进行转录
+        'temperature' => 0.1,           // 低温度确保准确转录
+        'max_output_tokens' => 2048,
+        'timeout' => 60,                // 请求超时时间 (秒)
+        'connect_timeout' => 15,        // 连接超时时间 (秒)
+
+        // 音频文件限制
+        'max_audio_size' => 10 * 1024 * 1024,  // 最大音频大小 10MB
+        'allowed_mime_types' => [
+            'audio/webm',
+            'audio/mp4',
+            'audio/ogg',
+            'audio/wav',
+            'audio/mpeg',
+            'audio/mp3',
+        ],
+
+        // 转录提示词 (可自定义以适应不同场景)
+        'prompt' => '请将以下音频内容准确转录为文字。只输出转录的文字内容，不要添加任何解释或格式化。如果音频中没有可识别的语音，请返回空字符串。',
+    ],
 ];

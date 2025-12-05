@@ -26,7 +26,12 @@
                 <form id="generate-form">
                     <div class="form-group">
                         <label for="prompt">提示词 (Prompt):</label>
-                        <textarea id="prompt" name="prompt" rows="4" placeholder="描述你想要生成的图片..." required></textarea>
+                        <div class="textarea-with-voice">
+                            <textarea id="prompt" name="prompt" rows="4" placeholder="描述你想要生成的图片..." required></textarea>
+                            <button type="button" class="voice-input-btn" data-target="prompt" title="语音输入">
+                                <i class="fas fa-microphone"></i>
+                            </button>
+                        </div>
                         <div class="prompt-optimize">
                             <div class="prompt-optimize__desc">
                                 <div class="prompt-optimize__title">
@@ -100,7 +105,12 @@
 
                     <div class="form-group">
                         <label for="edit-prompt">编辑指令 / 提示词:</label>
-                        <textarea id="edit-prompt" name="prompt" rows="3" placeholder="描述如何修改这张图片，或者描述新图片..." required></textarea>
+                        <div class="textarea-with-voice">
+                            <textarea id="edit-prompt" name="prompt" rows="3" placeholder="描述如何修改这张图片，或者描述新图片..." required></textarea>
+                            <button type="button" class="voice-input-btn" data-target="edit-prompt" title="语音输入">
+                                <i class="fas fa-microphone"></i>
+                            </button>
+                        </div>
                         <div class="prompt-optimize">
                             <div class="prompt-optimize__desc">
                                 <div class="prompt-optimize__title">

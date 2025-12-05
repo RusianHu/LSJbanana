@@ -12,6 +12,7 @@ ini_set('max_input_time', '300'); // 增加输入时间限制
 
 require_once __DIR__ . '/security_utils.php';
 require_once __DIR__ . '/prompt_optimizer.php';
+require_once __DIR__ . '/speech_to_text.php';
 
 // 引入配置
 $config = require 'config.php';
@@ -27,14 +28,34 @@ function sendError($message, $code = 500) {
 }
 
 /**
- * 统一封装 Gemini REST 请求
+ * Gemini API 异常类
+ * 用于在工具类中捕获和处理 API 错误，支持回退机制
+ */
+class GeminiApiException extends Exception {
+    private int $httpCode;
+
+    public function __construct(string $message, int $httpCode = 500, ?Throwable $previous = null) {
+        parent::__construct($message, $httpCode, $previous);
+        $this->httpCode = $httpCode;
+    }
+
+    public function getHttpCode(): int {
+        return $this->httpCode;
+    }
+}
+
+/**
+ * 安全版本的 Gemini API 调用（抛出异常而非直接退出）
+ * 供工具类使用，支持错误捕获和回退机制
+ *
  * @param string $modelName 模型名称
  * @param array $payload 请求体
  * @param int $timeout 超时时间
  * @param int $connectTimeout 连接超时
  * @return array 解析后的响应数组
+ * @throws GeminiApiException 当请求失败时抛出
  */
-function callGeminiApi($modelName, array $payload, $timeout = 120, $connectTimeout = 20) {
+function callGeminiApiSafe($modelName, array $payload, $timeout = 120, $connectTimeout = 20): array {
     global $apiKey;
 
     $apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/{$modelName}:generateContent?key={$apiKey}";
@@ -58,22 +79,40 @@ function callGeminiApi($modelName, array $payload, $timeout = 120, $connectTimeo
     curl_close($ch);
 
     if ($curlError) {
-        sendError("请求 Gemini 失败: " . $curlError);
+        throw new GeminiApiException("请求 Gemini 失败: " . $curlError, 500);
     }
 
     $responseData = json_decode($response, true);
     if (json_last_error() !== JSON_ERROR_NONE) {
-        sendError('Gemini 返回解析失败: ' . json_last_error_msg());
+        throw new GeminiApiException('Gemini 返回解析失败: ' . json_last_error_msg(), 500);
     }
 
     if ($httpCode !== 200) {
         $errorMessage = is_array($responseData) && isset($responseData['error']['message'])
             ? $responseData['error']['message']
             : 'Gemini 接口返回异常';
-        sendError("Gemini 请求失败 ({$httpCode}): " . $errorMessage, $httpCode);
+        throw new GeminiApiException("Gemini 请求失败 ({$httpCode}): " . $errorMessage, $httpCode);
     }
 
     return $responseData;
+}
+
+/**
+ * 统一封装 Gemini REST 请求（向后兼容版本）
+ * 错误时直接退出脚本，适用于 api.php 中的直接调用
+ *
+ * @param string $modelName 模型名称
+ * @param array $payload 请求体
+ * @param int $timeout 超时时间
+ * @param int $connectTimeout 连接超时
+ * @return array 解析后的响应数组
+ */
+function callGeminiApi($modelName, array $payload, $timeout = 120, $connectTimeout = 20) {
+    try {
+        return callGeminiApiSafe($modelName, $payload, $timeout, $connectTimeout);
+    } catch (GeminiApiException $e) {
+        sendError($e->getMessage(), $e->getHttpCode());
+    }
 }
 
 /**
@@ -102,17 +141,44 @@ try {
     sendError('无效的操作类型', 400);
 }
 
-$prompt = SecurityUtils::sanitizeTextInput($_POST['prompt'] ?? '', 4000);
-if ($prompt === '') {
-    sendError('提示词不能为空', 400);
-}
-
-if (!in_array($action, ['generate', 'edit', 'optimize_prompt'], true)) {
+if (!in_array($action, ['generate', 'edit', 'optimize_prompt', 'transcribe'], true)) {
     sendError('未知的操作类型', 400);
 }
 
 // Gemini API Key
 $apiKey = $config['api_key'];
+
+// 语音转文字分支
+if ($action === 'transcribe') {
+    // 使用 SpeechToText 工具类处理语音转文字
+    $sttService = SpeechToText::create($config);
+
+    // 验证并读取音频文件
+    $audioValidation = $sttService->validateAndReadAudio($_FILES['audio'] ?? []);
+    if (!$audioValidation['valid']) {
+        sendError($audioValidation['error'], 400);
+    }
+
+    // 执行语音转文字
+    $result = $sttService->transcribe($audioValidation['data'], $audioValidation['mime_type']);
+
+    if (!$result['success']) {
+        sendError($result['error'] ?? '语音转文字失败', 500);
+    }
+
+    echo json_encode([
+        'success' => true,
+        'text' => $result['text'],
+        'provider' => $result['provider'] ?? null
+    ]);
+    exit;
+}
+
+// 对于其他操作，需要 prompt
+$prompt = SecurityUtils::sanitizeTextInput($_POST['prompt'] ?? '', 4000);
+if ($prompt === '') {
+    sendError('提示词不能为空', 400);
+}
 
 // 提示词优化分支（直接返回文本）
 if ($action === 'optimize_prompt') {

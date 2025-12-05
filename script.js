@@ -431,4 +431,233 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    // ========== 语音输入功能 ==========
+    initVoiceInput();
 });
+
+/**
+ * 语音输入功能模块
+ * 使用 MediaRecorder API 录音，通过 Gemini API 转文字
+ */
+function initVoiceInput() {
+    const voiceButtons = document.querySelectorAll('.voice-input-btn');
+
+    // 检查浏览器是否支持 MediaRecorder
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+        // 隐藏所有语音按钮
+        voiceButtons.forEach(btn => btn.style.display = 'none');
+        console.warn('当前浏览器不支持语音录入功能');
+        return;
+    }
+
+    // 状态管理
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+    let activeButton = null;
+    let recordingStartTime = null;
+    const MAX_RECORDING_TIME = 60000; // 最大录音时间 60 秒
+    let recordingTimeout = null;
+
+    // 为每个语音按钮绑定事件
+    voiceButtons.forEach(btn => {
+        btn.addEventListener('click', () => handleVoiceButtonClick(btn));
+    });
+
+    /**
+     * 处理语音按钮点击
+     */
+    async function handleVoiceButtonClick(btn) {
+        if (isRecording) {
+            // 如果正在录音，停止录音
+            stopRecording();
+        } else {
+            // 开始录音
+            await startRecording(btn);
+        }
+    }
+
+    /**
+     * 开始录音
+     */
+    async function startRecording(btn) {
+        try {
+            // 请求麦克风权限
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    sampleRate: 16000
+                }
+            });
+
+            // 确定支持的 MIME 类型
+            const mimeType = getSupportedMimeType();
+
+            mediaRecorder = new MediaRecorder(stream, {
+                mimeType: mimeType
+            });
+            audioChunks = [];
+            activeButton = btn;
+            isRecording = true;
+            recordingStartTime = Date.now();
+
+            // 更新按钮状态
+            btn.classList.add('recording');
+            btn.querySelector('i').className = 'fas fa-stop';
+            btn.title = '点击停止录音';
+
+            // 收集音频数据
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunks.push(event.data);
+                }
+            };
+
+            // 录音停止时处理
+            mediaRecorder.onstop = async () => {
+                // 停止所有音轨
+                stream.getTracks().forEach(track => track.stop());
+
+                // 处理录音数据
+                if (audioChunks.length > 0) {
+                    const audioBlob = new Blob(audioChunks, { type: mimeType });
+                    await transcribeAudio(audioBlob, btn);
+                }
+
+                // 重置状态
+                resetButtonState(btn);
+            };
+
+            // 开始录音
+            mediaRecorder.start(100); // 每 100ms 收集一次数据
+
+            // 设置最大录音时间
+            recordingTimeout = setTimeout(() => {
+                if (isRecording) {
+                    stopRecording();
+                }
+            }, MAX_RECORDING_TIME);
+
+        } catch (error) {
+            console.error('无法访问麦克风:', error);
+            let errorMsg = '无法访问麦克风';
+            if (error.name === 'NotAllowedError') {
+                errorMsg = '麦克风权限被拒绝，请在浏览器设置中允许访问麦克风';
+            } else if (error.name === 'NotFoundError') {
+                errorMsg = '未检测到麦克风设备';
+            }
+            alert(errorMsg);
+            resetButtonState(btn);
+        }
+    }
+
+    /**
+     * 停止录音
+     */
+    function stopRecording() {
+        if (recordingTimeout) {
+            clearTimeout(recordingTimeout);
+            recordingTimeout = null;
+        }
+
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+        }
+        isRecording = false;
+    }
+
+    /**
+     * 重置按钮状态
+     */
+    function resetButtonState(btn) {
+        btn.classList.remove('recording', 'processing');
+        btn.querySelector('i').className = 'fas fa-microphone';
+        btn.title = '语音输入';
+        btn.disabled = false;
+        isRecording = false;
+        activeButton = null;
+    }
+
+    /**
+     * 获取支持的 MIME 类型
+     */
+    function getSupportedMimeType() {
+        const types = [
+            'audio/webm;codecs=opus',
+            'audio/webm',
+            'audio/ogg;codecs=opus',
+            'audio/ogg',
+            'audio/mp4',
+            'audio/mpeg'
+        ];
+
+        for (const type of types) {
+            if (MediaRecorder.isTypeSupported(type)) {
+                return type;
+            }
+        }
+
+        return 'audio/webm'; // 默认
+    }
+
+    /**
+     * 调用后端 API 进行语音转文字
+     */
+    async function transcribeAudio(audioBlob, btn) {
+        const targetId = btn.dataset.target;
+        const targetTextarea = document.getElementById(targetId);
+
+        if (!targetTextarea) {
+            console.error('找不到目标输入框:', targetId);
+            return;
+        }
+
+        // 显示处理中状态
+        btn.classList.add('processing');
+        btn.querySelector('i').className = 'fas fa-spinner fa-spin';
+        btn.title = '正在转换...';
+        btn.disabled = true;
+
+        try {
+            const formData = new FormData();
+            formData.append('action', 'transcribe');
+            formData.append('audio', audioBlob, 'recording.webm');
+
+            const response = await fetch('api.php', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (result.success && result.text) {
+                // 将转录文本追加到输入框
+                const currentText = targetTextarea.value.trim();
+                const transcribedText = result.text.trim();
+
+                if (currentText) {
+                    // 如果已有内容，追加新内容
+                    targetTextarea.value = currentText + ' ' + transcribedText;
+                } else {
+                    targetTextarea.value = transcribedText;
+                }
+
+                // 触发 input 事件以便其他监听器能响应
+                targetTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+
+                // 聚焦到输入框末尾
+                targetTextarea.focus();
+                targetTextarea.setSelectionRange(targetTextarea.value.length, targetTextarea.value.length);
+            } else if (result.message) {
+                alert('语音转换失败: ' + result.message);
+            } else {
+                alert('未能识别到语音内容，请重试');
+            }
+        } catch (error) {
+            console.error('语音转换请求失败:', error);
+            alert('语音转换失败，请检查网络连接后重试');
+        }
+    }
+}
