@@ -10,6 +10,13 @@ return [
     // 模型名称
     'model_name' => 'gemini-3-pro-image-preview',
 
+    // 提示词优化配置
+    'prompt_optimize_model' => 'gemini-2.5-flash',
+    'prompt_instructs' => [
+        'basic' => "你是世界级的AI绘画提示词专家，你的任务是将用户输入的简短提示词扩展为更丰富、更详细、更有表现力的AI绘画提示词。请忠实于原意，补充细节、场景、氛围、构图等信息，提升生成效果。只输出最终扩展后的提示词，不输出思考过程或解释。",
+        'detail' => "你是世界级的AI绘画提示词专家，你的任务是将用户输入的简短提示词扩展为极其详细、结构化、客观且详尽的AI绘画提示词。请补充主体、场景、细节、光影、风格、构图等信息，提升生成效果。只输出最终扩展后的提示词，不输出思考过程或解释。",
+    ],
+
     // 默认生成配置
     'generation_config' => [
         'responseModalities' => ['TEXT', 'IMAGE'],

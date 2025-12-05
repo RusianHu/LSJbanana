@@ -27,6 +27,25 @@
                     <div class="form-group">
                         <label for="prompt">提示词 (Prompt):</label>
                         <textarea id="prompt" name="prompt" rows="4" placeholder="描述你想要生成的图片..." required></textarea>
+                        <div class="prompt-optimize">
+                            <div class="prompt-optimize__desc">
+                                <div class="prompt-optimize__title">
+                                    <i class="fas fa-wand-magic-sparkles"></i>
+                                    <span>提示词优化</span>
+                                </div>
+                                <p class="prompt-optimize__tip">调用 gemini-2.5-flash 自动扩写提示词，生成前先润色或加强细节。</p>
+                                <div class="prompt-optimize__modes" role="group" aria-label="提示词优化模式">
+                                    <button type="button" class="pill-btn active" data-optimize-mode="basic" data-optimize-group="generate">增强模式</button>
+                                    <button type="button" class="pill-btn" data-optimize-mode="detail" data-optimize-group="generate">细节模式</button>
+                                </div>
+                            </div>
+                            <div class="prompt-optimize__action">
+                                <button type="button" id="optimize-prompt-btn-generate" class="btn-secondary">
+                                    <i class="fas fa-wand-magic-sparkles"></i> 一键优化
+                                </button>
+                                <div id="optimize-status-generate" class="optimize-status" aria-live="polite"></div>
+                            </div>
+                        </div>
                     </div>
                     
                     <div class="form-row">
@@ -82,6 +101,25 @@
                     <div class="form-group">
                         <label for="edit-prompt">编辑指令 / 提示词:</label>
                         <textarea id="edit-prompt" name="prompt" rows="3" placeholder="描述如何修改这张图片，或者描述新图片..." required></textarea>
+                        <div class="prompt-optimize">
+                            <div class="prompt-optimize__desc">
+                                <div class="prompt-optimize__title">
+                                    <i class="fas fa-wand-magic-sparkles"></i>
+                                    <span>提示词优化</span>
+                                </div>
+                                <p class="prompt-optimize__tip">调用 gemini-2.5-flash 自动扩写提示词，可在生成前快速润色或精细化。</p>
+                                <div class="prompt-optimize__modes" role="group" aria-label="提示词优化模式">
+                                    <button type="button" class="pill-btn active" data-optimize-mode="basic" data-optimize-group="edit">增强模式</button>
+                                    <button type="button" class="pill-btn" data-optimize-mode="detail" data-optimize-group="edit">细节模式</button>
+                                </div>
+                            </div>
+                            <div class="prompt-optimize__action">
+                                <button type="button" id="optimize-prompt-btn" class="btn-secondary">
+                                    <i class="fas fa-wand-magic-sparkles"></i> 一键优化
+                                </button>
+                                <div id="optimize-status" class="optimize-status" aria-live="polite"></div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="form-row">

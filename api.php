@@ -11,15 +11,84 @@ ini_set('max_execution_time', '300'); // 确保最大执行时间为 300 秒
 ini_set('max_input_time', '300'); // 增加输入时间限制
 
 require_once __DIR__ . '/security_utils.php';
+require_once __DIR__ . '/prompt_optimizer.php';
 
 // 引入配置
 $config = require 'config.php';
+
+// 核心配置
+$apiKey = $config['api_key'];
 
 // 错误处理函数
 function sendError($message, $code = 500) {
     http_response_code($code);
     echo json_encode(['success' => false, 'message' => $message]);
     exit;
+}
+
+/**
+ * 统一封装 Gemini REST 请求
+ * @param string $modelName 模型名称
+ * @param array $payload 请求体
+ * @param int $timeout 超时时间
+ * @param int $connectTimeout 连接超时
+ * @return array 解析后的响应数组
+ */
+function callGeminiApi($modelName, array $payload, $timeout = 120, $connectTimeout = 20) {
+    global $apiKey;
+
+    $apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/{$modelName}:generateContent?key={$apiKey}";
+
+    $ch = curl_init($apiUrl);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+    curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $connectTimeout);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/json'
+    ]);
+    // 开发环境禁用 SSL 验证（生产环境请开启）
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    if ($curlError) {
+        sendError("请求 Gemini 失败: " . $curlError);
+    }
+
+    $responseData = json_decode($response, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        sendError('Gemini 返回解析失败: ' . json_last_error_msg());
+    }
+
+    if ($httpCode !== 200) {
+        $errorMessage = is_array($responseData) && isset($responseData['error']['message'])
+            ? $responseData['error']['message']
+            : 'Gemini 接口返回异常';
+        sendError("Gemini 请求失败 ({$httpCode}): " . $errorMessage, $httpCode);
+    }
+
+    return $responseData;
+}
+
+/**
+ * 提取文本结果
+ */
+function extractTextFromCandidates(array $responseData) {
+    $result = '';
+    if (isset($responseData['candidates'][0]['content']['parts'])) {
+        foreach ($responseData['candidates'][0]['content']['parts'] as $part) {
+            if (isset($part['text'])) {
+                $result .= $part['text'];
+            }
+        }
+    }
+    return trim($result);
 }
 
 // 检查请求方法
@@ -38,15 +107,32 @@ if ($prompt === '') {
     sendError('提示词不能为空', 400);
 }
 
-if (!in_array($action, ['generate', 'edit'], true)) {
+if (!in_array($action, ['generate', 'edit', 'optimize_prompt'], true)) {
     sendError('未知的操作类型', 400);
 }
 
-// 准备 API 请求数据
+// Gemini API Key
 $apiKey = $config['api_key'];
-$modelName = $config['model_name'];
-$apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/{$modelName}:generateContent?key={$apiKey}";
 
+// 提示词优化分支（直接返回文本）
+if ($action === 'optimize_prompt') {
+    $optModel = SecurityUtils::sanitizeTextInput($config['prompt_optimize_model'] ?? 'gemini-2.5-flash', 64);
+    $mode = SecurityUtils::validateAllowedValue(
+        SecurityUtils::sanitizeTextInput($_POST['mode'] ?? 'basic', 16),
+        ['basic', 'detail'],
+        'basic'
+    );
+    $cleanOptimized = PromptOptimizer::optimizePrompt($prompt, $mode, $config);
+
+    echo json_encode([
+        'success' => true,
+        'optimized_prompt' => $cleanOptimized
+    ]);
+    exit;
+}
+
+// 准备生成/编辑 API 请求数据
+$modelName = $config['model_name'];
 // 构建请求体
 $requestData = [
     'contents' => [],
@@ -162,42 +248,8 @@ if ($action === 'generate') {
     sendError('未知的操作类型', 400);
 }
 
-// 使用 cURL 发送请求 (模拟多线程/异步处理，虽然 PHP 本身是同步的，但 cURL 可以高效处理网络请求)
-$ch = curl_init($apiUrl);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($requestData));
-curl_setopt($ch, CURLOPT_TIMEOUT, 300); // 设置 cURL 超时为 300 秒
-curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 30); // 连接超时 30 秒
-curl_setopt($ch, CURLOPT_HTTPHEADER, [
-    'Content-Type: application/json'
-]);
-// 禁用 SSL 验证 (仅用于本地开发测试，生产环境请配置证书)
-curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-
-$response = curl_exec($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$curlError = curl_error($ch);
-
-curl_close($ch);
-
-if ($curlError) {
-    sendError("cURL 错误: " . $curlError);
-}
-
-// 解析响应
-$responseData = json_decode($response, true);
-if (json_last_error() !== JSON_ERROR_NONE) {
-    sendError('API 返回格式错误: ' . json_last_error_msg() . " (HTTP {$httpCode})");
-}
-
-if ($httpCode !== 200) {
-    $errorMessage = is_array($responseData) && isset($responseData['error']['message'])
-        ? $responseData['error']['message']
-        : 'API 请求失败';
-    sendError("API 错误 ({$httpCode}): " . $errorMessage);
-}
+// 调用 Gemini 生成/编辑
+$responseData = callGeminiApi($modelName, $requestData, 300, 30);
 
 if (!isset($responseData['candidates'][0])) {
     sendError('API 未返回任何候选结果', 502);

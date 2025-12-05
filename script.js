@@ -129,6 +129,109 @@ document.addEventListener('DOMContentLoaded', () => {
 	    // 初始渲染一次
 	    renderEditPreview();
 
+    // 提示词优化组件（文生图 & 图生图共用）
+    function setupPromptOptimizer({ textareaId, buttonId, statusId, modeGroup }) {
+        const promptInput = document.getElementById(textareaId);
+        const actionBtn = document.getElementById(buttonId);
+        const statusEl = document.getElementById(statusId);
+        const modeButtons = document.querySelectorAll(`[data-optimize-mode][data-optimize-group="${modeGroup}"]`);
+        let optimizeMode = 'basic';
+
+        function setStatus(message, isError = false) {
+            if (!statusEl) return;
+            statusEl.textContent = message;
+            statusEl.style.color = isError ? '#c62828' : '#888';
+        }
+
+        function setMode(mode) {
+            optimizeMode = mode;
+            modeButtons.forEach(btn => {
+                if (btn.dataset.optimizeMode === mode) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+        }
+
+        modeButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                setMode(btn.dataset.optimizeMode || 'basic');
+            });
+        });
+        setMode(optimizeMode);
+
+        if (promptInput && statusEl) {
+            promptInput.addEventListener('input', () => setStatus(''));
+        }
+
+        async function triggerOptimize() {
+            if (!promptInput || !actionBtn) return;
+            const rawPrompt = (promptInput.value || '').trim();
+            if (!rawPrompt) {
+                setStatus('请先输入提示词，再试试优化。', true);
+                promptInput.focus();
+                return;
+            }
+
+            const originalHtml = actionBtn.innerHTML;
+            setStatus('优化中，请稍候...');
+            actionBtn.disabled = true;
+            actionBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> 优化中...';
+
+            const formData = new FormData();
+            formData.append('action', 'optimize_prompt');
+            formData.append('prompt', rawPrompt);
+            formData.append('mode', optimizeMode);
+
+            try {
+                const response = await fetch('api.php', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+                if (!data.success) {
+                    throw new Error(data.message || '优化失败，请稍后重试');
+                }
+
+                if (data.optimized_prompt) {
+                    promptInput.value = data.optimized_prompt;
+                    setStatus('优化完成，已填入编辑框。');
+                } else {
+                    throw new Error('未获取到优化结果');
+                }
+            } catch (err) {
+                setStatus(`优化失败：${err.message}`, true);
+            } finally {
+                actionBtn.disabled = false;
+                actionBtn.innerHTML = originalHtml;
+            }
+        }
+
+        if (actionBtn) {
+            actionBtn.addEventListener('click', triggerOptimize);
+        }
+    }
+
+    setupPromptOptimizer({
+        textareaId: 'prompt',
+        buttonId: 'optimize-prompt-btn-generate',
+        statusId: 'optimize-status-generate',
+        modeGroup: 'generate'
+    });
+
+    setupPromptOptimizer({
+        textareaId: 'edit-prompt',
+        buttonId: 'optimize-prompt-btn',
+        statusId: 'optimize-status',
+        modeGroup: 'edit'
+    });
+
     // 表单提交处理
     const generateForm = document.getElementById('generate-form');
     const editForm = document.getElementById('edit-form');
