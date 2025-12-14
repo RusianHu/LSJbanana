@@ -541,3 +541,208 @@ textarea {
         font-size: 20px;
     }
 }
+
+/* ========== 图片预览模态框 (Lightbox) ========== */
+.image-preview-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.92);
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    user-select: none;
+}
+
+.image-preview-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* 预览工具栏 */
+.preview-toolbar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7) 0%, transparent 100%);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    z-index: 10001;
+}
+
+.preview-toolbar-left,
+.preview-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.preview-toolbar-center {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.preview-btn {
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.preview-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.preview-btn:active {
+    transform: scale(0.95);
+}
+
+.preview-btn.close-btn {
+    background: rgba(255, 87, 87, 0.3);
+}
+
+.preview-btn.close-btn:hover {
+    background: rgba(255, 87, 87, 0.5);
+}
+
+.preview-zoom-info {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 14px;
+    font-weight: 500;
+    min-width: 50px;
+    text-align: center;
+}
+
+/* 图片容器 */
+.preview-image-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    cursor: grab;
+    position: relative;
+}
+
+.preview-image-container:active {
+    cursor: grabbing;
+}
+
+.preview-image-container img {
+    max-width: none;
+    max-height: none;
+    transform-origin: center center;
+    transition: transform 0.1s ease-out;
+    pointer-events: none;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* 底部信息栏 */
+.preview-info-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 48px;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.7) 0%, transparent 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 16px;
+    z-index: 10001;
+}
+
+.preview-image-info {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 13px;
+}
+
+/* 快捷键提示 */
+.preview-shortcuts-hint {
+    position: absolute;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: rgba(255, 255, 255, 0.8);
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 12px;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    white-space: nowrap;
+    z-index: 10002;
+}
+
+.preview-shortcuts-hint.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+.preview-shortcuts-hint kbd {
+    display: inline-block;
+    background: rgba(255, 255, 255, 0.15);
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin: 0 2px;
+    font-family: inherit;
+}
+
+/* 使生成的图片可点击预览 */
+.output-item img {
+    cursor: zoom-in;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.output-item img:hover {
+    transform: scale(1.02);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+
+/* 响应式适配 */
+@media (max-width: 768px) {
+    .preview-toolbar {
+        height: 50px;
+        padding: 0 10px;
+    }
+
+    .preview-btn {
+        width: 36px;
+        height: 36px;
+        font-size: 14px;
+    }
+
+    .preview-zoom-info {
+        font-size: 12px;
+    }
+
+    .preview-shortcuts-hint {
+        display: none;
+    }
+
+    .preview-toolbar-center {
+        gap: 8px;
+    }
+}

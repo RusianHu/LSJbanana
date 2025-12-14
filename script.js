@@ -434,6 +434,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ========== 语音输入功能 ==========
     initVoiceInput();
+
+    // ========== 图片预览功能 ==========
+    initImagePreview();
 });
 
 /**
@@ -843,4 +846,344 @@ function initVoiceInput() {
         recognition = null;
         interimTranscript = '';
     }
+}
+
+/**
+ * 图片预览功能模块 (类似 Gradio 的 Lightbox)
+ * 支持: 全屏查看、缩放、拖拽平移、快捷键操作
+ */
+function initImagePreview() {
+    // 获取 DOM 元素
+    const overlay = document.getElementById('image-preview-overlay');
+    const container = document.getElementById('preview-container');
+    const previewImg = document.getElementById('preview-image');
+    const zoomLevelDisplay = document.getElementById('preview-zoom-level');
+    const imageInfoDisplay = document.getElementById('preview-image-info');
+    const shortcutsHint = document.getElementById('preview-shortcuts');
+
+    // 按钮
+    const closeBtn = document.getElementById('preview-close');
+    const zoomInBtn = document.getElementById('preview-zoom-in');
+    const zoomOutBtn = document.getElementById('preview-zoom-out');
+    const zoomFitBtn = document.getElementById('preview-zoom-fit');
+    const zoomActualBtn = document.getElementById('preview-zoom-actual');
+    const downloadBtn = document.getElementById('preview-download');
+    const helpBtn = document.getElementById('preview-help');
+
+    if (!overlay || !container || !previewImg) {
+        console.warn('图片预览组件初始化失败：缺少必要的 DOM 元素');
+        return;
+    }
+
+    // 状态变量
+    let currentImageUrl = '';
+    let scale = 1;
+    let translateX = 0;
+    let translateY = 0;
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let lastTranslateX = 0;
+    let lastTranslateY = 0;
+    let naturalWidth = 0;
+    let naturalHeight = 0;
+
+    // 缩放配置
+    const MIN_SCALE = 0.1;
+    const MAX_SCALE = 10;
+    const ZOOM_STEP = 0.25;
+
+    /**
+     * 打开预览
+     */
+    function openPreview(imgSrc) {
+        currentImageUrl = imgSrc;
+        previewImg.src = imgSrc;
+
+        // 重置状态
+        scale = 1;
+        translateX = 0;
+        translateY = 0;
+
+        // 等待图片加载后计算适应窗口的缩放
+        previewImg.onload = function() {
+            naturalWidth = previewImg.naturalWidth;
+            naturalHeight = previewImg.naturalHeight;
+
+            // 计算适应窗口的缩放比例
+            fitToWindow();
+
+            // 更新图片信息
+            updateImageInfo();
+        };
+
+        // 显示预览
+        overlay.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+
+    /**
+     * 关闭预览
+     */
+    function closePreview() {
+        overlay.classList.remove('active');
+        document.body.style.overflow = '';
+        shortcutsHint.classList.remove('visible');
+    }
+
+    /**
+     * 适应窗口
+     */
+    function fitToWindow() {
+        const containerRect = container.getBoundingClientRect();
+        const padding = 40;
+
+        const maxWidth = containerRect.width - padding * 2;
+        const maxHeight = containerRect.height - padding * 2;
+
+        const scaleX = maxWidth / naturalWidth;
+        const scaleY = maxHeight / naturalHeight;
+
+        scale = Math.min(scaleX, scaleY, 1); // 不超过原始大小
+        translateX = 0;
+        translateY = 0;
+
+        updateTransform();
+    }
+
+    /**
+     * 原始大小 (100%)
+     */
+    function actualSize() {
+        scale = 1;
+        translateX = 0;
+        translateY = 0;
+        updateTransform();
+    }
+
+    /**
+     * 放大
+     */
+    function zoomIn() {
+        setScale(scale + ZOOM_STEP);
+    }
+
+    /**
+     * 缩小
+     */
+    function zoomOut() {
+        setScale(scale - ZOOM_STEP);
+    }
+
+    /**
+     * 设置缩放比例
+     */
+    function setScale(newScale, centerX, centerY) {
+        const oldScale = scale;
+        scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
+
+        // 如果指定了缩放中心点，调整平移以保持中心点位置
+        if (centerX !== undefined && centerY !== undefined) {
+            const containerRect = container.getBoundingClientRect();
+            const imgCenterX = containerRect.width / 2 + translateX;
+            const imgCenterY = containerRect.height / 2 + translateY;
+
+            const dx = centerX - containerRect.left - imgCenterX;
+            const dy = centerY - containerRect.top - imgCenterY;
+
+            const scaleFactor = scale / oldScale;
+            translateX -= dx * (scaleFactor - 1);
+            translateY -= dy * (scaleFactor - 1);
+        }
+
+        updateTransform();
+    }
+
+    /**
+     * 更新图片变换
+     */
+    function updateTransform() {
+        previewImg.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+        zoomLevelDisplay.textContent = Math.round(scale * 100) + '%';
+    }
+
+    /**
+     * 更新图片信息
+     */
+    function updateImageInfo() {
+        if (naturalWidth && naturalHeight) {
+            imageInfoDisplay.textContent = `${naturalWidth} x ${naturalHeight} 像素`;
+        }
+    }
+
+    /**
+     * 下载当前图片
+     */
+    function downloadImage() {
+        if (!currentImageUrl) return;
+
+        const link = document.createElement('a');
+        link.href = currentImageUrl;
+        link.download = currentImageUrl.split('/').pop() || 'image.png';
+        link.click();
+    }
+
+    /**
+     * 切换快捷键帮助
+     */
+    function toggleShortcuts() {
+        shortcutsHint.classList.toggle('visible');
+    }
+
+    // ========== 事件绑定 ==========
+
+    // 点击图片打开预览 (使用事件委托)
+    document.addEventListener('click', function(e) {
+        const img = e.target.closest('.output-item img');
+        if (img && img.src) {
+            e.preventDefault();
+            openPreview(img.src);
+        }
+    });
+
+    // 关闭按钮
+    if (closeBtn) closeBtn.addEventListener('click', closePreview);
+
+    // 点击遮罩背景关闭 (但不包括图片和工具栏)
+    overlay.addEventListener('click', function(e) {
+        if (e.target === overlay || e.target === container) {
+            closePreview();
+        }
+    });
+
+    // 缩放按钮 (添加空值检查)
+    if (zoomInBtn) zoomInBtn.addEventListener('click', zoomIn);
+    if (zoomOutBtn) zoomOutBtn.addEventListener('click', zoomOut);
+    if (zoomFitBtn) zoomFitBtn.addEventListener('click', fitToWindow);
+    if (zoomActualBtn) zoomActualBtn.addEventListener('click', actualSize);
+    if (downloadBtn) downloadBtn.addEventListener('click', downloadImage);
+    if (helpBtn) helpBtn.addEventListener('click', toggleShortcuts);
+
+    // 鼠标滚轮缩放
+    container.addEventListener('wheel', function(e) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+        setScale(scale + delta, e.clientX, e.clientY);
+    }, { passive: false });
+
+    // 拖拽平移
+    container.addEventListener('mousedown', function(e) {
+        if (e.button !== 0) return; // 只响应左键
+        isDragging = true;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        lastTranslateX = translateX;
+        lastTranslateY = translateY;
+        container.style.cursor = 'grabbing';
+    });
+
+    document.addEventListener('mousemove', function(e) {
+        if (!isDragging) return;
+        translateX = lastTranslateX + (e.clientX - dragStartX);
+        translateY = lastTranslateY + (e.clientY - dragStartY);
+        updateTransform();
+    });
+
+    document.addEventListener('mouseup', function() {
+        if (isDragging) {
+            isDragging = false;
+            container.style.cursor = 'grab';
+        }
+    });
+
+    // 触摸支持
+    let touchStartDistance = 0;
+    let touchStartScale = 1;
+
+    container.addEventListener('touchstart', function(e) {
+        if (e.touches.length === 1) {
+            // 单指拖拽
+            isDragging = true;
+            dragStartX = e.touches[0].clientX;
+            dragStartY = e.touches[0].clientY;
+            lastTranslateX = translateX;
+            lastTranslateY = translateY;
+        } else if (e.touches.length === 2) {
+            // 双指缩放
+            isDragging = false;
+            touchStartDistance = Math.hypot(
+                e.touches[1].clientX - e.touches[0].clientX,
+                e.touches[1].clientY - e.touches[0].clientY
+            );
+            touchStartScale = scale;
+        }
+    }, { passive: true });
+
+    container.addEventListener('touchmove', function(e) {
+        if (e.touches.length === 1 && isDragging) {
+            translateX = lastTranslateX + (e.touches[0].clientX - dragStartX);
+            translateY = lastTranslateY + (e.touches[0].clientY - dragStartY);
+            updateTransform();
+        } else if (e.touches.length === 2) {
+            const currentDistance = Math.hypot(
+                e.touches[1].clientX - e.touches[0].clientX,
+                e.touches[1].clientY - e.touches[0].clientY
+            );
+            const scaleChange = currentDistance / touchStartDistance;
+            setScale(touchStartScale * scaleChange);
+        }
+    }, { passive: true });
+
+    container.addEventListener('touchend', function() {
+        isDragging = false;
+    });
+
+    // 键盘快捷键
+    document.addEventListener('keydown', function(e) {
+        if (!overlay.classList.contains('active')) return;
+
+        switch(e.key) {
+            case 'Escape':
+                closePreview();
+                break;
+            case '+':
+            case '=':
+                e.preventDefault();
+                zoomIn();
+                break;
+            case '-':
+            case '_':
+                e.preventDefault();
+                zoomOut();
+                break;
+            case '1':
+                e.preventDefault();
+                actualSize();
+                break;
+            case 'f':
+            case 'F':
+                e.preventDefault();
+                fitToWindow();
+                break;
+            case 'd':
+            case 'D':
+                e.preventDefault();
+                downloadImage();
+                break;
+            case '?':
+                e.preventDefault();
+                toggleShortcuts();
+                break;
+        }
+    });
+
+    // 双击切换缩放
+    container.addEventListener('dblclick', function(e) {
+        e.preventDefault();
+        if (scale > 1) {
+            fitToWindow();
+        } else {
+            actualSize();
+        }
+    });
 }

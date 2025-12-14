@@ -201,9 +201,57 @@
     <div id="data-sync-modal" class="x-modal-hidden">
         <div class="x-modal-content">
             <span class="x-close-btn">&times;</span>
-            <h3 style="margin-bottom: 15px; color: #333;">为项目充电 ⚡</h3>
-            <p style="color: #666; margin-bottom: 15px;">如果觉得好用，可以请老司机喝杯雪王 🧋</p>
+            <h3 style="margin-bottom: 15px; color: #333;">为项目充电</h3>
+            <p style="color: #666; margin-bottom: 15px;">如果觉得好用，可以请老司机喝杯雪王</p>
             <img src="pay.jpg" alt="Power Supply" class="sync-visualizer">
+        </div>
+    </div>
+
+    <!-- 图片预览模态框 (Lightbox) -->
+    <div id="image-preview-overlay" class="image-preview-overlay">
+        <div class="preview-toolbar">
+            <div class="preview-toolbar-left">
+                <button class="preview-btn close-btn" id="preview-close" title="关闭 (Esc)">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="preview-toolbar-center">
+                <button class="preview-btn" id="preview-zoom-out" title="缩小 (-)">
+                    <i class="fas fa-search-minus"></i>
+                </button>
+                <span class="preview-zoom-info" id="preview-zoom-level">100%</span>
+                <button class="preview-btn" id="preview-zoom-in" title="放大 (+)">
+                    <i class="fas fa-search-plus"></i>
+                </button>
+                <button class="preview-btn" id="preview-zoom-fit" title="适应窗口 (F)">
+                    <i class="fas fa-expand"></i>
+                </button>
+                <button class="preview-btn" id="preview-zoom-actual" title="原始大小 (1)">
+                    <i class="fas fa-compress-arrows-alt"></i>
+                </button>
+            </div>
+            <div class="preview-toolbar-right">
+                <button class="preview-btn" id="preview-download" title="下载图片 (D)">
+                    <i class="fas fa-download"></i>
+                </button>
+                <button class="preview-btn" id="preview-help" title="快捷键帮助 (?)">
+                    <i class="fas fa-keyboard"></i>
+                </button>
+            </div>
+        </div>
+        <div class="preview-image-container" id="preview-container">
+            <img id="preview-image" src="" alt="Preview">
+        </div>
+        <div class="preview-info-bar">
+            <span class="preview-image-info" id="preview-image-info"></span>
+        </div>
+        <div class="preview-shortcuts-hint" id="preview-shortcuts">
+            <kbd>Esc</kbd> 关闭 |
+            <kbd>+</kbd><kbd>-</kbd> 缩放 |
+            <kbd>1</kbd> 原始大小 |
+            <kbd>F</kbd> 适应窗口 |
+            <kbd>D</kbd> 下载 |
+            鼠标滚轮缩放 | 拖拽移动
         </div>
     </div>
 
