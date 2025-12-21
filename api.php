@@ -130,6 +130,94 @@ function extractTextFromCandidates(array $responseData) {
     return trim($result);
 }
 
+/**
+ * 根据配置生成思考模式配置
+ */
+function buildThinkingConfig(array $config, string $modelName): array {
+    $thinkingConfig = [];
+    $rawConfig = $config['thinking_config'] ?? [];
+
+    if (!is_array($rawConfig) || empty($rawConfig)) {
+        return $thinkingConfig;
+    }
+
+    if (array_key_exists('include_thoughts', $rawConfig)) {
+        $thinkingConfig['includeThoughts'] = (bool) $rawConfig['include_thoughts'];
+    }
+
+    $supportsThinkingLevel = stripos($modelName, 'image') === false;
+    if ($supportsThinkingLevel && !empty($rawConfig['thinking_level']) && is_string($rawConfig['thinking_level'])) {
+        $thinkingConfig['thinkingLevel'] = $rawConfig['thinking_level'];
+    }
+
+    return $thinkingConfig;
+}
+
+/**
+ * 提取思考内容（兼容不同返回结构）
+ */
+function extractThoughtsFromResponse(array $responseData): array {
+    $thoughts = [];
+
+    if (!isset($responseData['candidates'][0]) || !is_array($responseData['candidates'][0])) {
+        return $thoughts;
+    }
+
+    $candidate = $responseData['candidates'][0];
+
+    $appendThoughts = function ($value) use (&$thoughts) {
+        if (is_string($value)) {
+            $thoughts[] = $value;
+            return;
+        }
+
+        if (is_array($value)) {
+            foreach ($value as $item) {
+                if (is_string($item)) {
+                    $thoughts[] = $item;
+                } elseif (is_array($item)) {
+                    if (isset($item['text']) && is_string($item['text'])) {
+                        $thoughts[] = $item['text'];
+                    } elseif (isset($item['thought']) && is_string($item['thought'])) {
+                        $thoughts[] = $item['thought'];
+                    }
+                }
+            }
+        }
+    };
+
+    if (isset($candidate['thoughts'])) {
+        $appendThoughts($candidate['thoughts']);
+    }
+
+    if (isset($candidate['content']['parts']) && is_array($candidate['content']['parts'])) {
+        foreach ($candidate['content']['parts'] as $part) {
+            if (!is_array($part)) {
+                continue;
+            }
+            if (isset($part['thought'])) {
+                $appendThoughts($part['thought']);
+            }
+            if (isset($part['thoughts'])) {
+                $appendThoughts($part['thoughts']);
+            }
+        }
+    }
+
+    $cleaned = [];
+    foreach ($thoughts as $thought) {
+        if (!is_string($thought)) {
+            continue;
+        }
+        $normalized = trim($thought);
+        if ($normalized !== '') {
+            $cleaned[] = SecurityUtils::sanitizeHtml($normalized);
+        }
+    }
+
+    return $cleaned;
+}
+
 // 检查请求方法
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     sendError('只支持 POST 请求', 405);
@@ -204,6 +292,11 @@ $requestData = [
     'contents' => [],
     'generationConfig' => $config['generation_config']
 ];
+
+$thinkingConfig = buildThinkingConfig($config, $modelName);
+if (!empty($thinkingConfig)) {
+    $requestData['generationConfig']['thinkingConfig'] = $thinkingConfig;
+}
 
 // 处理宽高比和分辨率
 $aspectRatio = SecurityUtils::validateAllowedValue(
@@ -322,6 +415,7 @@ if (!isset($responseData['candidates'][0])) {
 }
 $resultImages = [];
 $resultText = '';
+$resultThoughts = [];
 $groundingMetadata = null;
 
 // 提取 Grounding Metadata
@@ -355,10 +449,13 @@ if (isset($responseData['candidates'][0]['content']['parts'])) {
     }
 }
 
+$resultThoughts = extractThoughtsFromResponse($responseData);
+
 // 返回结果
 echo json_encode([
     'success' => true,
     'images' => $resultImages,
     'text' => trim($resultText),
+    'thoughts' => $resultThoughts,
     'groundingMetadata' => $groundingMetadata
 ]);

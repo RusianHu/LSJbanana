@@ -26,6 +26,12 @@ return [
         ]
     ],
 
+    // 思维摘要配置
+    'thinking_config' => [
+        'include_thoughts' => true,
+        'thinking_level' => 'HIGH',
+    ],
+
     // 图片保存路径 (相对于项目根目录)
     'upload_dir' => 'uploads/',
     'output_dir' => 'images/',

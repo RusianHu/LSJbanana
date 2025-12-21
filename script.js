@@ -241,9 +241,136 @@ document.addEventListener('DOMContentLoaded', () => {
     const outputContainer = document.getElementById('output-container');
     const timerDisplay = document.getElementById('timer');
 
-	    // 通用提交函数
-	    async function handleFormSubmit(event, type) {
-	        event.preventDefault();
+    function splitThoughtsIntoStages(thoughts) {
+        const stages = [];
+        let stageIndex = 1;
+
+        if (!Array.isArray(thoughts)) {
+            return stages;
+        }
+
+        const normalizeChunk = (chunk) => chunk.replace(/\r\n/g, '\n').trim();
+
+        thoughts.forEach((thought) => {
+            if (!thought || typeof thought !== 'string') {
+                return;
+            }
+
+            const normalized = normalizeChunk(thought);
+            if (!normalized) {
+                return;
+            }
+
+            const chunks = normalized.split(/\n{2,}/);
+            chunks.forEach((chunk) => {
+                const cleaned = normalizeChunk(chunk);
+                if (!cleaned) {
+                    return;
+                }
+
+                const lines = cleaned.split('\n').map(line => line.trim()).filter(Boolean);
+                let title = '';
+                let body = cleaned;
+
+                if (lines.length > 1) {
+                    const firstLine = lines[0];
+                    const rest = lines.slice(1).join('\n').trim();
+                    const strippedTitle = firstLine.replace(/^#{1,4}\s+/, '').replace(/[：:]\s*$/, '');
+                    const isShortTitle = strippedTitle.length > 0 && strippedTitle.length <= 60;
+                    const endsWithSentence = /[。.!?]$/.test(strippedTitle);
+
+                    if (rest && isShortTitle && (!endsWithSentence || firstLine.startsWith('#') || /[:：]$/.test(firstLine))) {
+                        title = strippedTitle;
+                        body = rest;
+                    }
+                }
+
+                if (!title) {
+                    title = `阶段 ${stageIndex}`;
+                }
+
+                stages.push({
+                    title,
+                    body
+                });
+                stageIndex += 1;
+            });
+        });
+
+        return stages;
+    }
+
+    function renderThinkingPanel(thoughts, elapsedSeconds) {
+        if (!outputContainer) {
+            return;
+        }
+
+        const stages = splitThoughtsIntoStages(thoughts);
+        if (stages.length === 0) {
+            return;
+        }
+
+        const details = document.createElement('details');
+        details.className = 'thinking-panel';
+        details.open = true;
+
+        const summary = document.createElement('summary');
+        summary.className = 'thinking-summary';
+
+        const summaryLeft = document.createElement('div');
+        summaryLeft.className = 'thinking-summary__left';
+
+        const badge = document.createElement('span');
+        badge.className = 'thinking-badge';
+        badge.textContent = '思考过程';
+
+        const time = document.createElement('span');
+        time.className = 'thinking-time';
+        time.textContent = `思考耗时 ${elapsedSeconds} 秒`;
+
+        summaryLeft.appendChild(badge);
+        summaryLeft.appendChild(time);
+
+        const toggleHint = document.createElement('span');
+        toggleHint.className = 'thinking-toggle';
+        toggleHint.textContent = '点击收起';
+
+        summary.appendChild(summaryLeft);
+        summary.appendChild(toggleHint);
+
+        const content = document.createElement('div');
+        content.className = 'thinking-content';
+
+        stages.forEach((stage) => {
+            const step = document.createElement('div');
+            step.className = 'thinking-step';
+
+            const stepTitle = document.createElement('div');
+            stepTitle.className = 'thinking-step__title';
+            stepTitle.textContent = stage.title;
+
+            const stepBody = document.createElement('div');
+            stepBody.className = 'thinking-step__body';
+            stepBody.textContent = stage.body;
+
+            step.appendChild(stepTitle);
+            step.appendChild(stepBody);
+            content.appendChild(step);
+        });
+
+        details.appendChild(summary);
+        details.appendChild(content);
+
+        details.addEventListener('toggle', () => {
+            toggleHint.textContent = details.open ? '点击收起' : '点击展开';
+        });
+
+        outputContainer.appendChild(details);
+    }
+
+    // 通用提交函数
+    async function handleFormSubmit(event, type) {
+        event.preventDefault();
 
 	        if (errorMessage) {
 	            errorMessage.classList.add('hidden');
@@ -333,6 +460,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.success) {
                 // 计算最终耗时
                 const finalTime = ((Date.now() - startTime) / 1000).toFixed(2);
+
+                if (data.thoughts && data.thoughts.length > 0) {
+                    renderThinkingPanel(data.thoughts, finalTime);
+                }
 
                 // 显示结果
                 if (data.images && data.images.length > 0) {

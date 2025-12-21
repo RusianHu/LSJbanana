@@ -392,6 +392,106 @@ textarea {
     padding: 20px;
 }
 
+/* 思考过程面板 */
+.thinking-panel {
+    border: 1px solid rgba(255, 193, 7, 0.35);
+    border-radius: 14px;
+    background: linear-gradient(140deg, rgba(255, 248, 230, 0.9) 0%, rgba(255, 255, 255, 0.9) 100%);
+    box-shadow: 0 12px 26px rgba(255, 193, 7, 0.12);
+    margin-bottom: 18px;
+    overflow: hidden;
+}
+
+.thinking-panel summary {
+    list-style: none;
+}
+
+.thinking-panel summary::-webkit-details-marker {
+    display: none;
+}
+
+.thinking-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 18px;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(255, 193, 7, 0.25);
+    background: rgba(255, 255, 255, 0.65);
+}
+
+.thinking-summary__left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.thinking-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    background: rgba(255, 193, 7, 0.2);
+    color: #6b4c00;
+}
+
+.thinking-time {
+    font-size: 0.85rem;
+    color: #8a6b22;
+}
+
+.thinking-toggle {
+    font-size: 0.85rem;
+    color: #7a7a7a;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.thinking-toggle::after {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-right: 2px solid #9a7b2b;
+    border-bottom: 2px solid #9a7b2b;
+    transform: rotate(45deg);
+    transition: transform 0.2s ease;
+}
+
+.thinking-panel[open] .thinking-toggle::after {
+    transform: rotate(-135deg);
+}
+
+.thinking-content {
+    padding: 16px 18px 6px;
+    display: grid;
+    gap: 12px;
+}
+
+.thinking-step {
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 0, 0, 0.04);
+    padding: 12px 14px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05);
+}
+
+.thinking-step__title {
+    font-weight: 700;
+    color: #3f3f3f;
+    margin-bottom: 6px;
+}
+
+.thinking-step__body {
+    font-size: 0.92rem;
+    color: #5a5a5a;
+    white-space: pre-wrap;
+}
+
 /* Output Images */
 .output-item {
     margin-bottom: 20px;
@@ -428,6 +528,14 @@ textarea {
     
     header h1 {
         font-size: 2rem;
+    }
+
+    .thinking-summary {
+        padding: 12px 14px;
+    }
+
+    .thinking-content {
+        padding: 14px;
     }
 }
 
