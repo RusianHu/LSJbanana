@@ -13,12 +13,24 @@ ini_set('max_input_time', '300'); // 增加输入时间限制
 require_once __DIR__ . '/security_utils.php';
 require_once __DIR__ . '/prompt_optimizer.php';
 require_once __DIR__ . '/speech_to_text.php';
+require_once __DIR__ . '/openai_adapter.php';
 
 // 引入配置
 $config = require 'config.php';
 
 // 核心配置
 $apiKey = $config['api_key'];
+$apiProvider = $config['api_provider'] ?? 'native';  // 默认使用原生 API
+
+// 初始化 OpenAI 适配器（如果使用中转站）
+$openaiAdapter = null;
+if ($apiProvider === 'openai_compatible') {
+    $openaiAdapter = new GeminiOpenAIAdapter($config);
+    if (!$openaiAdapter->isAvailable()) {
+        $openaiAdapter = null;
+        $apiProvider = 'native';  // 回退到原生 API
+    }
+}
 
 // 错误处理函数
 function sendError($message, $code = 500) {
@@ -47,6 +59,7 @@ class GeminiApiException extends Exception {
 /**
  * 安全版本的 Gemini API 调用（抛出异常而非直接退出）
  * 供工具类使用，支持错误捕获和回退机制
+ * 根据配置自动选择使用原生 API 或 OpenAI 兼容中转站
  *
  * @param string $modelName 模型名称
  * @param array $payload 请求体
@@ -56,8 +69,18 @@ class GeminiApiException extends Exception {
  * @throws GeminiApiException 当请求失败时抛出
  */
 function callGeminiApiSafe($modelName, array $payload, $timeout = 120, $connectTimeout = 20): array {
-    global $apiKey;
+    global $apiKey, $apiProvider, $openaiAdapter;
 
+    // 使用 OpenAI 兼容中转站
+    if ($apiProvider === 'openai_compatible' && $openaiAdapter !== null) {
+        try {
+            return $openaiAdapter->generateContent($modelName, $payload);
+        } catch (OpenAIAdapterException $e) {
+            throw new GeminiApiException($e->getMessage(), $e->getHttpCode());
+        }
+    }
+
+    // 原生 Gemini API 调用
     $apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/{$modelName}:generateContent?key={$apiKey}";
 
     $ch = curl_init($apiUrl);

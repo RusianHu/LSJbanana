@@ -4,8 +4,20 @@
 // 存储敏感信息和全局配置
 
 return [
-    // Gemini API Key
-    'api_key' => 'your-api-key',
+    // API 提供商选择: 'native' (Gemini 原生) 或 'openai_compatible' (OpenAI 兼容中转站)
+    'api_provider' => 'native',
+
+    // Gemini 原生 API 配置
+    'api_key' => 'your-gemini-api-key',
+
+    // OpenAI 兼容中转站配置 (当 api_provider 为 'openai_compatible' 时使用)
+    'openai_compatible' => [
+        'base_url' => 'https://your-openai-compatible-endpoint.com',
+        'api_key' => 'your-openai-compatible-key',
+        'timeout' => 300,
+        'connect_timeout' => 30,
+        'enable_thinking' => true,  // 启用思考模型，提取 reasoning_content
+    ],
 
     // 模型名称
     'model_name' => 'gemini-3-pro-image-preview',
