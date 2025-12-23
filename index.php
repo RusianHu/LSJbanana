@@ -1,3 +1,10 @@
+<?php
+$config = require __DIR__ . '/config.php';
+$supportedResolutions = $config['image_model_supported_sizes'] ?? ['1K'];
+if (!is_array($supportedResolutions) || $supportedResolutions === []) {
+    $supportedResolutions = ['1K'];
+}
+?>
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -72,9 +79,11 @@
                         <div class="form-group">
                             <label for="resolution">分辨率:</label>
                             <select id="resolution" name="resolution">
-                                <option value="1K">1K</option>
-                                <option value="2K">2K</option>
-                                <option value="4K">4K</option>
+                                <?php foreach ($supportedResolutions as $size): ?>
+                                    <option value="<?php echo htmlspecialchars($size, ENT_QUOTES, 'UTF-8'); ?>">
+                                        <?php echo htmlspecialchars($size, ENT_QUOTES, 'UTF-8'); ?>
+                                    </option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
                     </div>
@@ -153,9 +162,11 @@
                             <label for="edit-resolution">分辨率 (可选):</label>
                             <select id="edit-resolution" name="resolution">
                                 <option value="">默认 (1K)</option>
-                                <option value="1K">1K</option>
-                                <option value="2K">2K</option>
-                                <option value="4K">4K</option>
+                                <?php foreach ($supportedResolutions as $size): ?>
+                                    <option value="<?php echo htmlspecialchars($size, ENT_QUOTES, 'UTF-8'); ?>">
+                                        <?php echo htmlspecialchars($size, ENT_QUOTES, 'UTF-8'); ?>
+                                    </option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
                     </div>

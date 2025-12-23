@@ -287,6 +287,7 @@ if ($action === 'optimize_prompt') {
 
 // 准备生成/编辑 API 请求数据
 $modelName = $config['model_name'];
+$isFlashImage = stripos($modelName, 'flash-image') !== false;
 // 构建请求体
 $requestData = [
     'contents' => [],
@@ -298,23 +299,36 @@ if (!empty($thinkingConfig)) {
     $requestData['generationConfig']['thinkingConfig'] = $thinkingConfig;
 }
 
-// 处理宽高比和分辨率
-$aspectRatio = SecurityUtils::validateAllowedValue(
-    SecurityUtils::sanitizeTextInput($_POST['aspect_ratio'] ?? '', 10),
-    ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'],
-    ''
-);
-$resolution = SecurityUtils::validateAllowedValue(
-    SecurityUtils::sanitizeTextInput($_POST['resolution'] ?? '', 5),
-    ['1K', '2K', '4K'],
-    ''
-);
-
-if ($aspectRatio !== '') {
-    $requestData['generationConfig']['imageConfig']['aspectRatio'] = $aspectRatio;
+if ($isFlashImage && isset($requestData['generationConfig']['imageConfig'])) {
+    unset($requestData['generationConfig']['imageConfig']);
 }
-if ($resolution !== '') {
-    $requestData['generationConfig']['imageConfig']['imageSize'] = $resolution;
+
+// 处理宽高比和分辨率
+if (!$isFlashImage) {
+    $aspectRatio = SecurityUtils::validateAllowedValue(
+        SecurityUtils::sanitizeTextInput($_POST['aspect_ratio'] ?? '', 10),
+        ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'],
+        ''
+    );
+    $allowedResolutions = $config['image_model_supported_sizes'] ?? ['1K', '2K', '4K'];
+    if (!is_array($allowedResolutions) || $allowedResolutions === []) {
+        $allowedResolutions = ['1K', '2K', '4K'];
+    }
+    $resolution = SecurityUtils::validateAllowedValue(
+        SecurityUtils::sanitizeTextInput($_POST['resolution'] ?? '', 5),
+        $allowedResolutions,
+        ''
+    );
+
+    if (!isset($requestData['generationConfig']['imageConfig']) || !is_array($requestData['generationConfig']['imageConfig'])) {
+        $requestData['generationConfig']['imageConfig'] = [];
+    }
+    if ($aspectRatio !== '') {
+        $requestData['generationConfig']['imageConfig']['aspectRatio'] = $aspectRatio;
+    }
+    if ($resolution !== '') {
+        $requestData['generationConfig']['imageConfig']['imageSize'] = $resolution;
+    }
 }
 
 // 处理 Google 搜索工具 (Grounding)

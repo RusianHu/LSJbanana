@@ -20,6 +20,7 @@ return [
     // 默认生成配置
     'generation_config' => [
         'responseModalities' => ['TEXT', 'IMAGE'],
+        'responseMimeType' => 'image/png',
         'imageConfig' => [
             'aspectRatio' => '1:1', // 默认 1:1
             'imageSize' => '1K',    // 默认 1K
