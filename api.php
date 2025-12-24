@@ -155,6 +155,12 @@ function extractTextFromCandidates(array $responseData) {
 
 /**
  * 根据配置生成思考模式配置
+ *
+ * 支持的思考级别:
+ * - Gemini 3 Pro 模型 (包括 image-preview): "LOW", "HIGH"
+ * - Gemini 3 Flash 模型: "MINIMAL", "LOW", "MEDIUM", "HIGH"
+ *
+ * 注意: gemini-3-pro-image-preview 模型支持离散思考级别 (low/high)
  */
 function buildThinkingConfig(array $config, string $modelName): array {
     $thinkingConfig = [];
@@ -168,9 +174,18 @@ function buildThinkingConfig(array $config, string $modelName): array {
         $thinkingConfig['includeThoughts'] = (bool) $rawConfig['include_thoughts'];
     }
 
-    $supportsThinkingLevel = stripos($modelName, 'image') === false;
+    // Gemini 3 系列模型都支持思考级别 (包括 image-preview 模型)
+    // 只有非 Gemini 3 的纯图片模型不支持思考级别
+    $isGemini3Model = stripos($modelName, 'gemini-3') !== false || stripos($modelName, 'gemini-2') !== false;
+    $supportsThinkingLevel = $isGemini3Model;
+
     if ($supportsThinkingLevel && !empty($rawConfig['thinking_level']) && is_string($rawConfig['thinking_level'])) {
-        $thinkingConfig['thinkingLevel'] = $rawConfig['thinking_level'];
+        // 验证思考级别值
+        $level = strtoupper($rawConfig['thinking_level']);
+        $allowedLevels = ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'];
+        if (in_array($level, $allowedLevels, true)) {
+            $thinkingConfig['thinkingLevel'] = $level;
+        }
     }
 
     return $thinkingConfig;

@@ -116,6 +116,9 @@ class GeminiOpenAIAdapter {
         // 处理图片生成配置
         $this->addImageConfig($openaiPayload, $genConfig);
 
+        // 处理思考模式配置
+        $this->addThinkingConfig($openaiPayload, $genConfig);
+
         return $openaiPayload;
     }
 
@@ -159,6 +162,40 @@ class GeminiOpenAIAdapter {
         }
         if (isset($imgConfig['imageSize'])) {
             $payload['image_size'] = $imgConfig['imageSize'];
+        }
+    }
+
+    /**
+     * 添加思考模式配置
+     * 将 Gemini 的 thinkingConfig 转换为 OpenAI 兼容的 reasoning_effort
+     *
+     * 支持的级别:
+     * - Gemini 3 Pro 模型: "low", "high"
+     * - Gemini 3 Flash 模型: "minimal", "low", "medium", "high"
+     */
+    private function addThinkingConfig(array &$payload, array $genConfig): void {
+        if (!isset($genConfig['thinkingConfig'])) {
+            return;
+        }
+
+        $thinkingConfig = $genConfig['thinkingConfig'];
+
+        // 处理 thinkingLevel -> reasoning_effort
+        if (isset($thinkingConfig['thinkingLevel']) && is_string($thinkingConfig['thinkingLevel'])) {
+            $level = strtolower($thinkingConfig['thinkingLevel']);
+            // 验证值是否合法
+            $allowedLevels = ['minimal', 'low', 'medium', 'high'];
+            if (in_array($level, $allowedLevels, true)) {
+                $payload['reasoning_effort'] = $level;
+            }
+        }
+
+        // 如果启用了思考但没有指定级别，使用默认值
+        if (!isset($payload['reasoning_effort']) && $this->enableThinking) {
+            if (isset($thinkingConfig['includeThoughts']) && $thinkingConfig['includeThoughts'] === true) {
+                // 默认使用 high 级别
+                $payload['reasoning_effort'] = 'high';
+            }
         }
     }
 
