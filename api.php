@@ -157,10 +157,10 @@ function extractTextFromCandidates(array $responseData) {
  * 根据配置生成思考模式配置
  *
  * 支持的思考级别:
- * - Gemini 3 Pro 模型 (包括 image-preview): "LOW", "HIGH"
+ * - Gemini 3 Pro 模型: "LOW", "HIGH"
  * - Gemini 3 Flash 模型: "MINIMAL", "LOW", "MEDIUM", "HIGH"
  *
- * 注意: gemini-3-pro-image-preview 模型支持离散思考级别 (low/high)
+ * 注意: gemini-3-pro-image-preview 模型只支持 includeThoughts，不支持 thinkingLevel
  */
 function buildThinkingConfig(array $config, string $modelName): array {
     $thinkingConfig = [];
@@ -174,13 +174,15 @@ function buildThinkingConfig(array $config, string $modelName): array {
         $thinkingConfig['includeThoughts'] = (bool) $rawConfig['include_thoughts'];
     }
 
-    // Gemini 3 系列模型都支持思考级别 (包括 image-preview 模型)
-    // 只有非 Gemini 3 的纯图片模型不支持思考级别
-    $isGemini3Model = stripos($modelName, 'gemini-3') !== false || stripos($modelName, 'gemini-2') !== false;
-    $supportsThinkingLevel = $isGemini3Model;
+    // image-preview 模型不支持 thinkingLevel，只支持 includeThoughts
+    $isImagePreviewModel = stripos($modelName, 'image-preview') !== false;
+    if ($isImagePreviewModel) {
+        return $thinkingConfig;
+    }
 
-    if ($supportsThinkingLevel && !empty($rawConfig['thinking_level']) && is_string($rawConfig['thinking_level'])) {
-        // 验证思考级别值
+    // 其他 Gemini 3/2 系列模型支持 thinkingLevel
+    $isGemini3Model = stripos($modelName, 'gemini-3') !== false || stripos($modelName, 'gemini-2') !== false;
+    if ($isGemini3Model && !empty($rawConfig['thinking_level']) && is_string($rawConfig['thinking_level'])) {
         $level = strtoupper($rawConfig['thinking_level']);
         $allowedLevels = ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'];
         if (in_array($level, $allowedLevels, true)) {
@@ -233,9 +235,22 @@ function extractThoughtsFromResponse(array $responseData): array {
             if (!is_array($part)) {
                 continue;
             }
-            if (isset($part['thought'])) {
-                $appendThoughts($part['thought']);
+
+            // Gemini 原生 API 格式：thought 是布尔值，文本在 text 字段
+            // 当 part.thought === true 时，part.text 就是思考内容
+            if (isset($part['thought']) && $part['thought'] === true) {
+                if (isset($part['text']) && is_string($part['text'])) {
+                    $thoughts[] = $part['text'];
+                }
+                continue;
             }
+
+            // 兼容旧格式：thought 字段直接包含思考文本
+            if (isset($part['thought']) && is_string($part['thought'])) {
+                $thoughts[] = $part['thought'];
+            }
+
+            // 兼容 thoughts 数组格式
             if (isset($part['thoughts'])) {
                 $appendThoughts($part['thoughts']);
             }
@@ -482,6 +497,10 @@ if (!is_dir($config['output_dir'])) {
 
 if (isset($responseData['candidates'][0]['content']['parts'])) {
     foreach ($responseData['candidates'][0]['content']['parts'] as $part) {
+        // 跳过思考内容 parts（Gemini 原生 API 格式：thought 为布尔值 true）
+        if (isset($part['thought']) && $part['thought'] === true) {
+            continue;
+        }
         if (isset($part['text'])) {
             $resultText .= SecurityUtils::sanitizeHtml($part['text']) . "\n";
         } elseif (isset($part['inlineData'])) {

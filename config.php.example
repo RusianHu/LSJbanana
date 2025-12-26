@@ -32,7 +32,8 @@ return [
     // 默认生成配置
     'generation_config' => [
         'responseModalities' => ['TEXT', 'IMAGE'],
-        'responseMimeType' => 'image/png',
+        // 注意: responseMimeType 只支持 text/plain, application/json 等文本格式
+        // 图片输出格式由 responseModalities 控制，不需要设置 responseMimeType
         'imageConfig' => [
             'aspectRatio' => '1:1', // 默认 1:1
             'imageSize' => '1K',    // 默认 1K
