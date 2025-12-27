@@ -151,17 +151,24 @@ class GeminiOpenAIAdapter {
 
     /**
      * 添加图片生成配置
+     * 将 Gemini 的 imageConfig 转换为 OpenAI 兼容格式的 image_config 对象
      */
     private function addImageConfig(array &$payload, array $genConfig): void {
         if (!isset($genConfig['imageConfig'])) {
             return;
         }
         $imgConfig = $genConfig['imageConfig'];
+        $imageConfigPayload = [];
+
         if (isset($imgConfig['aspectRatio'])) {
-            $payload['aspect_ratio'] = $imgConfig['aspectRatio'];
+            $imageConfigPayload['aspect_ratio'] = $imgConfig['aspectRatio'];
         }
         if (isset($imgConfig['imageSize'])) {
-            $payload['image_size'] = $imgConfig['imageSize'];
+            $imageConfigPayload['image_size'] = $imgConfig['imageSize'];
+        }
+
+        if (!empty($imageConfigPayload)) {
+            $payload['image_config'] = $imageConfigPayload;
         }
     }
 
