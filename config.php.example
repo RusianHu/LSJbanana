@@ -23,7 +23,7 @@ return [
     ],
 
     // Gemini 原生格式代理配置 (当 api_provider 为 'gemini_proxy' 时使用)
-    // 支持 SSE 流式响应，适用于国内代理站点
+    // 支持 SSE 流式响应，适用于国内代理站点，NewAPI 类中转站
     'gemini_proxy' => [
         'base_url' => 'https://your-gemini-proxy-endpoint.com',
         'api_key' => 'your-gemini-proxy-key',
