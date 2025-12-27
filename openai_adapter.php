@@ -257,18 +257,8 @@ class GeminiOpenAIAdapter {
                 if (isset($message['content']) && $message['content'] !== null) {
                     $content = $message['content'];
                     if (is_string($content) && $content !== '') {
-                        // 检查是否包含图片（base64）
-                        if ($this->isBase64Image($content)) {
-                            $imgData = $this->parseDataUri($content);
-                            $parts[] = [
-                                'inlineData' => [
-                                    'mimeType' => $imgData['mimeType'],
-                                    'data' => $imgData['data']
-                                ]
-                            ];
-                        } else {
-                            $parts[] = ['text' => $content];
-                        }
+                        // 智能解析内容：检查是否包含 Markdown 格式的图片、纯 base64 图片或普通文本
+                        $this->parseContentString($content, $parts);
                     } elseif (is_array($content)) {
                         // 处理数组格式的 content
                         foreach ($content as $item) {
@@ -310,6 +300,76 @@ class GeminiOpenAIAdapter {
         }
 
         return ['candidates' => $candidates];
+    }
+
+    /**
+     * 智能解析字符串内容
+     * 支持以下格式：
+     * 1. 纯 base64 图片数据 (data:image/xxx;base64,...)
+     * 2. Markdown 格式图片 (![alt](data:image/xxx;base64,...))
+     * 3. 混合内容（文本 + Markdown 图片）
+     * 4. 普通文本
+     */
+    private function parseContentString(string $content, array &$parts): void {
+        // 优先检查是否为纯 base64 图片（以 data:image 开头）
+        if ($this->isBase64Image($content)) {
+            $imgData = $this->parseDataUri($content);
+            $parts[] = [
+                'inlineData' => [
+                    'mimeType' => $imgData['mimeType'],
+                    'data' => $imgData['data']
+                ]
+            ];
+            return;
+        }
+
+        // 检查是否包含 Markdown 格式的 base64 图片
+        // 匹配 ![任意alt文本](data:image/格式;base64,数据)
+        $markdownImagePattern = '/!\[[^\]]*\]\((data:image\/[a-z]+;base64,[A-Za-z0-9+\/=]+)\)/i';
+
+        if (preg_match_all($markdownImagePattern, $content, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE)) {
+            $lastOffset = 0;
+
+            foreach ($matches as $match) {
+                $fullMatch = $match[0][0];     // 完整的 Markdown 图片标记
+                $offset = $match[0][1];        // 匹配位置
+                $dataUri = $match[1][0];       // data URI 部分
+
+                // 提取图片前的文本
+                if ($offset > $lastOffset) {
+                    $textBefore = substr($content, $lastOffset, $offset - $lastOffset);
+                    $textBefore = trim($textBefore);
+                    if ($textBefore !== '') {
+                        $parts[] = ['text' => $textBefore];
+                    }
+                }
+
+                // 解析并添加图片
+                $imgData = $this->parseDataUri($dataUri);
+                $parts[] = [
+                    'inlineData' => [
+                        'mimeType' => $imgData['mimeType'],
+                        'data' => $imgData['data']
+                    ]
+                ];
+
+                $lastOffset = $offset + strlen($fullMatch);
+            }
+
+            // 提取最后一个图片后的文本
+            if ($lastOffset < strlen($content)) {
+                $textAfter = substr($content, $lastOffset);
+                $textAfter = trim($textAfter);
+                if ($textAfter !== '') {
+                    $parts[] = ['text' => $textAfter];
+                }
+            }
+
+            return;
+        }
+
+        // 普通文本，直接添加
+        $parts[] = ['text' => $content];
     }
 
     /**
