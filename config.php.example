@@ -4,7 +4,10 @@
 // 存储敏感信息和全局配置
 
 return [
-    // API 提供商选择: 'native' (Gemini 原生) 或 'openai_compatible' (OpenAI 兼容中转站)
+    // API 提供商选择:
+    //   'native' - Gemini 原生 API (直连 Google)
+    //   'openai_compatible' - OpenAI 兼容中转站
+    //   'gemini_proxy' - Gemini 原生格式代理 (SSE 流式响应)
     'api_provider' => 'native',
 
     // Gemini 原生 API 配置
@@ -17,6 +20,17 @@ return [
         'timeout' => 300,
         'connect_timeout' => 30,
         'enable_thinking' => true,  // 启用思考模型，提取 reasoning_content
+    ],
+
+    // Gemini 原生格式代理配置 (当 api_provider 为 'gemini_proxy' 时使用)
+    // 支持 SSE 流式响应，适用于国内代理站点
+    'gemini_proxy' => [
+        'base_url' => 'https://your-gemini-proxy-endpoint.com',
+        'api_key' => 'your-gemini-proxy-key',
+        'timeout' => 300,
+        'connect_timeout' => 30,
+        'use_streaming' => true,    // 使用 SSE 流式接口
+        'thinking_budget' => 26240, // 思考预算 (tokens)
     ],
 
     // 模型名称

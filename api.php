@@ -14,6 +14,7 @@ require_once __DIR__ . '/security_utils.php';
 require_once __DIR__ . '/prompt_optimizer.php';
 require_once __DIR__ . '/speech_to_text.php';
 require_once __DIR__ . '/openai_adapter.php';
+require_once __DIR__ . '/gemini_proxy_adapter.php';
 
 // 引入配置
 $config = require 'config.php';
@@ -28,6 +29,16 @@ if ($apiProvider === 'openai_compatible') {
     $openaiAdapter = new GeminiOpenAIAdapter($config);
     if (!$openaiAdapter->isAvailable()) {
         $openaiAdapter = null;
+        $apiProvider = 'native';  // 回退到原生 API
+    }
+}
+
+// 初始化 Gemini 代理适配器（如果使用 SSE 代理）
+$geminiProxyAdapter = null;
+if ($apiProvider === 'gemini_proxy') {
+    $geminiProxyAdapter = new GeminiProxyAdapter($config);
+    if (!$geminiProxyAdapter->isAvailable()) {
+        $geminiProxyAdapter = null;
         $apiProvider = 'native';  // 回退到原生 API
     }
 }
@@ -69,7 +80,16 @@ class GeminiApiException extends Exception {
  * @throws GeminiApiException 当请求失败时抛出
  */
 function callGeminiApiSafe($modelName, array $payload, $timeout = 120, $connectTimeout = 20): array {
-    global $apiKey, $apiProvider, $openaiAdapter;
+    global $apiKey, $apiProvider, $openaiAdapter, $geminiProxyAdapter;
+
+    // 使用 Gemini 代理站（SSE 流式响应）
+    if ($apiProvider === 'gemini_proxy' && $geminiProxyAdapter !== null) {
+        try {
+            return $geminiProxyAdapter->generateContent($modelName, $payload);
+        } catch (GeminiProxyAdapterException $e) {
+            throw new GeminiApiException($e->getMessage(), $e->getHttpCode());
+        }
+    }
 
     // 使用 OpenAI 兼容中转站
     if ($apiProvider === 'openai_compatible' && $openaiAdapter !== null) {
