@@ -159,12 +159,16 @@ function callGeminiApi($modelName, array $payload, $timeout = 120, $connectTimeo
 }
 
 /**
- * 提取文本结果
+ * 提取文本结果（排除思考内容）
  */
 function extractTextFromCandidates(array $responseData) {
     $result = '';
     if (isset($responseData['candidates'][0]['content']['parts'])) {
         foreach ($responseData['candidates'][0]['content']['parts'] as $part) {
+            // 跳过思考内容（thought: true 的 parts）
+            if (isset($part['thought']) && $part['thought'] === true) {
+                continue;
+            }
             if (isset($part['text'])) {
                 $result .= $part['text'];
             }

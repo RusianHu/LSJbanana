@@ -65,21 +65,47 @@ class GeminiProxyAdapter {
             $payload['generationConfig'] = [];
         }
 
-        // 添加思考配置（如果尚未设置）
+        // 判断是否为图片生成请求（包含 IMAGE 响应模态或 imageConfig）
+        $isImageRequest = $this->isImageGenerationRequest($payload);
+
+        // 只为图片生成请求添加高思考预算，其他请求使用轻量配置
         if (!isset($payload['generationConfig']['thinkingConfig'])) {
             $payload['generationConfig']['thinkingConfig'] = [];
         }
-        
-        // 设置思考预算和包含思考内容
-        if ($this->thinkingBudget > 0) {
+
+        if ($isImageRequest && $this->thinkingBudget > 0) {
+            // 图片生成请求：使用配置的高思考预算
             $payload['generationConfig']['thinkingConfig']['thinkingBudget'] = $this->thinkingBudget;
         }
+        // 对于非图片请求，不设置 thinkingBudget，使用模型默认值
+
         $payload['generationConfig']['thinkingConfig']['includeThoughts'] = true;
 
         if ($this->useStreaming) {
             return $this->streamGenerateContent($modelName, $payload);
         }
         return $this->nonStreamGenerateContent($modelName, $payload);
+    }
+
+    /**
+     * 判断请求是否为图片生成请求
+     *
+     * @param array $payload 请求体
+     * @return bool 是否为图片生成请求
+     */
+    private function isImageGenerationRequest(array $payload): bool {
+        // 检查 responseModalities 是否包含 IMAGE
+        $modalities = $payload['generationConfig']['responseModalities'] ?? [];
+        if (is_array($modalities) && in_array('IMAGE', $modalities, true)) {
+            return true;
+        }
+
+        // 检查是否有 imageConfig 配置
+        if (isset($payload['generationConfig']['imageConfig'])) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
