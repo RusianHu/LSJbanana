@@ -130,10 +130,11 @@ document.addEventListener('DOMContentLoaded', () => {
 	    renderEditPreview();
 
     // 提示词优化组件（文生图 & 图生图共用）
-    function setupPromptOptimizer({ textareaId, buttonId, statusId, modeGroup }) {
+    function setupPromptOptimizer({ textareaId, buttonId, statusId, modeGroup, thoughtsContainerId }) {
         const promptInput = document.getElementById(textareaId);
         const actionBtn = document.getElementById(buttonId);
         const statusEl = document.getElementById(statusId);
+        const thoughtsContainer = document.getElementById(thoughtsContainerId);
         const modeButtons = document.querySelectorAll(`[data-optimize-mode][data-optimize-group="${modeGroup}"]`);
         let optimizeMode = 'basic';
 
@@ -152,6 +153,53 @@ document.addEventListener('DOMContentLoaded', () => {
                     btn.classList.remove('active');
                 }
             });
+        }
+
+        // 渲染提示词优化的思考过程面板
+        function renderOptimizeThoughts(thoughts, elapsedTime) {
+            if (!thoughtsContainer) return;
+            thoughtsContainer.innerHTML = '';
+
+            if (!thoughts || !Array.isArray(thoughts) || thoughts.length === 0) {
+                return;
+            }
+
+            // 合并所有思考内容
+            const combinedThoughts = thoughts
+                .filter(t => typeof t === 'string' && t.trim())
+                .join('\n\n');
+
+            if (!combinedThoughts.trim()) return;
+
+            const details = document.createElement('details');
+            details.className = 'optimize-thoughts-panel';
+            details.open = false; // 默认折叠
+
+            const summary = document.createElement('summary');
+            summary.className = 'optimize-thoughts-summary';
+            summary.innerHTML = `
+                <span class="optimize-thoughts-icon"><i class="fas fa-brain"></i></span>
+                <span class="optimize-thoughts-title">AI 思考过程</span>
+                <span class="optimize-thoughts-time">${elapsedTime}s</span>
+                <span class="optimize-thoughts-toggle"><i class="fas fa-chevron-down"></i></span>
+            `;
+
+            const content = document.createElement('div');
+            content.className = 'optimize-thoughts-content';
+            content.textContent = combinedThoughts;
+
+            details.appendChild(summary);
+            details.appendChild(content);
+
+            // 切换展开/折叠图标
+            details.addEventListener('toggle', () => {
+                const icon = summary.querySelector('.optimize-thoughts-toggle i');
+                if (icon) {
+                    icon.className = details.open ? 'fas fa-chevron-up' : 'fas fa-chevron-down';
+                }
+            });
+
+            thoughtsContainer.appendChild(details);
         }
 
         modeButtons.forEach(btn => {
@@ -175,9 +223,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const originalHtml = actionBtn.innerHTML;
+            const startTime = Date.now();
             setStatus('优化中，请稍候...');
             actionBtn.disabled = true;
             actionBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> 优化中...';
+
+            // 清除之前的思考内容
+            if (thoughtsContainer) thoughtsContainer.innerHTML = '';
 
             const formData = new FormData();
             formData.append('action', 'optimize_prompt');
@@ -199,9 +251,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     throw new Error(data.message || '优化失败，请稍后重试');
                 }
 
+                const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
+
                 if (data.optimized_prompt) {
                     promptInput.value = data.optimized_prompt;
                     setStatus('优化完成，已填入编辑框。');
+
+                    // 显示思考内容
+                    if (data.thoughts && data.thoughts.length > 0) {
+                        renderOptimizeThoughts(data.thoughts, elapsedTime);
+                    }
                 } else {
                     throw new Error('未获取到优化结果');
                 }
@@ -222,14 +281,16 @@ document.addEventListener('DOMContentLoaded', () => {
         textareaId: 'prompt',
         buttonId: 'optimize-prompt-btn-generate',
         statusId: 'optimize-status-generate',
-        modeGroup: 'generate'
+        modeGroup: 'generate',
+        thoughtsContainerId: 'optimize-thoughts-generate'
     });
 
     setupPromptOptimizer({
         textareaId: 'edit-prompt',
         buttonId: 'optimize-prompt-btn',
         statusId: 'optimize-status',
-        modeGroup: 'edit'
+        modeGroup: 'edit',
+        thoughtsContainerId: 'optimize-thoughts-edit'
     });
 
     // 表单提交处理

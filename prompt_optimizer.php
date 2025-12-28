@@ -18,9 +18,11 @@ class PromptOptimizer
     }
 
     /**
-     * 调用 Gemini 进行提示词优化
+     * 调用 Gemini 进行提示词优化（返回完整结果，包含思考内容）
+     *
+     * @return array ['optimized_prompt' => string, 'thoughts' => array]
      */
-    public static function optimizePrompt(string $prompt, string $mode, array $config): string
+    public static function optimizePromptWithThoughts(string $prompt, string $mode, array $config): array
     {
         $model = isset($config['prompt_optimize_model']) && is_string($config['prompt_optimize_model'])
             ? $config['prompt_optimize_model']
@@ -81,6 +83,21 @@ class PromptOptimizer
             sendError('提示词优化未返回结果', 502);
         }
 
-        return SecurityUtils::sanitizeTextInput($optimized, 4000);
+        // 提取思考内容
+        $thoughts = extractThoughtsFromResponse($response);
+
+        return [
+            'optimized_prompt' => SecurityUtils::sanitizeTextInput($optimized, 4000),
+            'thoughts' => $thoughts
+        ];
+    }
+
+    /**
+     * 调用 Gemini 进行提示词优化（仅返回优化结果，向后兼容）
+     */
+    public static function optimizePrompt(string $prompt, string $mode, array $config): string
+    {
+        $result = self::optimizePromptWithThoughts($prompt, $mode, $config);
+        return $result['optimized_prompt'];
     }
 }

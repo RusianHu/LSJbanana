@@ -345,7 +345,7 @@ if ($prompt === '') {
     sendError('提示词不能为空', 400);
 }
 
-// 提示词优化分支（直接返回文本）
+// 提示词优化分支（返回优化结果和思考内容）
 if ($action === 'optimize_prompt') {
     $optModel = SecurityUtils::sanitizeTextInput($config['prompt_optimize_model'] ?? 'gemini-2.5-flash', 64);
     $mode = SecurityUtils::validateAllowedValue(
@@ -353,11 +353,12 @@ if ($action === 'optimize_prompt') {
         ['basic', 'detail'],
         'basic'
     );
-    $cleanOptimized = PromptOptimizer::optimizePrompt($prompt, $mode, $config);
+    $result = PromptOptimizer::optimizePromptWithThoughts($prompt, $mode, $config);
 
     echo json_encode([
         'success' => true,
-        'optimized_prompt' => $cleanOptimized
+        'optimized_prompt' => $result['optimized_prompt'],
+        'thoughts' => $result['thoughts']
     ]);
     exit;
 }

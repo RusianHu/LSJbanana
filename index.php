@@ -58,6 +58,7 @@ if (!is_array($supportedResolutions) || $supportedResolutions === []) {
                                 <div id="optimize-status-generate" class="optimize-status" aria-live="polite"></div>
                             </div>
                         </div>
+                        <div id="optimize-thoughts-generate" class="optimize-thoughts-container"></div>
                     </div>
                     
                     <div class="form-row">
@@ -139,6 +140,7 @@ if (!is_array($supportedResolutions) || $supportedResolutions === []) {
                                 <div id="optimize-status" class="optimize-status" aria-live="polite"></div>
                             </div>
                         </div>
+                        <div id="optimize-thoughts-edit" class="optimize-thoughts-container"></div>
                     </div>
 
                     <div class="form-row">
