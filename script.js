@@ -138,6 +138,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const modeButtons = document.querySelectorAll(`[data-optimize-mode][data-optimize-group="${modeGroup}"]`);
         let optimizeMode = 'basic';
 
+        function hideThoughtsPanel() {
+            if (!thoughtsContainer) return;
+            thoughtsContainer.classList.add('optimize-thoughts-hidden');
+        }
+
+        function showThoughtsPanel() {
+            if (!thoughtsContainer) return;
+            thoughtsContainer.classList.remove('optimize-thoughts-hidden');
+        }
+
         function setStatus(message, isError = false) {
             if (!statusEl) return;
             statusEl.textContent = message;
@@ -159,6 +169,7 @@ document.addEventListener('DOMContentLoaded', () => {
         function renderOptimizeThoughts(thoughts, elapsedTime) {
             if (!thoughtsContainer) return;
             thoughtsContainer.innerHTML = '';
+            showThoughtsPanel();
 
             if (!thoughts || !Array.isArray(thoughts) || thoughts.length === 0) {
                 return;
@@ -182,6 +193,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 <span class="optimize-thoughts-title">AI 思考过程</span>
                 <span class="optimize-thoughts-time">${elapsedTime}s</span>
                 <span class="optimize-thoughts-toggle"><i class="fas fa-chevron-down"></i></span>
+                <button type="button" class="optimize-thoughts-close" aria-label="关闭思考过程">
+                    <i class="fas fa-xmark"></i>
+                </button>
             `;
 
             const content = document.createElement('div');
@@ -198,6 +212,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     icon.className = details.open ? 'fas fa-chevron-up' : 'fas fa-chevron-down';
                 }
             });
+
+            const closeBtn = summary.querySelector('.optimize-thoughts-close');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    hideThoughtsPanel();
+                });
+            }
 
             thoughtsContainer.appendChild(details);
         }
@@ -301,6 +324,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const errorMessage = document.getElementById('error-message');
     const outputContainer = document.getElementById('output-container');
     const timerDisplay = document.getElementById('timer');
+
+    function resetOptimizeThoughts(containerId) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        container.innerHTML = '';
+        container.classList.add('optimize-thoughts-hidden');
+    }
 
     function splitThoughtsIntoStages(thoughts) {
         const stages = [];
@@ -432,6 +462,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // 通用提交函数
     async function handleFormSubmit(event, type) {
         event.preventDefault();
+
+        if (type === 'generate') {
+            resetOptimizeThoughts('optimize-thoughts-generate');
+        } else if (type === 'edit') {
+            resetOptimizeThoughts('optimize-thoughts-edit');
+        }
 
 	        if (errorMessage) {
 	            errorMessage.classList.add('hidden');

@@ -497,6 +497,10 @@ textarea {
     margin-top: 12px;
 }
 
+.optimize-thoughts-container.optimize-thoughts-hidden {
+    display: none;
+}
+
 .optimize-thoughts-panel {
     border: 1px solid rgba(139, 92, 246, 0.25);
     border-radius: 10px;
@@ -571,6 +575,30 @@ textarea {
     color: #8b5cf6;
     font-size: 0.7rem;
     transition: transform 0.2s ease;
+}
+
+.optimize-thoughts-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(139, 92, 246, 0.12);
+    color: #7c3aed;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.optimize-thoughts-close:hover {
+    background: rgba(124, 58, 237, 0.18);
+    color: #5b21b6;
+}
+
+.optimize-thoughts-close:focus-visible {
+    outline: 2px solid rgba(124, 58, 237, 0.35);
+    outline-offset: 2px;
 }
 
 .optimize-thoughts-panel[open] .optimize-thoughts-toggle {
@@ -662,6 +690,11 @@ textarea {
         width: 22px;
         height: 22px;
         font-size: 0.65rem;
+    }
+
+    .optimize-thoughts-close {
+        width: 20px;
+        height: 20px;
     }
 
     .optimize-thoughts-content {

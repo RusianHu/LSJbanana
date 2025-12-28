@@ -39,6 +39,7 @@ if (!is_array($supportedResolutions) || $supportedResolutions === []) {
                                 <i class="fas fa-microphone"></i>
                             </button>
                         </div>
+                        <div id="optimize-thoughts-generate" class="optimize-thoughts-container"></div>
                         <div class="prompt-optimize">
                             <div class="prompt-optimize__desc">
                                 <div class="prompt-optimize__title">
@@ -58,7 +59,6 @@ if (!is_array($supportedResolutions) || $supportedResolutions === []) {
                                 <div id="optimize-status-generate" class="optimize-status" aria-live="polite"></div>
                             </div>
                         </div>
-                        <div id="optimize-thoughts-generate" class="optimize-thoughts-container"></div>
                     </div>
                     
                     <div class="form-row">
@@ -121,6 +121,7 @@ if (!is_array($supportedResolutions) || $supportedResolutions === []) {
                                 <i class="fas fa-microphone"></i>
                             </button>
                         </div>
+                        <div id="optimize-thoughts-edit" class="optimize-thoughts-container"></div>
                         <div class="prompt-optimize">
                             <div class="prompt-optimize__desc">
                                 <div class="prompt-optimize__title">
@@ -140,7 +141,6 @@ if (!is_array($supportedResolutions) || $supportedResolutions === []) {
                                 <div id="optimize-status" class="optimize-status" aria-live="polite"></div>
                             </div>
                         </div>
-                        <div id="optimize-thoughts-edit" class="optimize-thoughts-container"></div>
                     </div>
 
                     <div class="form-row">
