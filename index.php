@@ -307,12 +307,35 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
 
         <footer>
             <p>&copy; <?php echo date('Y'); ?> LSJbanana Project. Powered by Gemini.</p>
+            <a href="https://github.com/RusianHu/LSJbanana"
+               target="_blank"
+               rel="noopener noreferrer"
+               class="github-footer-link">
+                <i class="fab fa-github"></i>
+                <span>开源于 GitHub</span>
+                <i class="fas fa-external-link-alt"></i>
+            </a>
         </footer>
     </div>
+
+    <!-- GitHub Repository Link - Cyber Banana Badge -->
+    <a href="https://github.com/RusianHu/LSJbanana"
+       target="_blank"
+       rel="noopener noreferrer"
+       class="github-badge"
+       title="在 GitHub 上查看源码">
+        <div class="github-badge__glow"></div>
+        <div class="github-badge__content">
+            <i class="fab fa-github"></i>
+            <span class="github-badge__text">源码</span>
+        </div>
+        <div class="github-badge__stripe"></div>
+    </a>
 
     <!-- Floating Trigger Button (Obfuscated) -->
     <a href="#" id="data-sync-trigger" class="x-float-btn" title="为项目充电">
         <i class="fas fa-gift"></i>
+        <span class="x-float-btn__text">投喂</span>
     </a>
 
     <!-- Obfuscated Support Modal -->

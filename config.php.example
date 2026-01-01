@@ -45,6 +45,20 @@ $userConfig = [
     'username_max_length' => 20,                            // 用户名最大长度
     'max_login_attempts' => 5,                              // 最大登录尝试次数
     'lockout_duration' => 15 * 60,                          // 锁定时长 (秒)
+
+    // 调试快速登录配置 (仅用于开发环境，生产环境务必关闭)
+    // 使用管理员密钥哈希 (admin.key_hash) 作为签名密钥
+    'debug_quick_login' => [
+        'enabled' => false,                                 // 是否启用调试快速登录 (生产环境必须为 false)
+        'ip_whitelist' => ['127.0.0.1', '::1'],             // IP 白名单 (空数组表示不限制IP)
+        'expires_seconds' => 300,                           // 快速登录链接有效期 (秒，默认5分钟)
+        // 固定测试用户信息
+        'test_user' => [
+            'username' => 'test_debug_user',                // 测试用户名
+            'email' => 'test_debug@example.com',            // 测试邮箱
+            'initial_balance' => 100.00,                    // 初始余额 (RMB)
+        ],
+    ],
 ];
 
 // 验证码配置
@@ -86,9 +100,9 @@ $adminSetupConfig = [
 ];
 
 // 提示: 生成管理员密钥哈希值的方法
-// 1. 在PHP中执行: echo hash('sha256', '你的超级安全密钥');
-// 2. 或创建临时PHP文件运行: <?php echo hash('sha256', '你的超级安全密钥'); ?>
-// 3. 将生成的哈希值填入上方 'key_hash' 配置项
+// 1. 访问 http://127.0.0.1:8080/generate_admin_key.php 生成哈希值
+// 2. 将生成的哈希值填入上方 'key_hash' 配置项
+// 3. 使用原始密钥(不是哈希值)登录管理后台
 
 // ============================================================
 // 图片模型配置
@@ -194,8 +208,8 @@ return [
         'max_execution_time' => 60,   // 最大执行时间 (秒)
     ],
 
-    // 调试模式
-    'debug' => true,
+    // 调试模式 (生产环境务必设为 false)
+    'debug' => false,
 
     // 语音转文字配置
     'speech_to_text' => [
