@@ -52,9 +52,13 @@ if ($apiProvider === 'gemini_proxy') {
 }
 
 // 错误处理函数
-function sendError($message, $code = 500) {
-    http_response_code($code);
-    echo json_encode(['success' => false, 'message' => $message]);
+function sendError($message, $httpCode = 500, $errorCode = null) {
+    http_response_code($httpCode);
+    $response = ['success' => false, 'message' => $message];
+    if ($errorCode !== null) {
+        $response['code'] = $errorCode;
+    }
+    echo json_encode($response);
     exit;
 }
 
@@ -342,18 +346,35 @@ if ($action === 'get_user_status') {
 if (in_array($action, ['generate', 'edit'], true)) {
     // 检查用户是否登录
     if (!$auth->isLoggedIn()) {
-        sendError('请先登录后再使用图片生成功能', 401);
+        http_response_code(401);
+        echo json_encode([
+            'success' => false,
+            'message' => '请先登录后再使用图片生成功能',
+            'code' => 'UNAUTHORIZED',
+            'action' => [
+                'type' => 'redirect',
+                'url' => 'login.php',
+                'label' => '立即登录'
+            ]
+        ]);
+        exit;
     }
 
     // 检查余额是否足够
     $currentBalance = $auth->getCurrentUserBalance();
     if ($currentBalance < $pricePerTask) {
+        http_response_code(402);
         echo json_encode([
             'success' => false,
             'message' => '余额不足，请先充值',
             'code' => 'INSUFFICIENT_BALANCE',
             'balance' => $currentBalance,
             'required' => $pricePerTask,
+            'action' => [
+                'type' => 'redirect',
+                'url' => 'recharge.php',
+                'label' => '立即充值'
+            ]
         ]);
         exit;
     }

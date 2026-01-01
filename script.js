@@ -551,11 +551,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: formData
             });
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+            // 尝试解析响应体（无论 HTTP 状态码如何）
+            let data;
+            try {
+                data = await response.json();
+            } catch (parseError) {
+                // 如果无法解析 JSON，抛出 HTTP 错误
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                throw new Error('服务器响应格式异常');
             }
 
-            const data = await response.json();
+            // 处理 HTTP 错误状态码（401、402 等）
+            if (!response.ok) {
+                // 优先使用服务器返回的结构化错误
+                if (data.code === 'UNAUTHORIZED') {
+                    showLoginRequiredError();
+                    return;
+                }
+                if (data.code === 'INSUFFICIENT_BALANCE') {
+                    showInsufficientBalanceError(data.balance, data.required);
+                    return;
+                }
+                // 其他 HTTP 错误
+                throw new Error(data.message || `HTTP error! status: ${response.status}`);
+            }
 
             if (data.success) {
                 // 计算最终耗时
@@ -644,20 +665,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 outputContainer.appendChild(timeDiv);
 
             } else {
-                // 检查是否是余额不足错误
+                // 检查结构化错误码
+                if (data.code === 'UNAUTHORIZED') {
+                    showLoginRequiredError();
+                    return;
+                }
                 if (data.code === 'INSUFFICIENT_BALANCE') {
                     showInsufficientBalanceError(data.balance, data.required);
-                } else {
-                    throw new Error(data.message || '未知错误');
+                    return;
                 }
+                // 其他业务错误
+                throw new Error(data.message || '未知错误');
             }
 
         } catch (error) {
             console.error('Error:', error);
-            // 检查是否是需要登录的错误
-            if (error.message.includes('登录')) {
-                showLoginRequiredError();
-            } else {
+            // 显示通用错误信息
+            if (errorMessage) {
                 errorMessage.textContent = `发生错误: ${error.message}`;
                 errorMessage.classList.remove('hidden');
             }
