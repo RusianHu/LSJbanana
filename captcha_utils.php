@@ -13,7 +13,15 @@ class CaptchaUtils {
      */
     public function __construct(?array $config = null) {
         if ($config === null) {
-            $fullConfig = require __DIR__ . '/config.php';
+            $configFile = __DIR__ . '/config.php';
+            if (!file_exists($configFile)) {
+                throw new Exception('配置文件不存在：config.php。请复制 config.php.example 并根据环境配置。');
+            }
+            try {
+                $fullConfig = require $configFile;
+            } catch (Throwable $e) {
+                throw new Exception('配置文件加载失败：' . $e->getMessage());
+            }
             $config = $fullConfig['captcha'] ?? [];
         }
         $this->config = $config;

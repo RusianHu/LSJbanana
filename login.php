@@ -5,13 +5,20 @@ ob_start(); // 启用输出缓冲，确保 header() 跳转正常工作
  * 用户登录页面
  */
 
-require_once __DIR__ . '/auth.php';
-
-$auth = getAuth();
-$captcha = getCaptcha();
+// 尝试加载必需的依赖，捕获初始化错误
+try {
+    require_once __DIR__ . '/auth.php';
+    $auth = getAuth();
+    $captcha = getCaptcha();
+} catch (Exception $e) {
+    // 配置或数据库初始化失败，显示友好错误页面
+    $initError = $e->getMessage();
+    $captcha = null; // 设置为 null 避免后续调用失败
+    $auth = null;
+}
 
 // 如果已登录，跳转到首页或指定页面
-if ($auth->isLoggedIn()) {
+if (isset($auth) && $auth && $auth->isLoggedIn()) {
     $redirect = !empty($_GET['redirect']) ? $_GET['redirect'] : 'index.php';
     // 防止开放重定向攻击
     if (strpos($redirect, '//') !== false || strpos($redirect, ':') !== false) {
@@ -25,7 +32,7 @@ $error = '';
 $success = '';
 
 // 处理登录请求
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($auth) && $auth) {
     $usernameOrEmail = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
     $remember = isset($_POST['remember']);
@@ -231,6 +238,41 @@ $redirect = $_GET['redirect'] ?? '';
     </style>
 </head>
 <body>
+    <?php if (isset($initError)): ?>
+        <!-- 初始化错误时显示友好错误页面 -->
+        <div class="auth-container">
+            <div class="auth-box">
+                <div class="auth-header">
+                    <div class="logo">&#127820;</div>
+                    <h1 style="color: #c62828;">系统初始化失败</h1>
+                </div>
+                <div class="alert alert-error">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>错误信息：</strong><br>
+                    <?php echo htmlspecialchars($initError); ?>
+                </div>
+                <div style="margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 6px;">
+                    <p style="margin: 0 0 10px 0; font-weight: bold;">可能的原因：</p>
+                    <ul style="margin: 0; padding-left: 20px;">
+                        <li>配置文件 (config.php) 不存在或格式错误</li>
+                        <li>数据库文件损坏或权限不足</li>
+                        <li>必需的 PHP 扩展未安装</li>
+                    </ul>
+                    <p style="margin: 15px 0 0 0; font-weight: bold;">建议操作：</p>
+                    <ul style="margin: 0; padding-left: 20px;">
+                        <li>检查 config.php.example 并创建正确的 config.php</li>
+                        <li>确认 database 目录存在且具有写入权限</li>
+                        <li>查看服务器错误日志获取详细信息</li>
+                    </ul>
+                </div>
+                <div style="text-align: center; margin-top: 20px;">
+                    <a href="index.php" class="btn-primary" style="display: inline-block; padding: 12px 24px; text-decoration: none;">
+                        <i class="fas fa-home"></i> 返回首页
+                    </a>
+                </div>
+            </div>
+        </div>
+    <?php else: ?>
     <div class="auth-container">
         <a href="index.php" class="back-link">
             <i class="fas fa-arrow-left"></i> 返回首页
@@ -273,7 +315,7 @@ $redirect = $_GET['redirect'] ?? '';
                     </div>
                 </div>
 
-                <?php if ($captcha->isLoginEnabled()): ?>
+                <?php if (isset($captcha) && $captcha && $captcha->isLoginEnabled()): ?>
                 <div class="form-group">
                     <label for="captcha">验证码</label>
                     <div class="captcha-group">
@@ -317,6 +359,7 @@ $redirect = $_GET['redirect'] ?? '';
             </div>
         </div>
     </div>
+    <?php endif; // 结束初始化错误检查 ?>
 
     <script>
     function refreshCaptcha() {

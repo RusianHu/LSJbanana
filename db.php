@@ -24,7 +24,15 @@ class Database {
     public static function getInstance(?array $config = null): Database {
         if (self::$instance === null) {
             if ($config === null) {
-                $fullConfig = require __DIR__ . '/config.php';
+                $configFile = __DIR__ . '/config.php';
+                if (!file_exists($configFile)) {
+                    throw new RuntimeException('配置文件不存在：config.php。请复制 config.php.example 并根据环境配置。');
+                }
+                try {
+                    $fullConfig = require $configFile;
+                } catch (Throwable $e) {
+                    throw new RuntimeException('配置文件加载失败：' . $e->getMessage());
+                }
                 $config = $fullConfig['database'] ?? [];
             }
             self::$instance = new self($config);
@@ -75,10 +83,209 @@ class Database {
     }
 
     /**
+     * 检查核心表是否完整
+     * @return array 返回缺失的表列表
+     */
+    public function checkCoreTables(): array {
+        $requiredTables = [
+            'users',
+            'recharge_orders',
+            'consumption_logs',
+            'login_logs',
+            'user_sessions'
+        ];
+
+        $missingTables = [];
+
+        foreach ($requiredTables as $tableName) {
+            $stmt = $this->pdo->query(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='$tableName'"
+            );
+
+            if (!$stmt->fetch()) {
+                $missingTables[] = $tableName;
+            }
+        }
+
+        return $missingTables;
+    }
+
+    /**
+     * 自动修复缺失的核心表
+     * @return array 返回修复结果 ['success' => bool, 'repaired' => array, 'message' => string]
+     */
+    public function repairCoreTables(): array {
+        $result = [
+            'success' => true,
+            'repaired' => [],
+            'message' => ''
+        ];
+
+        // 检查是否有缺失的核心表
+        $missingTables = $this->checkCoreTables();
+
+        if (empty($missingTables)) {
+            $result['message'] = '所有核心表完整';
+            return $result;
+        }
+
+        try {
+            // 直接执行完整的 init.sql 来修复
+            $sqlFile = __DIR__ . '/database/init.sql';
+            if (!file_exists($sqlFile)) {
+                $result['success'] = false;
+                $result['message'] = '初始化脚本 init.sql 不存在';
+                return $result;
+            }
+
+            $sql = file_get_contents($sqlFile);
+            $this->pdo->exec($sql);
+
+            $result['repaired'] = $missingTables;
+            $result['message'] = '已自动修复 ' . count($missingTables) . ' 个核心表';
+            error_log("Database core tables auto-repaired: " . implode(', ', $missingTables));
+
+        } catch (PDOException $e) {
+            $result['success'] = false;
+            $result['message'] = '修复失败: ' . $e->getMessage();
+        }
+
+        return $result;
+    }
+
+    /**
      * 获取 PDO 实例
      */
     public function getPdo(): PDO {
         return $this->pdo;
+    }
+
+    /**
+     * 检查并初始化管理员系统表
+     * @return array 返回初始化结果 ['success' => bool, 'created' => array, 'message' => string]
+     */
+    public function initAdminTables(): array {
+        $result = [
+            'success' => true,
+            'created' => [],
+            'message' => ''
+        ];
+
+        $adminTables = [
+            'admin_sessions' => "
+                CREATE TABLE IF NOT EXISTS admin_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_token VARCHAR(255) NOT NULL UNIQUE,
+                    ip_address VARCHAR(45) NOT NULL,
+                    user_agent TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    expires_at DATETIME NOT NULL,
+                    last_activity DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ",
+            'admin_login_attempts' => "
+                CREATE TABLE IF NOT EXISTS admin_login_attempts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ip_address VARCHAR(45) NOT NULL,
+                    attempt_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    success INTEGER DEFAULT 0
+                )
+            ",
+            'admin_operation_logs' => "
+                CREATE TABLE IF NOT EXISTS admin_operation_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    operation_type VARCHAR(50) NOT NULL,
+                    target_user_id INTEGER,
+                    details TEXT,
+                    ip_address VARCHAR(45),
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ",
+            'password_reset_tokens' => "
+                CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    token_hash VARCHAR(255) NOT NULL UNIQUE,
+                    email VARCHAR(100) NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    expires_at DATETIME NOT NULL,
+                    used INTEGER DEFAULT 0,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            "
+        ];
+
+        $indexes = [
+            "CREATE INDEX IF NOT EXISTS idx_admin_session_token ON admin_sessions(session_token)",
+            "CREATE INDEX IF NOT EXISTS idx_admin_expires ON admin_sessions(expires_at)",
+            "CREATE INDEX IF NOT EXISTS idx_admin_attempts_ip ON admin_login_attempts(ip_address)",
+            "CREATE INDEX IF NOT EXISTS idx_admin_attempts_time ON admin_login_attempts(attempt_time)",
+            "CREATE INDEX IF NOT EXISTS idx_admin_ops_type ON admin_operation_logs(operation_type)",
+            "CREATE INDEX IF NOT EXISTS idx_admin_ops_target ON admin_operation_logs(target_user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_admin_ops_time ON admin_operation_logs(created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_reset_token ON password_reset_tokens(token_hash)",
+            "CREATE INDEX IF NOT EXISTS idx_reset_user ON password_reset_tokens(user_id)"
+        ];
+
+        try {
+            // 检查并创建表
+            foreach ($adminTables as $tableName => $createSql) {
+                // 检查表是否存在
+                $stmt = $this->pdo->query(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='$tableName'"
+                );
+
+                if (!$stmt->fetch()) {
+                    // 表不存在，创建它
+                    $this->pdo->exec($createSql);
+                    $result['created'][] = $tableName;
+                }
+            }
+
+            // 创建索引
+            foreach ($indexes as $indexSql) {
+                $this->pdo->exec($indexSql);
+            }
+
+            if (!empty($result['created'])) {
+                $result['message'] = '已自动创建 ' . count($result['created']) . ' 个管理员系统表';
+            } else {
+                $result['message'] = '所有管理员系统表已存在';
+            }
+
+        } catch (PDOException $e) {
+            $result['success'] = false;
+            $result['message'] = '初始化失败: ' . $e->getMessage();
+        }
+
+        return $result;
+    }
+
+    /**
+     * 检查管理员表是否完整
+     * @return array 返回缺失的表列表
+     */
+    public function checkAdminTables(): array {
+        $requiredTables = [
+            'admin_sessions',
+            'admin_login_attempts',
+            'admin_operation_logs',
+            'password_reset_tokens'
+        ];
+
+        $missingTables = [];
+
+        foreach ($requiredTables as $tableName) {
+            $stmt = $this->pdo->query(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='$tableName'"
+            );
+
+            if (!$stmt->fetch()) {
+                $missingTables[] = $tableName;
+            }
+        }
+
+        return $missingTables;
     }
 
     // ============================================================
@@ -434,5 +641,409 @@ class Database {
             $this->rollback();
             throw $e;
         }
+    }
+
+    // ============================================================
+    // 管理员会话操作
+    // ============================================================
+
+    /**
+     * 创建管理员会话
+     */
+    public function createAdminSession(string $token, string $ip, ?string $userAgent, int $expiresIn): int {
+        $sql = "INSERT INTO admin_sessions (session_token, ip_address, user_agent, expires_at)
+                VALUES (:token, :ip, :ua, datetime('now', '+' || :expires || ' seconds'))";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([
+            ':token' => $token,
+            ':ip' => $ip,
+            ':ua' => $userAgent,
+            ':expires' => $expiresIn,
+        ]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /**
+     * 获取管理员会话
+     */
+    public function getAdminSession(string $token): ?array {
+        $sql = "SELECT * FROM admin_sessions WHERE session_token = :token LIMIT 1";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':token' => $token]);
+        $session = $stmt->fetch();
+        return $session ?: null;
+    }
+
+    /**
+     * 更新管理员活动时间
+     */
+    public function updateAdminActivity(string $token): bool {
+        $sql = "UPDATE admin_sessions SET last_activity = datetime('now') WHERE session_token = :token";
+        $stmt = $this->pdo->prepare($sql);
+        return $stmt->execute([':token' => $token]);
+    }
+
+    /**
+     * 删除管理员会话
+     */
+    public function deleteAdminSession(string $token): bool {
+        $sql = "DELETE FROM admin_sessions WHERE session_token = :token";
+        $stmt = $this->pdo->prepare($sql);
+        return $stmt->execute([':token' => $token]);
+    }
+
+    /**
+     * 清理过期的管理员会话
+     */
+    public function cleanExpiredAdminSessions(): int {
+        $sql = "DELETE FROM admin_sessions WHERE expires_at < datetime('now')";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute();
+        return $stmt->rowCount();
+    }
+
+    // ============================================================
+    // 管理员登录尝试
+    // ============================================================
+
+    /**
+     * 记录管理员登录尝试
+     */
+    public function logAdminAttempt(string $ip, int $success): int {
+        $sql = "INSERT INTO admin_login_attempts (ip_address, success) VALUES (:ip, :success)";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':ip' => $ip, ':success' => $success]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /**
+     * 获取最近的登录尝试次数(失败的)
+     */
+    public function getRecentAdminAttempts(string $ip, int $minutes): int {
+        $sql = "SELECT COUNT(*) as count FROM admin_login_attempts
+                WHERE ip_address = :ip
+                AND success = 0
+                AND attempt_time > datetime('now', '-' || :minutes || ' minutes')";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':ip' => $ip, ':minutes' => $minutes]);
+        $result = $stmt->fetch();
+
+        return (int) ($result['count'] ?? 0);
+    }
+
+    // ============================================================
+    // 管理员操作日志
+    // ============================================================
+
+    /**
+     * 记录管理员操作
+     */
+    public function logAdminOperation(string $opType, ?int $targetUserId, array $details, string $ip): int {
+        $sql = "INSERT INTO admin_operation_logs (operation_type, target_user_id, details, ip_address)
+                VALUES (:type, :target, :details, :ip)";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([
+            ':type' => $opType,
+            ':target' => $targetUserId,
+            ':details' => json_encode($details, JSON_UNESCAPED_UNICODE),
+            ':ip' => $ip,
+        ]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /**
+     * 获取管理员操作日志
+     */
+    public function getAdminOperationLogs(int $limit = 50, int $offset = 0, array $filters = []): array {
+        $sql = "SELECT * FROM admin_operation_logs WHERE 1=1";
+        $params = [];
+
+        if (!empty($filters['operation_type'])) {
+            $sql .= " AND operation_type = :type";
+            $params[':type'] = $filters['operation_type'];
+        }
+
+        if (!empty($filters['target_user_id'])) {
+            $sql .= " AND target_user_id = :user_id";
+            $params[':user_id'] = $filters['target_user_id'];
+        }
+
+        $sql .= " ORDER BY created_at DESC LIMIT :limit OFFSET :offset";
+
+        $stmt = $this->pdo->prepare($sql);
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value);
+        }
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll();
+    }
+
+    // ============================================================
+    // 用户管理(管理员)
+    // ============================================================
+
+    /**
+     * 获取所有用户(分页+搜索+筛选)
+     */
+    public function getAllUsers(int $limit = 20, int $offset = 0, ?string $search = null, ?int $status = null): array {
+        $sql = "SELECT * FROM users WHERE 1=1";
+        $params = [];
+
+        if ($search !== null && $search !== '') {
+            $sql .= " AND (username LIKE :search OR email LIKE :search OR id = :id)";
+            $params[':search'] = '%' . $search . '%';
+            $params[':id'] = (int) $search;
+        }
+
+        if ($status !== null) {
+            $sql .= " AND status = :status";
+            $params[':status'] = $status;
+        }
+
+        $sql .= " ORDER BY id DESC LIMIT :limit OFFSET :offset";
+
+        $stmt = $this->pdo->prepare($sql);
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value);
+        }
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * 获取用户总数
+     */
+    public function getUserCount(?string $search = null, ?int $status = null): int {
+        $sql = "SELECT COUNT(*) as count FROM users WHERE 1=1";
+        $params = [];
+
+        if ($search !== null && $search !== '') {
+            $sql .= " AND (username LIKE :search OR email LIKE :search OR id = :id)";
+            $params[':search'] = '%' . $search . '%';
+            $params[':id'] = (int) $search;
+        }
+
+        if ($status !== null) {
+            $sql .= " AND status = :status";
+            $params[':status'] = $status;
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        $result = $stmt->fetch();
+
+        return (int) ($result['count'] ?? 0);
+    }
+
+    /**
+     * 更新用户邮箱
+     */
+    public function updateUserEmail(int $userId, string $email): bool {
+        $sql = "UPDATE users SET email = :email, updated_at = datetime('now') WHERE id = :id";
+        $stmt = $this->pdo->prepare($sql);
+        return $stmt->execute([':email' => $email, ':id' => $userId]);
+    }
+
+    /**
+     * 切换用户状态
+     */
+    public function toggleUserStatus(int $userId): bool {
+        $sql = "UPDATE users SET status = CASE WHEN status = 1 THEN 0 ELSE 1 END,
+                updated_at = datetime('now') WHERE id = :id";
+        $stmt = $this->pdo->prepare($sql);
+        return $stmt->execute([':id' => $userId]);
+    }
+
+    /**
+     * 更新用户密码
+     */
+    public function updateUserPassword(int $userId, string $passwordHash): bool {
+        $sql = "UPDATE users SET password_hash = :hash, updated_at = datetime('now') WHERE id = :id";
+        $stmt = $this->pdo->prepare($sql);
+        return $stmt->execute([':hash' => $passwordHash, ':id' => $userId]);
+    }
+
+    /**
+     * 获取用户充值统计
+     */
+    public function getUserRechargeStats(int $userId): array {
+        // 充值统计
+        $sql = "SELECT
+                    COALESCE(SUM(amount), 0) as total_recharge,
+                    COUNT(*) as order_count
+                FROM recharge_orders
+                WHERE user_id = :user_id AND status = 1";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':user_id' => $userId]);
+        $stats = $stmt->fetch() ?: ['total_recharge' => 0, 'order_count' => 0];
+
+        // 消费统计
+        $sql = "SELECT COALESCE(SUM(amount), 0) as total_consumption
+                FROM consumption_logs
+                WHERE user_id = :user_id";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':user_id' => $userId]);
+        $consumption = $stmt->fetch();
+        $stats['total_consumption'] = (float)($consumption['total_consumption'] ?? 0);
+
+        // 图片统计
+        $sql = "SELECT COALESCE(SUM(image_count), 0) as total_images
+                FROM consumption_logs
+                WHERE user_id = :user_id";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':user_id' => $userId]);
+        $images = $stmt->fetch();
+        $stats['total_images'] = (int)($images['total_images'] ?? 0);
+
+        return $stats;
+    }
+
+    // ============================================================
+    // 统计数据
+    // ============================================================
+
+    /**
+     * 获取统计数据
+     */
+    public function getStatistics(): array {
+        $stats = [];
+
+        // 总用户数
+        $sql = "SELECT COUNT(*) as total FROM users";
+        $stmt = $this->pdo->query($sql);
+        $stats['total_users'] = (int) $stmt->fetchColumn();
+
+        // 今日新增用户
+        $sql = "SELECT COUNT(*) as today FROM users WHERE DATE(created_at) = DATE('now')";
+        $stmt = $this->pdo->query($sql);
+        $stats['today_new_users'] = (int) $stmt->fetchColumn();
+
+        // 总充值金额
+        $sql = "SELECT COALESCE(SUM(amount), 0) as total FROM recharge_orders WHERE status = 1";
+        $stmt = $this->pdo->query($sql);
+        $stats['total_recharge'] = (float) $stmt->fetchColumn();
+
+        // 今日充值金额
+        $sql = "SELECT COALESCE(SUM(amount), 0) as today FROM recharge_orders
+                WHERE status = 1 AND DATE(paid_at) = DATE('now')";
+        $stmt = $this->pdo->query($sql);
+        $stats['today_recharge'] = (float) $stmt->fetchColumn();
+
+        // 总消费金额
+        $sql = "SELECT COALESCE(SUM(amount), 0) as total FROM consumption_logs";
+        $stmt = $this->pdo->query($sql);
+        $stats['total_consumption'] = (float) $stmt->fetchColumn();
+
+        // 今日消费金额
+        $sql = "SELECT COALESCE(SUM(amount), 0) as today FROM consumption_logs
+                WHERE DATE(created_at) = DATE('now')";
+        $stmt = $this->pdo->query($sql);
+        $stats['today_consumption'] = (float) $stmt->fetchColumn();
+
+        // 总生成图片数
+        $sql = "SELECT COALESCE(SUM(image_count), 0) as total FROM consumption_logs";
+        $stmt = $this->pdo->query($sql);
+        $stats['total_images'] = (int) $stmt->fetchColumn();
+
+        // 今日生成图片数
+        $sql = "SELECT COALESCE(SUM(image_count), 0) as today FROM consumption_logs
+                WHERE DATE(created_at) = DATE('now')";
+        $stmt = $this->pdo->query($sql);
+        $stats['today_images'] = (int) $stmt->fetchColumn();
+
+        return $stats;
+    }
+
+    /**
+     * 获取最近用户注册列表
+     */
+    public function getRecentRegistrations(int $limit = 10): array {
+        $sql = "SELECT id, username, email, balance, created_at FROM users
+                ORDER BY created_at DESC LIMIT :limit";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * 获取最近充值订单
+     */
+    public function getRecentRechargeOrders(int $limit = 10): array {
+        $sql = "SELECT r.*, u.username
+                FROM recharge_orders r
+                LEFT JOIN users u ON r.user_id = u.id
+                WHERE r.status = 1
+                ORDER BY r.paid_at DESC
+                LIMIT :limit";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll();
+    }
+
+    // ============================================================
+    // 密码重置
+    // ============================================================
+
+    /**
+     * 创建密码重置令牌
+     */
+    public function createPasswordResetToken(int $userId, string $email, int $expiresIn = 86400): string {
+        $token = SecurityUtils::generateSecureToken(32);
+        $tokenHash = hash('sha256', $token);
+
+        $sql = "INSERT INTO password_reset_tokens (user_id, token_hash, email, expires_at)
+                VALUES (:user_id, :token_hash, :email, datetime('now', '+' || :expires || ' seconds'))";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([
+            ':user_id' => $userId,
+            ':token_hash' => $tokenHash,
+            ':email' => $email,
+            ':expires' => $expiresIn,
+        ]);
+
+        return $token; // 返回原始token,不是哈希值
+    }
+
+    /**
+     * 获取密码重置令牌
+     */
+    public function getPasswordResetToken(string $token): ?array {
+        $tokenHash = hash('sha256', $token);
+
+        $sql = "SELECT * FROM password_reset_tokens
+                WHERE token_hash = :token_hash
+                AND used = 0
+                AND expires_at > datetime('now')
+                LIMIT 1";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':token_hash' => $tokenHash]);
+        $result = $stmt->fetch();
+
+        return $result ?: null;
+    }
+
+    /**
+     * 标记令牌为已使用
+     */
+    public function markTokenUsed(string $token): bool {
+        $tokenHash = hash('sha256', $token);
+
+        $sql = "UPDATE password_reset_tokens SET used = 1 WHERE token_hash = :token_hash";
+        $stmt = $this->pdo->prepare($sql);
+        return $stmt->execute([':token_hash' => $tokenHash]);
     }
 }

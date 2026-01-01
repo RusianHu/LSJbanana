@@ -59,6 +59,28 @@ $captchaConfig = [
     'noise_dots' => 50,                                     // 干扰点数量
 ];
 
+// 管理员配置
+$adminConfig = [
+    'enabled' => true,                                      // 是否启用管理员功能
+    'key_hash' => '',                                       // 管理员密钥的SHA-256哈希值 (使用 hash('sha256', '你的密钥') 生成)
+    'session_lifetime' => 3600,                             // 会话有效期 (秒，默认1小时)
+    'max_attempts' => 5,                                    // 最大登录尝试次数
+    'lockout_duration' => 900,                              // 锁定时长 (秒，默认15分钟)
+
+    // 调试快速登录配置 (仅用于开发环境，生产环境务必关闭)
+    // 使用管理员密钥哈希值 (key_hash) 作为签名密钥，无需额外配置令牌
+    'debug_quick_login' => [
+        'enabled' => false,                                 // 是否启用调试快速登录 (生产环境必须为 false)
+        'ip_whitelist' => ['127.0.0.1', '::1'],            // IP 白名单 (空数组表示不限制IP)
+        'expires_seconds' => 300,                           // 快速登录链接有效期 (秒，默认5分钟)
+    ],
+];
+
+// 提示: 生成管理员密钥哈希值的方法
+// 1. 在PHP中执行: echo hash('sha256', '你的超级安全密钥');
+// 2. 或创建临时PHP文件运行: <?php echo hash('sha256', '你的超级安全密钥'); ?>
+// 3. 将生成的哈希值填入上方 'key_hash' 配置项
+
 // ============================================================
 // 图片模型配置
 // ============================================================
@@ -206,4 +228,5 @@ return [
     'billing' => $billingConfig,
     'user' => $userConfig,
     'captcha' => $captchaConfig,
+    'admin' => $adminConfig,
 ];

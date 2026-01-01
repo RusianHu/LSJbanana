@@ -1,16 +1,40 @@
 <?php
 require_once __DIR__ . '/auth.php';
 
-$config = require __DIR__ . '/config.php';
-$auth = getAuth();
+// 初始化错误处理
+$initError = null;
+$config = null;
+$auth = null;
+
+try {
+    $configFile = __DIR__ . '/config.php';
+    if (!file_exists($configFile)) {
+        throw new Exception('配置文件不存在：config.php。请复制 config.php.example 并根据环境配置。');
+    }
+    $config = require $configFile;
+    $auth = getAuth();
+
+    // 检查并自动修复核心表
+    $db = Database::getInstance();
+    $missingTables = $db->checkCoreTables();
+    if (!empty($missingTables)) {
+        $repairResult = $db->repairCoreTables();
+        if (!$repairResult['success']) {
+            error_log("Core tables repair failed: " . $repairResult['message']);
+        }
+    }
+} catch (Exception $e) {
+    $initError = $e->getMessage();
+    error_log("Index initialization error: " . $initError);
+}
 
 // 获取用户状态
-$isLoggedIn = $auth->isLoggedIn();
+$isLoggedIn = $auth && $auth->isLoggedIn();
 $currentUser = $isLoggedIn ? $auth->getCurrentUser() : null;
-$billingConfig = $config['billing'] ?? [];
+$billingConfig = $config ? ($config['billing'] ?? []) : [];
 $pricePerImage = (float) ($billingConfig['price_per_image'] ?? 0.20);
 
-$supportedResolutions = $config['image_model_supported_sizes'] ?? ['1K'];
+$supportedResolutions = $config ? ($config['image_model_supported_sizes'] ?? ['1K']) : ['1K'];
 if (!is_array($supportedResolutions) || $supportedResolutions === []) {
     $supportedResolutions = ['1K'];
 }
@@ -83,6 +107,22 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
             <h1>老司机的香蕉 <small>LSJbanana</small></h1>
             <p>基于 gemini-3-pro-image (Nano Banana) 的图片生成与编辑工具</p>
         </header>
+
+        <?php if ($initError): ?>
+            <!-- 显示初始化错误警告 -->
+            <div style="margin: 20px 0; padding: 20px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; color: #856404;">
+                <h3 style="margin: 0 0 10px 0; display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-exclamation-triangle" style="color: #ff9800;"></i>
+                    系统初始化警告
+                </h3>
+                <p style="margin: 0 0 10px 0;">
+                    <strong>错误：</strong><?php echo htmlspecialchars($initError); ?>
+                </p>
+                <p style="margin: 0; font-size: 0.9em;">
+                    部分功能可能无法正常使用。请检查配置文件和数据库设置。
+                </p>
+            </div>
+        <?php endif; ?>
 
         <main>
             <div class="tabs">

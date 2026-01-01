@@ -21,7 +21,15 @@ class Auth {
 
     public function __construct(?array $config = null) {
         if ($config === null) {
-            $fullConfig = require __DIR__ . '/config.php';
+            $configFile = __DIR__ . '/config.php';
+            if (!file_exists($configFile)) {
+                throw new Exception('配置文件不存在：config.php。请复制 config.php.example 并根据环境配置。');
+            }
+            try {
+                $fullConfig = require $configFile;
+            } catch (Throwable $e) {
+                throw new Exception('配置文件加载失败：' . $e->getMessage());
+            }
             $config = $fullConfig['user'] ?? [];
         }
         $this->config = $config;
@@ -503,6 +511,182 @@ class Auth {
      */
     public function addBalance(int $userId, float $amount): bool {
         return $this->db->updateUserBalance($userId, $amount);
+    }
+
+    // ============================================================
+    // 密码管理
+    // ============================================================
+
+    /**
+     * 用户修改密码
+     *
+     * @param int $userId 用户ID
+     * @param string $oldPassword 旧密码
+     * @param string $newPassword 新密码
+     * @return array
+     */
+    public function changePassword(int $userId, string $oldPassword, string $newPassword): array {
+        // 获取用户信息
+        $user = $this->db->getUserById($userId);
+        if (!$user) {
+            return ['success' => false, 'message' => '用户不存在'];
+        }
+
+        // 验证旧密码
+        if (!password_verify($oldPassword, $user['password_hash'])) {
+            return ['success' => false, 'message' => '旧密码错误'];
+        }
+
+        // 验证新密码
+        $passwordValidation = $this->validatePassword($newPassword);
+        if (!$passwordValidation['valid']) {
+            return ['success' => false, 'message' => $passwordValidation['message']];
+        }
+
+        // 更新密码
+        $newPasswordHash = password_hash($newPassword, PASSWORD_DEFAULT);
+        $success = $this->db->updateUserPassword($userId, $newPasswordHash);
+
+        if ($success) {
+            // 清除所有会话(强制重新登录)
+            $this->db->deleteUserSessions($userId);
+
+            return ['success' => true, 'message' => '密码修改成功,请重新登录'];
+        }
+
+        return ['success' => false, 'message' => '密码修改失败,请稍后重试'];
+    }
+
+    /**
+     * 管理员重置用户密码
+     *
+     * @param int $userId 用户ID
+     * @param string $newPassword 新密码
+     * @return array
+     */
+    public function resetPasswordByAdmin(int $userId, string $newPassword): array {
+        // 获取用户信息
+        $user = $this->db->getUserById($userId);
+        if (!$user) {
+            return ['success' => false, 'message' => '用户不存在'];
+        }
+
+        // 验证新密码
+        $passwordValidation = $this->validatePassword($newPassword);
+        if (!$passwordValidation['valid']) {
+            return ['success' => false, 'message' => $passwordValidation['message']];
+        }
+
+        // 更新密码
+        $newPasswordHash = password_hash($newPassword, PASSWORD_DEFAULT);
+        $success = $this->db->updateUserPassword($userId, $newPasswordHash);
+
+        if ($success) {
+            // 清除用户所有会话
+            $this->db->deleteUserSessions($userId);
+
+            return [
+                'success' => true,
+                'message' => '密码重置成功',
+                'username' => $user['username']
+            ];
+        }
+
+        return ['success' => false, 'message' => '密码重置失败'];
+    }
+
+    /**
+     * 生成临时密码
+     *
+     * @param int $length 密码长度
+     * @return string
+     */
+    public function generateTempPassword(int $length = 8): string {
+        $chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        $password = '';
+
+        for ($i = 0; $i < $length; $i++) {
+            $password .= $chars[random_int(0, strlen($chars) - 1)];
+        }
+
+        return $password;
+    }
+
+    /**
+     * 发送密码重置邮件(可选功能,需要邮件配置)
+     *
+     * @param string $email 用户邮箱
+     * @return array
+     */
+    public function sendPasswordResetEmail(string $email): array {
+        // 查找用户
+        $user = $this->db->getUserByEmail($email);
+        if (!$user) {
+            // 为了安全,不透露用户是否存在
+            return ['success' => true, 'message' => '如果该邮箱已注册,重置链接已发送'];
+        }
+
+        // 生成重置令牌(24小时有效)
+        $token = $this->db->createPasswordResetToken($user['id'], $email, 86400);
+
+        // 构造重置链接
+        $resetUrl = $this->getBaseUrl() . "/reset_password.php?token=" . urlencode($token);
+
+        // TODO: 发送邮件
+        // 这里需要配置邮件服务才能实际发送
+        // 暂时返回成功,实际项目中需要集成邮件功能
+
+        return [
+            'success' => true,
+            'message' => '重置链接已发送到您的邮箱',
+            'reset_url' => $resetUrl // 仅用于测试,生产环境不应返回
+        ];
+    }
+
+    /**
+     * 通过令牌重置密码
+     *
+     * @param string $token 重置令牌
+     * @param string $newPassword 新密码
+     * @return array
+     */
+    public function resetPasswordByToken(string $token, string $newPassword): array {
+        // 验证令牌
+        $resetToken = $this->db->getPasswordResetToken($token);
+        if (!$resetToken) {
+            return ['success' => false, 'message' => '重置链接无效或已过期'];
+        }
+
+        // 验证新密码
+        $passwordValidation = $this->validatePassword($newPassword);
+        if (!$passwordValidation['valid']) {
+            return ['success' => false, 'message' => $passwordValidation['message']];
+        }
+
+        // 更新密码
+        $newPasswordHash = password_hash($newPassword, PASSWORD_DEFAULT);
+        $success = $this->db->updateUserPassword($resetToken['user_id'], $newPasswordHash);
+
+        if ($success) {
+            // 标记令牌为已使用
+            $this->db->markTokenUsed($token);
+
+            // 清除用户所有会话
+            $this->db->deleteUserSessions($resetToken['user_id']);
+
+            return ['success' => true, 'message' => '密码重置成功,请重新登录'];
+        }
+
+        return ['success' => false, 'message' => '密码重置失败'];
+    }
+
+    /**
+     * 获取网站基础URL
+     */
+    private function getBaseUrl(): string {
+        $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        return $protocol . '://' . $host;
     }
 }
 

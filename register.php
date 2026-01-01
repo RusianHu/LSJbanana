@@ -5,29 +5,45 @@ ob_start(); // 启用输出缓冲，确保 header() 跳转正常工作
  * 用户注册页面
  */
 
-require_once __DIR__ . '/auth.php';
+// 尝试加载必需的依赖，捕获初始化错误
+try {
+    require_once __DIR__ . '/auth.php';
+    $auth = getAuth();
 
-$auth = getAuth();
-$config = require __DIR__ . '/config.php';
-$captcha = getCaptcha();
+    $configFile = __DIR__ . '/config.php';
+    if (!file_exists($configFile)) {
+        throw new Exception('配置文件不存在：config.php。请复制 config.php.example 并根据环境配置。');
+    }
+    $config = require $configFile;
+    $captcha = getCaptcha();
+} catch (Exception $e) {
+    // 配置或数据库初始化失败，显示友好错误页面
+    $initError = $e->getMessage();
+    $captcha = null;
+    $auth = null;
+    $config = null;
+}
 
 // 如果已登录，跳转到首页
-if ($auth->isLoggedIn()) {
+if (isset($auth) && $auth && $auth->isLoggedIn()) {
     header('Location: index.php');
     exit;
 }
 
 // 检查是否开放注册
-$userConfig = $config['user'] ?? [];
-if (!($userConfig['enable_registration'] ?? true)) {
-    $registrationClosed = true;
+$registrationClosed = false;
+if ($config) {
+    $userConfig = $config['user'] ?? [];
+    if (!($userConfig['enable_registration'] ?? true)) {
+        $registrationClosed = true;
+    }
 }
 
 $error = '';
 $success = '';
 
 // 处理注册请求
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($auth) && $auth) {
     $username = trim($_POST['username'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
@@ -207,6 +223,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </style>
 </head>
 <body>
+    <?php if (isset($initError)): ?>
+        <!-- 初始化错误时显示友好错误页面 -->
+        <div class="auth-container">
+            <div class="auth-box">
+                <div class="auth-header">
+                    <h1 style="color: #c62828;">系统初始化失败</h1>
+                </div>
+                <div class="alert alert-error">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>错误信息：</strong><br>
+                    <?php echo htmlspecialchars($initError); ?>
+                </div>
+                <div style="margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 6px;">
+                    <p style="margin: 0 0 10px 0; font-weight: bold;">可能的原因：</p>
+                    <ul style="margin: 0; padding-left: 20px;">
+                        <li>配置文件 (config.php) 不存在或格式错误</li>
+                        <li>数据库文件损坏或权限不足</li>
+                        <li>必需的 PHP 扩展未安装</li>
+                    </ul>
+                </div>
+                <div style="text-align: center; margin-top: 20px;">
+                    <a href="index.php" class="btn-primary" style="display: inline-block; padding: 12px 24px; text-decoration: none;">
+                        <i class="fas fa-home"></i> 返回首页
+                    </a>
+                </div>
+            </div>
+        </div>
+    <?php else: ?>
     <div class="auth-container">
         <a href="index.php" class="back-link">
             <i class="fas fa-arrow-left"></i> 返回首页
@@ -279,7 +323,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </div>
                     </div>
 
-                    <?php if ($captcha->isRegisterEnabled()): ?>
+                    <?php if (isset($captcha) && $captcha && $captcha->isRegisterEnabled()): ?>
                     <div class="form-group">
                         <label for="captcha">验证码</label>
                         <div class="captcha-group">
@@ -316,6 +360,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
         </div>
     </div>
+    <?php endif; // 结束初始化错误检查 ?>
 
     <script>
     function refreshCaptcha() {

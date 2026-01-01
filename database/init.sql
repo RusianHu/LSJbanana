@@ -103,3 +103,65 @@ CREATE INDEX IF NOT EXISTS idx_session_token ON user_sessions(token_hash);
 CREATE INDEX IF NOT EXISTS idx_session_user_id ON user_sessions(user_id);
 -- 过期时间索引
 CREATE INDEX IF NOT EXISTS idx_session_expires ON user_sessions(expires_at);
+
+-- ============================================================
+-- 管理员系统表
+-- ============================================================
+
+-- 管理员会话表
+CREATE TABLE IF NOT EXISTS admin_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_token VARCHAR(255) NOT NULL UNIQUE,
+    ip_address VARCHAR(45) NOT NULL,
+    user_agent TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NOT NULL,
+    last_activity DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 管理员会话索引
+CREATE INDEX IF NOT EXISTS idx_admin_session_token ON admin_sessions(session_token);
+CREATE INDEX IF NOT EXISTS idx_admin_expires ON admin_sessions(expires_at);
+
+-- 管理员登录尝试记录表 (防暴力破解)
+CREATE TABLE IF NOT EXISTS admin_login_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ip_address VARCHAR(45) NOT NULL,
+    attempt_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    success INTEGER DEFAULT 0  -- 0:失败, 1:成功
+);
+
+-- 登录尝试索引
+CREATE INDEX IF NOT EXISTS idx_admin_attempts_ip ON admin_login_attempts(ip_address);
+CREATE INDEX IF NOT EXISTS idx_admin_attempts_time ON admin_login_attempts(attempt_time);
+
+-- 管理员操作日志表
+CREATE TABLE IF NOT EXISTS admin_operation_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    operation_type VARCHAR(50) NOT NULL,  -- user_edit, balance_add, balance_deduct, user_disable, user_enable, password_reset
+    target_user_id INTEGER,
+    details TEXT,  -- JSON格式存储详细信息
+    ip_address VARCHAR(45),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 操作日志索引
+CREATE INDEX IF NOT EXISTS idx_admin_ops_type ON admin_operation_logs(operation_type);
+CREATE INDEX IF NOT EXISTS idx_admin_ops_target ON admin_operation_logs(target_user_id);
+CREATE INDEX IF NOT EXISTS idx_admin_ops_time ON admin_operation_logs(created_at);
+
+-- 密码重置令牌表
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    token_hash VARCHAR(255) NOT NULL UNIQUE,
+    email VARCHAR(100) NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NOT NULL,
+    used INTEGER DEFAULT 0,  -- 0:未使用, 1:已使用
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- 重置令牌索引
+CREATE INDEX IF NOT EXISTS idx_reset_token ON password_reset_tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_reset_user ON password_reset_tokens(user_id);
