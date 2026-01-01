@@ -4,6 +4,7 @@
  */
 
 require_once __DIR__ . '/../admin_auth.php';
+require_once __DIR__ . '/../security_utils.php';
 
 $adminAuth = getAdminAuth();
 
@@ -84,7 +85,7 @@ function translateOpType($opType): string {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>仪表盘 - 管理后台</title>
-    <link rel="stylesheet" href="/admin/style.css">
+    <link rel="stylesheet" href="<?php echo url('/admin/style.css'); ?>">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body class="admin-body">
@@ -340,6 +341,6 @@ function translateOpType($opType): string {
         </div>
     </div>
 
-    <script src="/admin/script.js"></script>
+    <script src="<?php echo url('/admin/script.js'); ?>"></script>
 </body>
 </html>

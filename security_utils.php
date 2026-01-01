@@ -287,3 +287,93 @@ class SecurityUtils {
         ];
     }
 }
+
+/**
+ * 获取项目的 URL 基础路径
+ *
+ * 自动检测项目相对于域名根目录的路径前缀
+ * 例如：部署在 https://example.com/LSJbanana/ 时返回 "/LSJbanana"
+ *       部署在 https://example.com/ 时返回 ""
+ *
+ * @return string 基础路径（不含尾部斜杠）
+ */
+function getBasePath(): string {
+    static $basePath = null;
+    
+    if ($basePath !== null) {
+        return $basePath;
+    }
+    
+    // 获取当前脚本相对于文档根目录的路径
+    $scriptName = $_SERVER['SCRIPT_NAME'] ?? '';
+    
+    // 项目根目录的标志文件（config.php 在项目根目录）
+    $projectRoot = dirname(__DIR__ . '/../');
+    
+    // 从 SCRIPT_NAME 中提取基础路径
+    // 例如: /LSJbanana/admin/login.php -> /LSJbanana
+    // 例如: /admin/login.php -> ""
+    
+    // 计算当前文件相对于项目根目录的深度
+    $currentFile = $_SERVER['SCRIPT_FILENAME'] ?? __FILE__;
+    $projectRootDir = realpath(__DIR__);
+    
+    if ($projectRootDir === false) {
+        $basePath = '';
+        return $basePath;
+    }
+    
+    // 计算脚本相对于项目根目录的相对路径
+    $currentFileReal = realpath($currentFile);
+    if ($currentFileReal === false) {
+        $basePath = '';
+        return $basePath;
+    }
+    
+    // 获取当前脚本相对于项目根目录的部分
+    $relativePath = '';
+    if (strpos($currentFileReal, $projectRootDir) === 0) {
+        $relativePath = substr($currentFileReal, strlen($projectRootDir));
+        $relativePath = str_replace('\\', '/', $relativePath);
+    }
+    
+    // 从 SCRIPT_NAME 中移除相对路径部分，得到基础路径
+    if ($relativePath !== '' && $scriptName !== '') {
+        $pos = strrpos($scriptName, $relativePath);
+        if ($pos !== false) {
+            $basePath = substr($scriptName, 0, $pos);
+            $basePath = rtrim($basePath, '/');
+            return $basePath;
+        }
+    }
+    
+    // 备选方案：从 SCRIPT_NAME 直接获取目录部分，并尝试识别项目目录
+    $scriptDir = dirname($scriptName);
+    if ($scriptDir === '/' || $scriptDir === '\\' || $scriptDir === '.') {
+        $basePath = '';
+    } else {
+        // 检查是否在 admin 子目录中
+        if (preg_match('#^(.*/)?admin$#', $scriptDir, $matches)) {
+            $basePath = rtrim($matches[1] ?? '', '/');
+        } else {
+            $basePath = $scriptDir;
+        }
+    }
+    
+    return $basePath;
+}
+
+/**
+ * 生成相对于项目根目录的 URL
+ *
+ * @param string $path 相对于项目根目录的路径（以 / 开头）
+ * @return string 完整的 URL 路径
+ */
+function url(string $path): string {
+    $base = getBasePath();
+    // 确保路径以 / 开头
+    if ($path !== '' && $path[0] !== '/') {
+        $path = '/' . $path;
+    }
+    return $base . $path;
+}

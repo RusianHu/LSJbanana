@@ -279,7 +279,7 @@ class AdminAuth {
      * 跳转到登录页
      */
     private function redirectToLogin(string $reason = ''): void {
-        $url = '/admin/login.php';
+        $url = url('/admin/login.php');
         if ($reason) {
             $url .= '?' . $reason . '=1';
         }

@@ -6,6 +6,7 @@ ob_start();
  */
 
 require_once __DIR__ . '/../admin_auth.php';
+require_once __DIR__ . '/../security_utils.php';
 
 $error = '';
 $lockoutTime = 0;
@@ -22,7 +23,7 @@ try {
             $setupService = new AdminSetupService($fullConfig);
             $setupStatus = $setupService->getStatus();
             if ($setupStatus['enabled'] && $setupStatus['ip_allowed'] && !empty($setupStatus['missing_tables']) && !isset($_GET['skip_setup'])) {
-                header('Location: /setup_admin.php?from=admin_login');
+                header('Location: ' . url('/setup_admin.php?from=admin_login'));
                 exit;
             }
         }
@@ -44,7 +45,7 @@ try {
 
     // 如果已登录,跳转到管理后台首页
     if ($adminAuth->requireAuth(false)) {
-        header('Location: /admin/index.php');
+        header('Location: ' . url('/admin/index.php'));
         exit;
     }
 } catch (Exception $e) {
@@ -79,7 +80,7 @@ if (!$initError && isset($_GET['quick_login']) && $_GET['quick_login'] === '1') 
 
             if ($quickLoginResult['success']) {
                 // 快速登录成功，跳转到管理后台首页
-                header('Location: /admin/index.php');
+                header('Location: ' . url('/admin/index.php'));
                 exit;
             } else {
                 $error = $quickLoginResult['message'];
@@ -110,7 +111,7 @@ if (!$initError && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $result = $adminAuth->login($key, $captchaInput);
 
         if ($result['success']) {
-            header('Location: /admin/index.php');
+            header('Location: ' . url('/admin/index.php'));
             exit;
         } else {
             $error = $result['message'];
@@ -151,7 +152,7 @@ if (!$initError && !$lockoutTime && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>管理员登录 - 老司机的香蕉</title>
-    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="<?php echo url('/style.css'); ?>">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body {
@@ -380,7 +381,7 @@ if (!$initError && !$lockoutTime && $_SERVER['REQUEST_METHOD'] !== 'POST') {
             </form>
 
             <div class="auth-footer">
-                <a href="../index.php">
+                <a href="<?php echo url('/index.php'); ?>">
                     <i class="fas fa-arrow-left"></i> 返回首页
                 </a>
             </div>

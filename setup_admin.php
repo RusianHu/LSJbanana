@@ -4,6 +4,7 @@
  */
 
 require_once __DIR__ . '/admin_setup_service.php';
+require_once __DIR__ . '/security_utils.php';
 
 $fatalError = null;
 $initResult = null;
@@ -238,8 +239,8 @@ $csrfToken = (!$fatalError && isset($setupService)) ? $setupService->createCsrfT
             </form>
 
             <div class="links">
-                <a href="/admin/login.php">返回管理员登录</a> |
-                <a href="/index.php">返回首页</a>
+                <a href="<?php echo url('/admin/login.php'); ?>">返回管理员登录</a> |
+                <a href="<?php echo url('/index.php'); ?>">返回首页</a>
             </div>
         <?php endif; ?>
     </div>
