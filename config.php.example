@@ -48,7 +48,7 @@ $userConfig = [
 
 // 验证码配置
 $captchaConfig = [
-    'enable_login' => false,                                // 是否在登录时启用验证码
+    'enable_login' => true,                                 // 是否在登录时启用验证码（建议开启以提高安全性）
     'enable_register' => true,                              // 是否在注册时启用验证码
     'width' => 120,                                         // 验证码图片宽度
     'height' => 40,                                         // 验证码图片高度
@@ -58,6 +58,32 @@ $captchaConfig = [
     'noise_lines' => 3,                                     // 干扰线数量
     'noise_dots' => 50,                                     // 干扰点数量
 ];
+
+// ============================================================
+// 图片模型配置
+// ============================================================
+
+$imageModels = [
+    // Nano Banana Pro（原默认模型）：支持 1K / 2K / 4K 与搜索接地等能力
+    'pro' => [
+        'model_name' => 'gemini-3-pro-image-preview',
+        'display_name' => 'Nano Banana Pro',
+        'supported_image_sizes' => ['1K', '2K', '4K'],
+        'supports_google_search' => true,
+    ],
+
+    // Nano Banana（快速模型）：官方文档说明为 1024px（约 1K）输出
+    'flash' => [
+        'model_name' => 'gemini-2.5-flash-image',
+        'display_name' => 'Nano Banana',
+        'supported_image_sizes' => ['1K'],
+        'supports_google_search' => false,
+    ],
+];
+
+// 开发者快捷切换：默认 'pro' ，将此值改为 'flash' 可切换到快速模型
+$activeImageModelKey = 'pro';
+$activeImageModel = $imageModels[$activeImageModelKey] ?? $imageModels['pro'];
 
 // ============================================================
 // API 与模型配置
@@ -93,8 +119,15 @@ return [
         'thinking_budget' => 26240, // 思考预算 (tokens)
     ],
 
+    // 图片模型配置（开发者使用）
+    'image_models' => $imageModels,
+    'active_image_model' => $activeImageModelKey,
+    'image_model_display_name' => $activeImageModel['display_name'],
+    'image_model_supported_sizes' => $activeImageModel['supported_image_sizes'],
+    'image_model_supports_google_search' => $activeImageModel['supports_google_search'],
+
     // 模型名称
-    'model_name' => 'gemini-3-pro-image-preview',
+    'model_name' => $activeImageModel['model_name'],
 
     // 提示词优化配置
     'prompt_optimize_model' => 'gemini-2.5-flash',
