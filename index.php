@@ -32,7 +32,7 @@ try {
 $isLoggedIn = $auth && $auth->isLoggedIn();
 $currentUser = $isLoggedIn ? $auth->getCurrentUser() : null;
 $billingConfig = $config ? ($config['billing'] ?? []) : [];
-$pricePerImage = (float) ($billingConfig['price_per_image'] ?? 0.20);
+$pricePerTask = (float) ($billingConfig['price_per_task'] ?? $billingConfig['price_per_image'] ?? 0.20);
 
 $supportedResolutions = $config ? ($config['image_model_supported_sizes'] ?? ['1K']) : ['1K'];
 if (!is_array($supportedResolutions) || $supportedResolutions === []) {
@@ -376,7 +376,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
             loggedIn: <?php echo $isLoggedIn ? 'true' : 'false'; ?>,
             username: <?php echo $isLoggedIn ? json_encode($currentUser['username']) : 'null'; ?>,
             balance: <?php echo $isLoggedIn ? (float)$currentUser['balance'] : 'null'; ?>,
-            pricePerImage: <?php echo $pricePerImage; ?>
+            pricePerTask: <?php echo $pricePerTask; ?>,
+            pricePerImage: <?php echo $pricePerTask; ?>
         };
     </script>
     <script src="script.js"></script>

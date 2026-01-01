@@ -25,6 +25,8 @@ function confirm(message, callback) {
 }
 
 // AJAX 请求封装
+const ADMIN_API_ENDPOINT = '/admin/api.php';
+
 async function apiRequest(action, data = {}) {
     try {
         const formData = new FormData();
@@ -34,7 +36,7 @@ async function apiRequest(action, data = {}) {
             formData.append(key, data[key]);
         }
 
-        const response = await fetch('api.php', {
+        const response = await fetch(ADMIN_API_ENDPOINT, {
             method: 'POST',
             body: formData
         });

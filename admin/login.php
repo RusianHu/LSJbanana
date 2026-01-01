@@ -11,6 +11,26 @@ $error = '';
 $lockoutTime = 0;
 $initError = false; // 标记是否为初始化错误
 
+// 自动触发初始化引导页（当管理员表缺失且启用引导时）
+try {
+    $configFile = __DIR__ . '/../config.php';
+    if (file_exists($configFile)) {
+        $fullConfig = require $configFile;
+        $setupConfig = $fullConfig['admin_setup'] ?? [];
+        if (!empty($setupConfig['enabled'])) {
+            require_once __DIR__ . '/../admin_setup_service.php';
+            $setupService = new AdminSetupService($fullConfig);
+            $setupStatus = $setupService->getStatus();
+            if ($setupStatus['enabled'] && $setupStatus['ip_allowed'] && !empty($setupStatus['missing_tables']) && !isset($_GET['skip_setup'])) {
+                header('Location: /setup_admin.php?from=admin_login');
+                exit;
+            }
+        }
+    }
+} catch (Throwable $e) {
+    // 初始化引导检测失败时忽略，避免影响登录流程
+}
+
 // 尝试加载管理员认证系统
 try {
     $adminAuth = getAdminAuth();
@@ -24,7 +44,7 @@ try {
 
     // 如果已登录,跳转到管理后台首页
     if ($adminAuth->requireAuth(false)) {
-        header('Location: index.php');
+        header('Location: /admin/index.php');
         exit;
     }
 } catch (Exception $e) {
@@ -59,7 +79,7 @@ if (!$initError && isset($_GET['quick_login']) && $_GET['quick_login'] === '1') 
 
             if ($quickLoginResult['success']) {
                 // 快速登录成功，跳转到管理后台首页
-                header('Location: index.php');
+                header('Location: /admin/index.php');
                 exit;
             } else {
                 $error = $quickLoginResult['message'];
@@ -90,7 +110,7 @@ if (!$initError && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $result = $adminAuth->login($key, $captchaInput);
 
         if ($result['success']) {
-            header('Location: index.php');
+            header('Location: /admin/index.php');
             exit;
         } else {
             $error = $result['message'];
@@ -131,7 +151,7 @@ if (!$initError && !$lockoutTime && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>管理员登录 - 老司机的香蕉</title>
-    <link rel="stylesheet" href="../style.css">
+    <link rel="stylesheet" href="/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body {

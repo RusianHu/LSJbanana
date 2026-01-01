@@ -161,6 +161,62 @@ class Database {
     }
 
     /**
+     * 执行 SQL（用于 INSERT/UPDATE/DELETE）
+     */
+    public function execute(string $sql, array $params = []): bool {
+        if ($this->pdo === null) {
+            throw new RuntimeException('数据库未连接');
+        }
+        $stmt = $this->pdo->prepare($sql);
+        $this->bindParams($stmt, $params);
+        return $stmt->execute();
+    }
+
+    /**
+     * 查询并返回结果集
+     */
+    public function query(string $sql, array $params = []): array {
+        if ($this->pdo === null) {
+            throw new RuntimeException('数据库未连接');
+        }
+        $stmt = $this->pdo->prepare($sql);
+        $this->bindParams($stmt, $params);
+        $stmt->execute();
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * 绑定参数并处理类型
+     */
+    private function bindParams(PDOStatement $stmt, array $params): void {
+        foreach ($params as $key => $value) {
+            $paramKey = $this->normalizeParamKey($key);
+            $type = PDO::PARAM_STR;
+            if (is_int($value)) {
+                $type = PDO::PARAM_INT;
+            } elseif (is_bool($value)) {
+                $type = PDO::PARAM_BOOL;
+            } elseif ($value === null) {
+                $type = PDO::PARAM_NULL;
+            }
+            $stmt->bindValue($paramKey, $value, $type);
+        }
+    }
+
+    /**
+     * 兼容命名参数与位置参数
+     */
+    private function normalizeParamKey($key) {
+        if (is_int($key)) {
+            return $key + 1;
+        }
+        if (is_string($key) && strpos($key, ':') === 0) {
+            return $key;
+        }
+        return ':' . $key;
+    }
+
+    /**
      * 检查并初始化管理员系统表
      * @return array 返回初始化结果 ['success' => bool, 'created' => array, 'message' => string]
      */
@@ -201,6 +257,19 @@ class Database {
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             ",
+            'balance_logs' => "
+                CREATE TABLE IF NOT EXISTS balance_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    type VARCHAR(20) NOT NULL,
+                    amount DECIMAL(10, 2) NOT NULL,
+                    balance_before DECIMAL(10, 2) NOT NULL,
+                    balance_after DECIMAL(10, 2) NOT NULL,
+                    remark TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            ",
             'password_reset_tokens' => "
                 CREATE TABLE IF NOT EXISTS password_reset_tokens (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -224,7 +293,9 @@ class Database {
             "CREATE INDEX IF NOT EXISTS idx_admin_ops_target ON admin_operation_logs(target_user_id)",
             "CREATE INDEX IF NOT EXISTS idx_admin_ops_time ON admin_operation_logs(created_at)",
             "CREATE INDEX IF NOT EXISTS idx_reset_token ON password_reset_tokens(token_hash)",
-            "CREATE INDEX IF NOT EXISTS idx_reset_user ON password_reset_tokens(user_id)"
+            "CREATE INDEX IF NOT EXISTS idx_reset_user ON password_reset_tokens(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_balance_logs_user_id ON balance_logs(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_balance_logs_created_at ON balance_logs(created_at)"
         ];
 
         try {
@@ -270,7 +341,8 @@ class Database {
             'admin_sessions',
             'admin_login_attempts',
             'admin_operation_logs',
-            'password_reset_tokens'
+            'password_reset_tokens',
+            'balance_logs'
         ];
 
         $missingTables = [];

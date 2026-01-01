@@ -22,7 +22,7 @@ $config = require 'config.php';
 
 // 获取计费配置
 $billingConfig = $config['billing'] ?? [];
-$pricePerImage = (float) ($billingConfig['price_per_image'] ?? 0.20);
+$pricePerTask = (float) ($billingConfig['price_per_task'] ?? $billingConfig['price_per_image'] ?? 0.20);
 
 // 初始化认证
 $auth = getAuth();
@@ -330,9 +330,10 @@ if ($action === 'get_user_status') {
             'id' => $user['id'],
             'username' => $user['username'],
             'balance' => (float) ($user['balance'] ?? 0),
-            'can_generate' => (float) ($user['balance'] ?? 0) >= $pricePerImage,
+            'can_generate' => (float) ($user['balance'] ?? 0) >= $pricePerTask,
         ] : null,
-        'price_per_image' => $pricePerImage,
+        'price_per_task' => $pricePerTask,
+        'price_per_image' => $pricePerTask,
     ]);
     exit;
 }
@@ -346,13 +347,13 @@ if (in_array($action, ['generate', 'edit'], true)) {
 
     // 检查余额是否足够
     $currentBalance = $auth->getCurrentUserBalance();
-    if ($currentBalance < $pricePerImage) {
+    if ($currentBalance < $pricePerTask) {
         echo json_encode([
             'success' => false,
             'message' => '余额不足，请先充值',
             'code' => 'INSUFFICIENT_BALANCE',
             'balance' => $currentBalance,
-            'required' => $pricePerImage,
+            'required' => $pricePerTask,
         ]);
         exit;
     }
@@ -599,7 +600,8 @@ $resultThoughts = extractThoughtsFromResponse($responseData);
 $billingResult = null;
 if (!empty($resultImages)) {
     $imageCount = count($resultImages);
-    $totalCost = $pricePerImage * $imageCount;
+    $billingUnits = 1; // 按成功任务计费
+    $totalCost = $pricePerTask * $billingUnits;
     
     // 扣除余额
     $billingResult = $auth->deductBalance(

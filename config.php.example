@@ -26,11 +26,12 @@ $paymentConfig = [
 
 // 计费配置
 $billingConfig = [
-    'price_per_image' => 0.20,                              // 每张图片价格 (RMB)
+    'price_per_task' => 0.20,                               // 每次任务价格 (RMB)
+    // 兼容旧配置: 若未设置 price_per_task，系统会读取 price_per_image
     'min_recharge' => 1.00,                                 // 最低充值金额 (RMB)
     'max_recharge' => 1000.00,                              // 最高充值金额 (RMB)
     'recharge_options' => [5, 10, 20, 50, 100],             // 快捷充值选项 (RMB)
-    'free_quota' => 0,                                      // 新用户免费额度 (张)
+    'free_quota' => 0,                                      // 新用户免费额度 (次)
 ];
 
 // 用户系统配置
@@ -74,6 +75,14 @@ $adminConfig = [
         'ip_whitelist' => ['127.0.0.1', '::1'],            // IP 白名单 (空数组表示不限制IP)
         'expires_seconds' => 300,                           // 快速登录链接有效期 (秒，默认5分钟)
     ],
+];
+
+// 管理员初始化引导配置
+$adminSetupConfig = [
+    'enabled' => false,                                     // 是否启用初始化引导页
+    'require_admin_key' => true,                            // 是否要求管理员密钥
+    'ip_whitelist' => ['127.0.0.1', '::1'],                // IP 白名单 (空数组表示不限制IP)
+    'csrf_ttl' => 600,                                      // CSRF 令牌有效期 (秒)
 ];
 
 // 提示: 生成管理员密钥哈希值的方法
@@ -229,4 +238,5 @@ return [
     'user' => $userConfig,
     'captcha' => $captchaConfig,
     'admin' => $adminConfig,
+    'admin_setup' => $adminSetupConfig,
 ];

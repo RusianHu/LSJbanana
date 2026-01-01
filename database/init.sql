@@ -46,6 +46,22 @@ CREATE INDEX IF NOT EXISTS idx_recharge_user_id ON recharge_orders(user_id);
 -- 状态索引
 CREATE INDEX IF NOT EXISTS idx_recharge_status ON recharge_orders(status);
 
+-- 余额变动日志表 (管理员手动充值/扣款)
+CREATE TABLE IF NOT EXISTS balance_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    type VARCHAR(20) NOT NULL,                   -- recharge/deduct
+    amount DECIMAL(10, 2) NOT NULL,
+    balance_before DECIMAL(10, 2) NOT NULL,
+    balance_after DECIMAL(10, 2) NOT NULL,
+    remark TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_balance_logs_user_id ON balance_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_balance_logs_created_at ON balance_logs(created_at);
+
 -- 消费记录表 (图片生成扣费)
 CREATE TABLE IF NOT EXISTS consumption_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -16,6 +16,7 @@ $auth->requireLogin(true);
 
 $config = require __DIR__ . '/config.php';
 $billingConfig = $config['billing'] ?? [];
+$pricePerTask = (float) ($billingConfig['price_per_task'] ?? $billingConfig['price_per_image'] ?? 0.20);
 $user = $auth->getCurrentUser();
 
 $error = '';
@@ -49,10 +50,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // 创建充值订单记录
         $db->createRechargeOrder($userId, $outTradeNo, $amount, $payType ?: null);
 
-        // 计算可生成图片数量
-        $pricePerImage = $billingConfig['price_per_image'] ?? 0.20;
-        $imageCount = floor($amount / $pricePerImage);
-
         // 创建支付订单
         $result = $payment->createOrder(
             $outTradeNo,
@@ -74,7 +71,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // 获取充值选项
 $rechargeOptions = $billingConfig['recharge_options'] ?? [5, 10, 20, 50, 100];
-$pricePerImage = $billingConfig['price_per_image'] ?? 0.20;
 
 // 获取充值记录
 $rechargeOrders = $db->getUserRechargeOrders($user['id'], 10);
@@ -370,7 +366,7 @@ $rechargeOrders = $db->getUserRechargeOrders($user['id'], 10);
             </div>
             <div class="balance-info">
                 <i class="fas fa-image"></i>
-                约可生成 <?php echo floor((float)($user['balance'] ?? 0) / $pricePerImage); ?> 张图片
+                约可生成 <?php echo $pricePerTask > 0 ? floor((float)($user['balance'] ?? 0) / $pricePerTask) : 0; ?> 次任务
             </div>
         </div>
 
@@ -386,7 +382,7 @@ $rechargeOrders = $db->getUserRechargeOrders($user['id'], 10);
 
             <div class="price-info">
                 <i class="fas fa-info-circle"></i>
-                当前价格: <strong><?php echo $pricePerImage; ?> 元/张</strong>，充值后可立即使用
+                当前价格: <strong><?php echo $pricePerTask; ?> 元/次</strong>，充值后可立即使用
             </div>
 
             <form method="POST" action="">
@@ -398,7 +394,7 @@ $rechargeOrders = $db->getUserRechargeOrders($user['id'], 10);
                                    value="<?php echo $option; ?>" <?php echo $index === 0 ? 'checked' : ''; ?>>
                             <label for="amount_<?php echo $index; ?>">
                                 <span class="amount-value"><?php echo $option; ?>元</span>
-                                <span class="amount-images">约<?php echo floor($option / $pricePerImage); ?>张</span>
+                                <span class="amount-images">约<?php echo $pricePerTask > 0 ? floor($option / $pricePerTask) : 0; ?>次</span>
                             </label>
                         </div>
                     <?php endforeach; ?>
