@@ -239,9 +239,17 @@ class Auth {
 
     /**
      * 获取当前登录用户
+     *
+     * 注意：此方法会实时验证用户状态，如果用户被禁用会自动登出
      */
     public function getCurrentUser(): ?array {
         if ($this->currentUser !== null) {
+            // 已缓存用户信息，但仍需验证状态
+            // 如果状态已被管理员修改，需要重新验证
+            if (($this->currentUser['status'] ?? 0) !== 1) {
+                $this->logout();
+                return null;
+            }
             return $this->currentUser;
         }
 
@@ -256,6 +264,12 @@ class Auth {
 
         $user = $this->db->getUserById((int) $userId);
         if ($user === null) {
+            $this->logout();
+            return null;
+        }
+
+        // 检查用户状态：被禁用的用户不允许继续操作
+        if (($user['status'] ?? 0) !== 1) {
             $this->logout();
             return null;
         }

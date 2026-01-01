@@ -441,6 +441,99 @@ class Database {
     }
 
     /**
+     * 原子扣除余额（带余额检查）
+     * 使用 UPDATE ... WHERE balance >= amount 确保原子性，防止竞态条件
+     *
+     * 此方法在单条 SQL 语句中同时完成余额检查和扣除，确保：
+     * 1. 如果余额不足，UPDATE 不会执行（rowCount = 0）
+     * 2. 并发请求无法同时通过余额检查
+     *
+     * 性能优化：先执行 UPDATE，只有在需要返回余额信息时才查询
+     *
+     * @param int $userId 用户ID
+     * @param float $amount 扣除金额
+     * @return array ['success' => bool, 'balance_before' => float|null, 'balance_after' => float|null]
+     */
+    public function atomicDeductBalance(int $userId, float $amount): array {
+        // 验证金额必须为正数
+        if ($amount <= 0) {
+            return [
+                'success' => false,
+                'balance_before' => null,
+                'balance_after' => null,
+                'error' => 'INVALID_AMOUNT'
+            ];
+        }
+        
+        // 原子扣费：只有当 balance >= amount 时才执行扣除
+        // 先执行 UPDATE，避免预查询带来的性能开销
+        $sql = "UPDATE users
+                SET balance = balance - :amount, updated_at = datetime('now')
+                WHERE id = :id AND balance >= :amount_check";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([
+            ':amount' => $amount,
+            ':id' => $userId,
+            ':amount_check' => $amount
+        ]);
+        
+        // 检查是否成功扣除（rowCount > 0 表示更新了行）
+        if ($stmt->rowCount() === 0) {
+            // 扣费失败，可能是余额不足或用户不存在
+            // 只有失败时才查询用户信息，用于返回当前余额
+            $user = $this->getUserById($userId);
+            if ($user === null) {
+                return [
+                    'success' => false,
+                    'balance_before' => null,
+                    'balance_after' => null,
+                    'error' => 'USER_NOT_FOUND'
+                ];
+            }
+            $currentBalance = (float) ($user['balance'] ?? 0);
+            return [
+                'success' => false,
+                'balance_before' => $currentBalance,
+                'balance_after' => $currentBalance,
+                'error' => 'INSUFFICIENT_BALANCE'
+            ];
+        }
+        
+        // 扣费成功，查询更新后的余额
+        $user = $this->getUserById($userId);
+        $balanceAfter = $user ? (float) ($user['balance'] ?? 0) : 0;
+        $balanceBefore = $balanceAfter + $amount;
+        
+        return [
+            'success' => true,
+            'balance_before' => $balanceBefore,
+            'balance_after' => $balanceAfter
+        ];
+    }
+
+    /**
+     * 原子退还余额
+     * 用于生成失败时退款
+     *
+     * @param int $userId 用户ID
+     * @param float $amount 退还金额
+     * @return bool 是否成功
+     */
+    public function atomicRefundBalance(int $userId, float $amount): bool {
+        // 验证金额必须为正数
+        if ($amount <= 0) {
+            return false;
+        }
+        
+        $sql = "UPDATE users
+                SET balance = balance + :amount, updated_at = datetime('now')
+                WHERE id = :id";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':amount' => $amount, ':id' => $userId]);
+        return $stmt->rowCount() > 0;
+    }
+
+    /**
      * 更新用户登录信息
      */
     public function updateUserLogin(int $userId, string $ip): bool {

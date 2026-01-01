@@ -262,7 +262,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($auth) && $auth) {
                 <p>加入老司机的香蕉，开始AI创作之旅</p>
             </div>
 
-            <?php if (isset($registrationClosed)): ?>
+            <?php if ($registrationClosed): ?>
                 <div class="alert alert-error">
                     <i class="fas fa-lock"></i> 当前不开放注册，请稍后再试。
                 </div>

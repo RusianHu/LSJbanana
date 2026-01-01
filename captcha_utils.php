@@ -218,7 +218,7 @@ class CaptchaUtils {
      * 检查验证码功能是否启用
      */
     public function isEnabled(): bool {
-        return $this->config['enable_login'] ?? false || $this->config['enable_register'] ?? false;
+        return ($this->config['enable_login'] ?? false) || ($this->config['enable_register'] ?? false);
     }
 
     /**

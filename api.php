@@ -16,6 +16,7 @@ require_once __DIR__ . '/speech_to_text.php';
 require_once __DIR__ . '/openai_adapter.php';
 require_once __DIR__ . '/gemini_proxy_adapter.php';
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/db.php';
 
 // 引入配置
 $config = require 'config.php';
@@ -322,10 +323,86 @@ if (!in_array($action, ['generate', 'edit', 'optimize_prompt', 'transcribe', 'ge
     sendError('未知的操作类型', 400);
 }
 
+/**
+ * 验证用户登录状态和账户有效性
+ * 检查用户是否登录、账户是否被禁用
+ *
+ * @param Auth $auth 认证实例
+ * @param bool $requireBalance 是否需要检查余额
+ * @param float $requiredAmount 需要的最低余额
+ * @return array|null 验证通过返回用户信息，失败则发送错误响应并退出
+ */
+function validateUserAuthAndStatus(Auth $auth, bool $requireBalance = false, float $requiredAmount = 0): ?array {
+    // 检查用户是否登录
+    if (!$auth->isLoggedIn()) {
+        http_response_code(401);
+        echo json_encode([
+            'success' => false,
+            'message' => '请先登录后再使用此功能',
+            'code' => 'UNAUTHORIZED',
+            'action' => [
+                'type' => 'redirect',
+                'url' => 'login.php',
+                'label' => '立即登录'
+            ]
+        ]);
+        exit;
+    }
+
+    // 获取用户信息并检查状态（防止被禁用用户继续操作）
+    $user = $auth->getCurrentUser();
+    if ($user === null || ($user['status'] ?? 0) !== 1) {
+        // 用户已被禁用或不存在，强制登出
+        $auth->logout();
+        http_response_code(403);
+        echo json_encode([
+            'success' => false,
+            'message' => '您的账号已被禁用，请联系管理员',
+            'code' => 'ACCOUNT_DISABLED',
+            'action' => [
+                'type' => 'redirect',
+                'url' => 'login.php',
+                'label' => '重新登录'
+            ]
+        ]);
+        exit;
+    }
+
+    // 如果需要检查余额
+    if ($requireBalance) {
+        $currentBalance = (float) ($user['balance'] ?? 0);
+        if ($currentBalance < $requiredAmount) {
+            http_response_code(402);
+            echo json_encode([
+                'success' => false,
+                'message' => '余额不足，请先充值',
+                'code' => 'INSUFFICIENT_BALANCE',
+                'balance' => $currentBalance,
+                'required' => $requiredAmount,
+                'action' => [
+                    'type' => 'redirect',
+                    'url' => 'recharge.php',
+                    'label' => '立即充值'
+                ]
+            ]);
+            exit;
+        }
+    }
+
+    return $user;
+}
+
 // 用户状态查询（不需要登录也可以查询，返回是否登录等信息）
 if ($action === 'get_user_status') {
     $isLoggedIn = $auth->isLoggedIn();
     $user = $isLoggedIn ? $auth->getCurrentUser() : null;
+    
+    // 额外检查用户状态（被禁用的用户视为未登录）
+    if ($user !== null && ($user['status'] ?? 0) !== 1) {
+        $auth->logout();
+        $isLoggedIn = false;
+        $user = null;
+    }
     
     echo json_encode([
         'success' => true,
@@ -343,41 +420,14 @@ if ($action === 'get_user_status') {
 }
 
 // 对于图片生成和编辑操作，需要检查用户登录和余额
+// 注意：这里只做初步检查，实际扣费在生成成功后使用原子操作
 if (in_array($action, ['generate', 'edit'], true)) {
-    // 检查用户是否登录
-    if (!$auth->isLoggedIn()) {
-        http_response_code(401);
-        echo json_encode([
-            'success' => false,
-            'message' => '请先登录后再使用图片生成功能',
-            'code' => 'UNAUTHORIZED',
-            'action' => [
-                'type' => 'redirect',
-                'url' => 'login.php',
-                'label' => '立即登录'
-            ]
-        ]);
-        exit;
-    }
+    validateUserAuthAndStatus($auth, true, $pricePerTask);
+}
 
-    // 检查余额是否足够
-    $currentBalance = $auth->getCurrentUserBalance();
-    if ($currentBalance < $pricePerTask) {
-        http_response_code(402);
-        echo json_encode([
-            'success' => false,
-            'message' => '余额不足，请先充值',
-            'code' => 'INSUFFICIENT_BALANCE',
-            'balance' => $currentBalance,
-            'required' => $pricePerTask,
-            'action' => [
-                'type' => 'redirect',
-                'url' => 'recharge.php',
-                'label' => '立即充值'
-            ]
-        ]);
-        exit;
-    }
+// 对于提示词优化和语音转文字，需要登录但不需要余额（防止匿名滥用）
+if (in_array($action, ['optimize_prompt', 'transcribe'], true)) {
+    validateUserAuthAndStatus($auth, false);
 }
 
 // Gemini API Key
@@ -569,8 +619,48 @@ if ($action === 'generate') {
     sendError('未知的操作类型', 400);
 }
 
+// === 预扣费机制：在调用 API 前使用原子操作扣除余额 ===
+// 这可以防止并发请求导致的余额透支问题（竞态条件）
+$db = Database::getInstance();
+$userId = $auth->getCurrentUserId();
+$preDeductResult = $db->atomicDeductBalance($userId, $pricePerTask);
+
+if (!$preDeductResult['success']) {
+    // 原子扣费失败，说明余额不足或用户不存在
+    $errorCode = $preDeductResult['error'] ?? 'DEDUCT_FAILED';
+    if ($errorCode === 'INSUFFICIENT_BALANCE') {
+        http_response_code(402);
+        echo json_encode([
+            'success' => false,
+            'message' => '余额不足，可能已被其他请求消耗，请刷新页面重试',
+            'code' => 'INSUFFICIENT_BALANCE',
+            'balance' => $preDeductResult['balance_before'] ?? 0,
+            'required' => $pricePerTask,
+            'action' => [
+                'type' => 'redirect',
+                'url' => 'recharge.php',
+                'label' => '立即充值'
+            ]
+        ]);
+        exit;
+    }
+    sendError('扣费失败：' . $errorCode, 500, $errorCode);
+}
+
+// 记录预扣费信息，用于后续日志
+$balanceBeforeDeduct = $preDeductResult['balance_before'];
+$balanceAfterDeduct = $preDeductResult['balance_after'];
+
 // 调用 Gemini 生成/编辑
-$responseData = callGeminiApi($modelName, $requestData, 300, 30);
+// 注意：如果 API 调用失败，需要退还已扣除的余额
+try {
+    $responseData = callGeminiApiSafe($modelName, $requestData, 300, 30);
+} catch (GeminiApiException $e) {
+    // API 调用失败，退还余额
+    $db->atomicRefundBalance($userId, $pricePerTask);
+    error_log("API call failed, refunded {$pricePerTask} to user {$userId}: " . $e->getMessage());
+    sendError($e->getMessage(), $e->getHttpCode());
+}
 
 if (!isset($responseData['candidates'][0])) {
     sendError('API 未返回任何候选结果', 502);
@@ -617,26 +707,45 @@ if (isset($responseData['candidates'][0]['content']['parts'])) {
 
 $resultThoughts = extractThoughtsFromResponse($responseData);
 
-// 如果成功生成了图片，扣除用户余额
+// === 计费结果处理 ===
+// 预扣费已在 API 调用前完成，这里只需要处理结果
 $billingResult = null;
+$imageCount = count($resultImages);
+
 if (!empty($resultImages)) {
-    $imageCount = count($resultImages);
-    $billingUnits = 1; // 按成功任务计费
-    $totalCost = $pricePerTask * $billingUnits;
-    
-    // 扣除余额
-    $billingResult = $auth->deductBalance(
-        $totalCost,
+    // 生成成功，记录消费日志
+    $db->logConsumption(
+        $userId,
         $action,
+        $pricePerTask,
+        $balanceBeforeDeduct,
+        $balanceAfterDeduct,
         $imageCount,
         $modelName,
-        mb_substr($prompt, 0, 200, 'UTF-8')  // 保存提示词前200字符作为备注
+        mb_substr($prompt, 0, 200, 'UTF-8')
     );
     
-    if (!$billingResult['success']) {
-        // 扣费失败，但图片已生成，记录日志但不影响返回
-        error_log("Billing failed for user {$auth->getCurrentUserId()}: {$billingResult['message']}");
+    $billingResult = [
+        'success' => true,
+        'amount' => $pricePerTask,
+        'balance_before' => $balanceBeforeDeduct,
+        'balance_after' => $balanceAfterDeduct,
+    ];
+} else {
+    // 没有生成任何图片，退还预扣的余额
+    $refundSuccess = $db->atomicRefundBalance($userId, $pricePerTask);
+    if ($refundSuccess) {
+        error_log("No images generated, refunded {$pricePerTask} to user {$userId}");
+    } else {
+        error_log("Failed to refund {$pricePerTask} to user {$userId} after no images generated");
     }
+    
+    $billingResult = [
+        'success' => false,
+        'amount' => 0,
+        'message' => '未生成图片，已退还预扣费用',
+        'refunded' => $refundSuccess,
+    ];
 }
 
 // 获取更新后的余额
