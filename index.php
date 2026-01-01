@@ -83,6 +83,9 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
                         <a href="recharge.php" class="dropdown-item">
                             <i class="fas fa-coins"></i> 充值
                         </a>
+                        <a href="change_password.php" class="dropdown-item">
+                            <i class="fas fa-key"></i> 修改密码
+                        </a>
                         <div class="dropdown-divider"></div>
                         <a href="?action=logout" class="dropdown-item dropdown-item-danger">
                             <i class="fas fa-sign-out-alt"></i> 退出登录
