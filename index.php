@@ -307,14 +307,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
 
         <footer>
             <p>&copy; <?php echo date('Y'); ?> LSJbanana Project. Powered by Gemini.</p>
-            <a href="https://github.com/RusianHu/LSJbanana"
-               target="_blank"
-               rel="noopener noreferrer"
-               class="github-footer-link">
-                <i class="fab fa-github"></i>
-                <span>开源于 GitHub</span>
-                <i class="fas fa-external-link-alt"></i>
-            </a>
         </footer>
     </div>
 
