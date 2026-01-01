@@ -31,6 +31,34 @@ if (isset($auth) && $auth && $auth->isLoggedIn()) {
 $error = '';
 $success = '';
 
+// 处理快速登录请求
+if (!isset($initError) && isset($auth) && $auth && isset($_GET['quick_login']) && $_GET['quick_login'] === '1') {
+    $timestamp = isset($_GET['t']) ? (int)$_GET['t'] : 0;
+    $signature = isset($_GET['sig']) ? trim($_GET['sig']) : '';
+
+    if ($timestamp > 0 && $signature !== '') {
+        try {
+            $quickLoginResult = $auth->quickLogin($timestamp, $signature);
+
+            if ($quickLoginResult['success']) {
+                // 快速登录成功，跳转到首页
+                $redirect = !empty($_GET['redirect']) ? $_GET['redirect'] : 'index.php';
+                if (strpos($redirect, '//') !== false || strpos($redirect, ':') !== false) {
+                    $redirect = 'index.php';
+                }
+                header('Location: ' . $redirect);
+                exit;
+            } else {
+                $error = $quickLoginResult['message'];
+            }
+        } catch (Exception $e) {
+            $error = '快速登录失败: ' . $e->getMessage();
+        }
+    } else {
+        $error = '无效的快速登录链接';
+    }
+}
+
 // 处理登录请求
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($auth) && $auth) {
     $usernameOrEmail = trim($_POST['username'] ?? '');

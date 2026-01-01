@@ -130,7 +130,7 @@ return [
     // Gemini 原生 API 配置
     'api_key' => 'your-gemini-api-key',
 
-    // OpenAI 兼容中转站配置 (当 api_provider 为 'openai_compatible' 时使用)
+    // OpenAI 兼容中转站配置 (当 api_provider 为 'openai_compatible' 时使用) ，类似 cliproxyapi 中转站
     'openai_compatible' => [
         'base_url' => 'https://your-openai-compatible-endpoint.com',
         'api_key' => 'your-openai-compatible-key',
@@ -139,8 +139,8 @@ return [
         'enable_thinking' => true,  // 启用思考模型，提取 reasoning_content
     ],
 
-    // Gemini 原生格式代理配置 (当 api_provider 为 'gemini_proxy' 时使用)
-    // 支持 SSE 流式响应，适用于国内代理站点，NewAPI 类中转站
+    // Gemini 原生格式代理配置 (当 api_provider 为 'gemini_proxy' 时使用) 适用于国内代理站点，NewAPI 类中转站
+    // 支持 SSE 流式响应
     'gemini_proxy' => [
         'base_url' => 'https://your-gemini-proxy-endpoint.com',
         'api_key' => 'your-gemini-proxy-key',

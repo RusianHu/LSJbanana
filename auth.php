@@ -12,6 +12,7 @@ require_once __DIR__ . '/captcha_utils.php';
 class Auth {
     private Database $db;
     private array $config;
+    private array $fullConfig;
     private ?array $currentUser = null;
     private CaptchaUtils $captcha;
 
@@ -20,17 +21,18 @@ class Auth {
     private const COOKIE_REMEMBER = 'lsj_remember';
 
     public function __construct(?array $config = null) {
+        $configFile = __DIR__ . '/config.php';
+        if (!file_exists($configFile)) {
+            throw new Exception('配置文件不存在：config.php。请复制 config.php.example 并根据环境配置。');
+        }
+        try {
+            $this->fullConfig = require $configFile;
+        } catch (Throwable $e) {
+            throw new Exception('配置文件加载失败：' . $e->getMessage());
+        }
+
         if ($config === null) {
-            $configFile = __DIR__ . '/config.php';
-            if (!file_exists($configFile)) {
-                throw new Exception('配置文件不存在：config.php。请复制 config.php.example 并根据环境配置。');
-            }
-            try {
-                $fullConfig = require $configFile;
-            } catch (Throwable $e) {
-                throw new Exception('配置文件加载失败：' . $e->getMessage());
-            }
-            $config = $fullConfig['user'] ?? [];
+            $config = $this->fullConfig['user'] ?? [];
         }
         $this->config = $config;
         $this->db = Database::getInstance();
@@ -701,6 +703,219 @@ class Auth {
         $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
         $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
         return $protocol . '://' . $host;
+    }
+
+    // ============================================================
+    // 调试快速登录
+    // ============================================================
+
+    /**
+     * 检查调试快速登录是否启用
+     */
+    public function isQuickLoginEnabled(): bool {
+        $quickLoginConfig = $this->config['debug_quick_login'] ?? [];
+        // 需要同时检查用户配置启用和管理员密钥存在
+        $adminKeyHash = $this->fullConfig['admin']['key_hash'] ?? '';
+        return !empty($quickLoginConfig['enabled']) && !empty($adminKeyHash);
+    }
+
+    /**
+     * 获取快速登录配置
+     */
+    private function getQuickLoginConfig(): array {
+        return $this->config['debug_quick_login'] ?? [];
+    }
+
+    /**
+     * 获取管理员密钥哈希 (用作签名密钥)
+     */
+    private function getAdminKeyHash(): string {
+        return $this->fullConfig['admin']['key_hash'] ?? '';
+    }
+
+    /**
+     * 生成快速登录URL
+     *
+     * @param string $baseUrl 基础URL (如 http://127.0.0.1:8080)
+     * @return array 包含 url 和 expires_at 的数组
+     * @throws Exception 如果快速登录未启用
+     */
+    public function generateQuickLoginUrl(string $baseUrl): array {
+        if (!$this->isQuickLoginEnabled()) {
+            throw new Exception('用户调试快速登录未启用');
+        }
+
+        $quickLoginConfig = $this->getQuickLoginConfig();
+        $keyHash = $this->getAdminKeyHash();
+        $expiresSeconds = $quickLoginConfig['expires_seconds'] ?? 300;
+
+        // 生成时间戳
+        $timestamp = time();
+
+        // 生成签名: HMAC-SHA256(key_hash, "user:" + timestamp)
+        // 使用 "user:" 前缀区分于管理员快速登录
+        $signature = hash_hmac('sha256', 'user:' . $timestamp, $keyHash);
+
+        // 构建URL
+        $url = rtrim($baseUrl, '/') . '/login.php?quick_login=1'
+             . '&t=' . $timestamp
+             . '&sig=' . $signature;
+
+        return [
+            'url' => $url,
+            'expires_at' => date('Y-m-d H:i:s', $timestamp + $expiresSeconds),
+            'expires_seconds' => $expiresSeconds,
+        ];
+    }
+
+    /**
+     * 验证快速登录请求
+     *
+     * @param int $timestamp 时间戳
+     * @param string $signature 签名
+     * @return array 验证结果 ['success' => bool, 'message' => string]
+     */
+    public function verifyQuickLogin(int $timestamp, string $signature): array {
+        // 检查是否启用
+        if (!$this->isQuickLoginEnabled()) {
+            return ['success' => false, 'message' => '用户调试快速登录未启用'];
+        }
+
+        $quickLoginConfig = $this->getQuickLoginConfig();
+        $keyHash = $this->getAdminKeyHash();
+        $expiresSeconds = $quickLoginConfig['expires_seconds'] ?? 300;
+        $ipWhitelist = $quickLoginConfig['ip_whitelist'] ?? [];
+
+        // 验证IP白名单
+        if (!empty($ipWhitelist)) {
+            $clientIp = $this->getClientIp();
+            if (!in_array($clientIp, $ipWhitelist, true)) {
+                $this->logQuickLoginAttempt($clientIp, false, 'IP not in whitelist');
+                return ['success' => false, 'message' => 'IP地址不在白名单中'];
+            }
+        }
+
+        // 验证时间戳是否过期
+        $currentTime = time();
+        if ($timestamp > $currentTime + 60) {
+            // 时间戳在未来超过60秒，可能是时钟不同步或伪造
+            return ['success' => false, 'message' => '无效的时间戳'];
+        }
+
+        if ($currentTime - $timestamp > $expiresSeconds) {
+            return ['success' => false, 'message' => '快速登录链接已过期'];
+        }
+
+        // 验证签名 (使用 "user:" 前缀)
+        $expectedSignature = hash_hmac('sha256', 'user:' . $timestamp, $keyHash);
+        if (!hash_equals($expectedSignature, $signature)) {
+            $this->logQuickLoginAttempt($this->getClientIp(), false, 'Invalid signature');
+            return ['success' => false, 'message' => '签名验证失败'];
+        }
+
+        return ['success' => true, 'message' => '验证成功'];
+    }
+
+    /**
+     * 执行快速登录
+     *
+     * @param int $timestamp 时间戳
+     * @param string $signature 签名
+     * @return array 登录结果 ['success' => bool, 'message' => string, 'user' => ?array]
+     */
+    public function quickLogin(int $timestamp, string $signature): array {
+        // 验证快速登录请求
+        $verifyResult = $this->verifyQuickLogin($timestamp, $signature);
+        if (!$verifyResult['success']) {
+            return $verifyResult;
+        }
+
+        $quickLoginConfig = $this->getQuickLoginConfig();
+        $testUserConfig = $quickLoginConfig['test_user'] ?? [];
+
+        $username = $testUserConfig['username'] ?? 'test_debug_user';
+        $email = $testUserConfig['email'] ?? 'test_debug@example.com';
+        $initialBalance = (float)($testUserConfig['initial_balance'] ?? 100.00);
+
+        // 查找或创建测试用户
+        $user = $this->db->getUserByUsername($username);
+
+        if ($user === null) {
+            // 创建测试用户
+            $passwordHash = password_hash('debug_password_' . time(), PASSWORD_DEFAULT);
+            $userId = $this->db->createUser($username, $email, $passwordHash, $initialBalance);
+
+            if ($userId === null) {
+                // 可能是邮箱冲突，尝试用邮箱查找
+                $user = $this->db->getUserByEmail($email);
+                if ($user === null) {
+                    return ['success' => false, 'message' => '创建测试用户失败'];
+                }
+            } else {
+                $user = $this->db->getUserById($userId);
+            }
+        }
+
+        if ($user === null) {
+            return ['success' => false, 'message' => '获取测试用户失败'];
+        }
+
+        // 检查用户状态
+        if (($user['status'] ?? 0) !== 1) {
+            return ['success' => false, 'message' => '测试用户已被禁用'];
+        }
+
+        $ip = $this->getClientIp();
+
+        // 创建会话
+        $this->startSession();
+        $_SESSION['user_id'] = $user['id'];
+        $_SESSION['username'] = $user['username'];
+        $_SESSION['login_time'] = time();
+
+        // 更新用户登录信息
+        $this->db->updateUserLogin($user['id'], $ip);
+
+        // 记录登录日志
+        $this->db->logLogin($user['id'], $ip, $_SERVER['HTTP_USER_AGENT'] ?? null, 'quick_login', 1);
+
+        // 记录成功的快速登录
+        $this->logQuickLoginAttempt($ip, true, 'User quick login successful for: ' . $username);
+
+        $this->currentUser = $user;
+
+        return [
+            'success' => true,
+            'message' => '快速登录成功',
+            'user' => $this->sanitizeUser($user),
+        ];
+    }
+
+    /**
+     * 记录快速登录尝试到日志
+     *
+     * @param string $ip IP地址
+     * @param bool $success 是否成功
+     * @param string $details 详细信息
+     */
+    private function logQuickLoginAttempt(string $ip, bool $success, string $details): void {
+        $logFile = __DIR__ . '/logs/quick_login.log';
+        $logDir = dirname($logFile);
+
+        // 确保日志目录存在
+        if (!is_dir($logDir)) {
+            mkdir($logDir, 0755, true);
+        }
+
+        $logEntry = sprintf(
+            "[%s] Type: USER | IP: %s | Success: %s | Details: %s\n",
+            date('Y-m-d H:i:s'),
+            $ip,
+            $success ? 'YES' : 'NO',
+            $details
+        );
+
+        file_put_contents($logFile, $logEntry, FILE_APPEND | LOCK_EX);
     }
 }
 
