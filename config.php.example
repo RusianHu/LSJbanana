@@ -3,6 +3,66 @@
 // 配置文件
 // 存储敏感信息和全局配置
 
+// ============================================================
+// 用户系统与支付配置
+// ============================================================
+
+// 数据库配置 (SQLite)
+$databaseConfig = [
+    'driver' => 'sqlite',
+    'path' => __DIR__ . '/database/lsjbanana.db',  // SQLite 数据库文件路径
+];
+
+// 支付配置 (老司机聚合支付)
+$paymentConfig = [
+    'enabled' => true,                                      // 是否启用支付功能
+    'gateway_url' => 'https://pay.yanshanlaosiji.top',      // 支付网关地址
+    'pid' => 1000,                                          // 商户ID (请替换为您的商户ID)
+    'key' => 'your-merchant-key',                           // 商户MD5密钥 (请替换为您的密钥)
+    'notify_url' => '',                                     // 异步通知地址 (留空则自动生成)
+    'return_url' => '',                                     // 同步跳转地址 (留空则自动生成)
+    'default_pay_type' => '',                               // 默认支付方式 (空则跳转收银台)
+];
+
+// 计费配置
+$billingConfig = [
+    'price_per_image' => 0.20,                              // 每张图片价格 (RMB)
+    'min_recharge' => 1.00,                                 // 最低充值金额 (RMB)
+    'max_recharge' => 1000.00,                              // 最高充值金额 (RMB)
+    'recharge_options' => [5, 10, 20, 50, 100],             // 快捷充值选项 (RMB)
+    'free_quota' => 0,                                      // 新用户免费额度 (张)
+];
+
+// 用户系统配置
+$userConfig = [
+    'enable_registration' => true,                          // 是否开放注册
+    'enable_email_verification' => false,                   // 是否需要邮箱验证 (暂不实现)
+    'session_lifetime' => 7 * 24 * 3600,                    // 会话有效期 (秒，默认7天)
+    'remember_me_lifetime' => 30 * 24 * 3600,               // "记住我"有效期 (秒，默认30天)
+    'password_min_length' => 6,                             // 密码最小长度
+    'username_min_length' => 3,                             // 用户名最小长度
+    'username_max_length' => 20,                            // 用户名最大长度
+    'max_login_attempts' => 5,                              // 最大登录尝试次数
+    'lockout_duration' => 15 * 60,                          // 锁定时长 (秒)
+];
+
+// 验证码配置
+$captchaConfig = [
+    'enable_login' => false,                                // 是否在登录时启用验证码
+    'enable_register' => true,                              // 是否在注册时启用验证码
+    'width' => 120,                                         // 验证码图片宽度
+    'height' => 40,                                         // 验证码图片高度
+    'font_size' => 18,                                      // 字体大小
+    'chars' => '23456789ABCDEFGHJKLMNPQRSTUVWXYZ',         // 验证码字符集 (排除易混淆字符)
+    'expire_time' => 300,                                   // 验证码过期时间 (秒，默认5分钟)
+    'noise_lines' => 3,                                     // 干扰线数量
+    'noise_dots' => 50,                                     // 干扰点数量
+];
+
+// ============================================================
+// API 与模型配置
+// ============================================================
+
 return [
     // API 提供商选择:
     //   'native' - Gemini 原生 API (直连 Google)
@@ -104,4 +164,13 @@ return [
         // 转录提示词 (可自定义以适应不同场景)
         'prompt' => '请将以下音频内容准确转录为文字。只输出转录的文字内容，不要添加任何解释或格式化。如果音频中没有可识别的语音，请返回空字符串。',
     ],
+
+    // ============================================================
+    // 用户系统与支付配置 (引用上方定义的变量)
+    // ============================================================
+    'database' => $databaseConfig,
+    'payment' => $paymentConfig,
+    'billing' => $billingConfig,
+    'user' => $userConfig,
+    'captcha' => $captchaConfig,
 ];

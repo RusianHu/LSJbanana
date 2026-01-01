@@ -1,4 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // 初始化用户菜单
+    initUserMenu();
+
     // Tab 切换逻辑
     const tabs = document.querySelectorAll('.tab-btn');
     const panels = document.querySelectorAll('.panel');
@@ -558,12 +561,31 @@ document.addEventListener('DOMContentLoaded', () => {
                 // 计算最终耗时
                 const finalTime = ((Date.now() - startTime) / 1000).toFixed(2);
 
+                // 更新用户余额显示
+                if (data.billing && data.billing.balance !== null) {
+                    updateBalanceDisplay(data.billing.balance);
+                }
+
                 if (data.thoughts && data.thoughts.length > 0) {
                     renderThinkingPanel(data.thoughts, finalTime);
                 }
 
                 // 显示结果
                 if (data.images && data.images.length > 0) {
+                    // 添加保存提示
+                    const saveNotice = document.createElement('div');
+                    saveNotice.className = 'output-item save-notice';
+                    saveNotice.innerHTML = `
+                        <div class="save-notice-content">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <div class="save-notice-text">
+                                <strong>请及时保存图片</strong>
+                                <p>生成的图片仅临时存储在服务器上，不会永久保留。建议立即下载保存到本地。</p>
+                            </div>
+                        </div>
+                    `;
+                    outputContainer.appendChild(saveNotice);
+
                     data.images.forEach(imgUrl => {
                         const imgDiv = document.createElement('div');
                         imgDiv.className = 'output-item';
@@ -622,13 +644,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 outputContainer.appendChild(timeDiv);
 
             } else {
-                throw new Error(data.message || '未知错误');
+                // 检查是否是余额不足错误
+                if (data.code === 'INSUFFICIENT_BALANCE') {
+                    showInsufficientBalanceError(data.balance, data.required);
+                } else {
+                    throw new Error(data.message || '未知错误');
+                }
             }
 
         } catch (error) {
             console.error('Error:', error);
-            errorMessage.textContent = `发生错误: ${error.message}`;
-            errorMessage.classList.remove('hidden');
+            // 检查是否是需要登录的错误
+            if (error.message.includes('登录')) {
+                showLoginRequiredError();
+            } else {
+                errorMessage.textContent = `发生错误: ${error.message}`;
+                errorMessage.classList.remove('hidden');
+            }
         } finally {
             loading.classList.add('hidden');
             clearInterval(timerInterval);
@@ -1414,4 +1446,149 @@ function initImagePreview() {
             actualSize();
         }
     });
+}
+
+/**
+ * 用户菜单交互模块
+ */
+function initUserMenu() {
+    const menuTrigger = document.getElementById('user-menu-trigger');
+    const dropdown = document.getElementById('user-dropdown');
+
+    if (!menuTrigger || !dropdown) {
+        return;
+    }
+
+    // 点击触发器显示/隐藏下拉菜单
+    menuTrigger.addEventListener('click', function(e) {
+        e.stopPropagation();
+        dropdown.classList.toggle('active');
+        menuTrigger.classList.toggle('active');
+    });
+
+    // 点击其他区域关闭菜单
+    document.addEventListener('click', function(e) {
+        if (!dropdown.contains(e.target) && !menuTrigger.contains(e.target)) {
+            dropdown.classList.remove('active');
+            menuTrigger.classList.remove('active');
+        }
+    });
+
+    // ESC 键关闭菜单
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            dropdown.classList.remove('active');
+            menuTrigger.classList.remove('active');
+        }
+    });
+}
+
+/**
+ * 更新余额显示
+ */
+function updateBalanceDisplay(balance) {
+    const balanceDisplay = document.getElementById('user-balance-display');
+    if (balanceDisplay) {
+        const amountEl = balanceDisplay.querySelector('.balance-amount');
+        if (amountEl) {
+            amountEl.textContent = parseFloat(balance).toFixed(2);
+
+            // 添加动画效果
+            balanceDisplay.classList.add('balance-updated');
+            setTimeout(() => {
+                balanceDisplay.classList.remove('balance-updated');
+            }, 1000);
+        }
+    }
+
+    // 更新全局用户状态
+    if (window.LSJ_USER) {
+        window.LSJ_USER.balance = balance;
+    }
+}
+
+/**
+ * 显示余额不足错误
+ */
+function showInsufficientBalanceError(currentBalance, required) {
+    const errorMessage = document.getElementById('error-message');
+    const outputContainer = document.getElementById('output-container');
+
+    if (outputContainer) {
+        outputContainer.innerHTML = '';
+    }
+
+    if (errorMessage) {
+        errorMessage.innerHTML = `
+            <div class="insufficient-balance-error">
+                <i class="fas fa-exclamation-triangle"></i>
+                <div class="error-content">
+                    <strong>余额不足</strong>
+                    <p>当前余额: <span class="balance">${parseFloat(currentBalance).toFixed(2)}</span> 元</p>
+                    <p>本次需要: <span class="required">${parseFloat(required).toFixed(2)}</span> 元</p>
+                </div>
+                <a href="recharge.php" class="btn-recharge">
+                    <i class="fas fa-coins"></i> 立即充值
+                </a>
+            </div>
+        `;
+        errorMessage.classList.remove('hidden');
+    }
+}
+
+/**
+ * 显示需要登录的错误
+ */
+function showLoginRequiredError() {
+    const errorMessage = document.getElementById('error-message');
+    const outputContainer = document.getElementById('output-container');
+
+    if (outputContainer) {
+        outputContainer.innerHTML = '';
+    }
+
+    if (errorMessage) {
+        errorMessage.innerHTML = `
+            <div class="login-required-error">
+                <i class="fas fa-user-lock"></i>
+                <div class="error-content">
+                    <strong>请先登录</strong>
+                    <p>您需要登录账号才能使用图片生成功能</p>
+                </div>
+                <div class="auth-buttons-inline">
+                    <a href="login.php" class="btn-login-inline">
+                        <i class="fas fa-sign-in-alt"></i> 登录
+                    </a>
+                    <a href="register.php" class="btn-register-inline">
+                        <i class="fas fa-user-plus"></i> 注册
+                    </a>
+                </div>
+            </div>
+        `;
+        errorMessage.classList.remove('hidden');
+    }
+}
+
+/**
+ * 获取用户状态
+ */
+async function fetchUserStatus() {
+    try {
+        const formData = new FormData();
+        formData.append('action', 'get_user_status');
+
+        const response = await fetch('api.php', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+        if (data.success && data.user) {
+            updateBalanceDisplay(data.user.balance);
+        }
+        return data;
+    } catch (error) {
+        console.error('获取用户状态失败:', error);
+        return null;
+    }
 }

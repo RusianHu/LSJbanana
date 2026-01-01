@@ -1,5 +1,31 @@
+# 用户生成内容
 /images
+
+# 本地 PHP 环境
 /php
+
+# 项目私有文档
 AGENTS.md
+老司机聚合支付V1.md
+
+# 敏感配置
 config.php
+
+# IDE/编辑器
 /.claude
+/.vscode
+*.swp
+*.swo
+
+# 数据库文件（保留 init.sql 用于结构初始化）
+database/*.db
+database/*.sqlite
+database/*.sqlite3
+
+# 日志文件（保留 .gitkeep）
+logs/*.log
+
+# 缓存与临时文件
+cache/
+tmp/
+*.tmp

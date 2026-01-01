@@ -1,8 +1,25 @@
 <?php
+require_once __DIR__ . '/auth.php';
+
 $config = require __DIR__ . '/config.php';
+$auth = getAuth();
+
+// 获取用户状态
+$isLoggedIn = $auth->isLoggedIn();
+$currentUser = $isLoggedIn ? $auth->getCurrentUser() : null;
+$billingConfig = $config['billing'] ?? [];
+$pricePerImage = (float) ($billingConfig['price_per_image'] ?? 0.20);
+
 $supportedResolutions = $config['image_model_supported_sizes'] ?? ['1K'];
 if (!is_array($supportedResolutions) || $supportedResolutions === []) {
     $supportedResolutions = ['1K'];
+}
+
+// 处理登出请求
+if (isset($_GET['action']) && $_GET['action'] === 'logout') {
+    $auth->logout();
+    header('Location: index.php');
+    exit;
 }
 ?>
 <!DOCTYPE html>
@@ -16,9 +33,54 @@ if (!is_array($supportedResolutions) || $supportedResolutions === []) {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
+    <!-- 右上角用户操作区域 (固定定位) -->
+    <div class="header-user-fixed">
+        <?php if ($isLoggedIn && $currentUser): ?>
+            <div class="user-info">
+                <div class="user-balance" id="user-balance-display">
+                    <i class="fas fa-wallet"></i>
+                    <span class="balance-amount"><?php echo number_format((float)$currentUser['balance'], 2); ?></span>
+                    <span class="balance-unit">元</span>
+                </div>
+                <div class="user-menu">
+                    <button class="user-menu-trigger" id="user-menu-trigger">
+                        <i class="fas fa-user-circle"></i>
+                        <span><?php echo htmlspecialchars($currentUser['username']); ?></span>
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    <div class="user-dropdown" id="user-dropdown">
+                        <div class="dropdown-header">
+                            <div class="dropdown-username"><?php echo htmlspecialchars($currentUser['username']); ?></div>
+                            <div class="dropdown-balance">
+                                余额: <strong><?php echo number_format((float)$currentUser['balance'], 2); ?></strong> 元
+                            </div>
+                        </div>
+                        <div class="dropdown-divider"></div>
+                        <a href="recharge.php" class="dropdown-item">
+                            <i class="fas fa-coins"></i> 充值
+                        </a>
+                        <div class="dropdown-divider"></div>
+                        <a href="?action=logout" class="dropdown-item dropdown-item-danger">
+                            <i class="fas fa-sign-out-alt"></i> 退出登录
+                        </a>
+                    </div>
+                </div>
+            </div>
+        <?php else: ?>
+            <div class="auth-buttons">
+                <a href="login.php" class="btn-auth btn-login">
+                    <i class="fas fa-sign-in-alt"></i> 登录
+                </a>
+                <a href="register.php" class="btn-auth btn-register">
+                    <i class="fas fa-user-plus"></i> 注册
+                </a>
+            </div>
+        <?php endif; ?>
+    </div>
+
     <div class="container">
         <header>
-            <h1>🍌 老司机的香蕉 <small>LSJbanana</small></h1>
+            <h1>老司机的香蕉 <small>LSJbanana</small></h1>
             <p>基于 gemini-3-pro-image (Nano Banana) 的图片生成与编辑工具</p>
         </header>
 
@@ -268,6 +330,15 @@ if (!is_array($supportedResolutions) || $supportedResolutions === []) {
         </div>
     </div>
 
+    <!-- 用户状态数据 (供 JavaScript 使用) -->
+    <script>
+        window.LSJ_USER = {
+            loggedIn: <?php echo $isLoggedIn ? 'true' : 'false'; ?>,
+            username: <?php echo $isLoggedIn ? json_encode($currentUser['username']) : 'null'; ?>,
+            balance: <?php echo $isLoggedIn ? (float)$currentUser['balance'] : 'null'; ?>,
+            pricePerImage: <?php echo $pricePerImage; ?>
+        };
+    </script>
     <script src="script.js"></script>
 </body>
 </html>

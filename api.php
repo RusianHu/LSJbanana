@@ -15,9 +15,17 @@ require_once __DIR__ . '/prompt_optimizer.php';
 require_once __DIR__ . '/speech_to_text.php';
 require_once __DIR__ . '/openai_adapter.php';
 require_once __DIR__ . '/gemini_proxy_adapter.php';
+require_once __DIR__ . '/auth.php';
 
 // 引入配置
 $config = require 'config.php';
+
+// 获取计费配置
+$billingConfig = $config['billing'] ?? [];
+$pricePerImage = (float) ($billingConfig['price_per_image'] ?? 0.20);
+
+// 初始化认证
+$auth = getAuth();
 
 // 核心配置
 $apiKey = $config['api_key'];
@@ -306,8 +314,48 @@ try {
     sendError('无效的操作类型', 400);
 }
 
-if (!in_array($action, ['generate', 'edit', 'optimize_prompt', 'transcribe'], true)) {
+if (!in_array($action, ['generate', 'edit', 'optimize_prompt', 'transcribe', 'get_user_status'], true)) {
     sendError('未知的操作类型', 400);
+}
+
+// 用户状态查询（不需要登录也可以查询，返回是否登录等信息）
+if ($action === 'get_user_status') {
+    $isLoggedIn = $auth->isLoggedIn();
+    $user = $isLoggedIn ? $auth->getCurrentUser() : null;
+    
+    echo json_encode([
+        'success' => true,
+        'logged_in' => $isLoggedIn,
+        'user' => $user ? [
+            'id' => $user['id'],
+            'username' => $user['username'],
+            'balance' => (float) ($user['balance'] ?? 0),
+            'can_generate' => (float) ($user['balance'] ?? 0) >= $pricePerImage,
+        ] : null,
+        'price_per_image' => $pricePerImage,
+    ]);
+    exit;
+}
+
+// 对于图片生成和编辑操作，需要检查用户登录和余额
+if (in_array($action, ['generate', 'edit'], true)) {
+    // 检查用户是否登录
+    if (!$auth->isLoggedIn()) {
+        sendError('请先登录后再使用图片生成功能', 401);
+    }
+
+    // 检查余额是否足够
+    $currentBalance = $auth->getCurrentUserBalance();
+    if ($currentBalance < $pricePerImage) {
+        echo json_encode([
+            'success' => false,
+            'message' => '余额不足，请先充值',
+            'code' => 'INSUFFICIENT_BALANCE',
+            'balance' => $currentBalance,
+            'required' => $pricePerImage,
+        ]);
+        exit;
+    }
 }
 
 // Gemini API Key
@@ -547,11 +595,41 @@ if (isset($responseData['candidates'][0]['content']['parts'])) {
 
 $resultThoughts = extractThoughtsFromResponse($responseData);
 
+// 如果成功生成了图片，扣除用户余额
+$billingResult = null;
+if (!empty($resultImages)) {
+    $imageCount = count($resultImages);
+    $totalCost = $pricePerImage * $imageCount;
+    
+    // 扣除余额
+    $billingResult = $auth->deductBalance(
+        $totalCost,
+        $action,
+        $imageCount,
+        $modelName,
+        mb_substr($prompt, 0, 200, 'UTF-8')  // 保存提示词前200字符作为备注
+    );
+    
+    if (!$billingResult['success']) {
+        // 扣费失败，但图片已生成，记录日志但不影响返回
+        error_log("Billing failed for user {$auth->getCurrentUserId()}: {$billingResult['message']}");
+    }
+}
+
+// 获取更新后的余额
+$updatedUser = $auth->refreshCurrentUser();
+$updatedBalance = $updatedUser ? (float) ($updatedUser['balance'] ?? 0) : null;
+
 // 返回结果
 echo json_encode([
     'success' => true,
     'images' => $resultImages,
     'text' => trim($resultText),
     'thoughts' => $resultThoughts,
-    'groundingMetadata' => $groundingMetadata
+    'groundingMetadata' => $groundingMetadata,
+    'billing' => $billingResult ? [
+        'charged' => $billingResult['success'],
+        'amount' => $billingResult['amount'] ?? 0,
+        'balance' => $updatedBalance,
+    ] : null,
 ]);
