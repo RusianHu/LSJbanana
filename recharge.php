@@ -60,11 +60,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         );
 
         if ($result['success']) {
-            // 跳转到支付页面
-            $auth->startSession();
-            $_SESSION['payment_redirect_url'] = $result['url'];
-            header('Location: payment_redirect.php');
-            exit;
+            $paymentUrl = $result['url'] ?? '';
+            if ($paymentUrl === '' || !preg_match('#^https?://#i', $paymentUrl)) {
+                $error = '支付地址异常，请稍后重试';
+            } else {
+                renderActionPage(
+                    '订单已创建',
+                    '请点击下方按钮前往支付页面完成充值。',
+                    [
+                        [
+                            'label' => '前往支付',
+                            'href' => $paymentUrl,
+                            'primary' => true,
+                            'new_tab' => true
+                        ],
+                        [
+                            'label' => '返回首页',
+                            'href' => url('index.php')
+                        ]
+                    ]
+                );
+            }
         } else {
             $error = $result['message'] ?? '创建支付订单失败';
         }

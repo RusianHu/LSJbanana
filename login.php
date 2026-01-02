@@ -1,5 +1,5 @@
 <?php
-ob_start(); // 启用输出缓冲，确保 header() 跳转正常工作
+ob_start(); // 启用输出缓冲，避免意外的提前输出
 
 /**
  * 用户登录页面
@@ -57,11 +57,24 @@ function normalizeRedirectPath(string $redirect, string $default = 'index.php'):
     return $normalized;
 }
 
-// 如果已登录，跳转到首页或指定页面
+// 如果已登录，提示前往目标页面
 if (isset($auth) && $auth && $auth->isLoggedIn()) {
     $redirect = normalizeRedirectPath($_GET['redirect'] ?? '', 'index.php');
-    header('Location: ' . $redirect);
-    exit;
+    renderActionPage(
+        '已登录',
+        '您已登录，无需重复操作。',
+        [
+            [
+                'label' => '继续前往',
+                'href' => url($redirect),
+                'primary' => true
+            ],
+            [
+                'label' => '返回首页',
+                'href' => url('index.php')
+            ]
+        ]
+    );
 }
 
 $error = '';
@@ -77,10 +90,22 @@ if (!isset($initError) && isset($auth) && $auth && isset($_GET['quick_login']) &
             $quickLoginResult = $auth->quickLogin($timestamp, $signature);
 
             if ($quickLoginResult['success']) {
-                // 快速登录成功，跳转到首页
                 $redirect = normalizeRedirectPath($_GET['redirect'] ?? '', 'index.php');
-                header('Location: ' . $redirect);
-                exit;
+                renderActionPage(
+                    '登录成功',
+                    '快速登录已完成，请继续。',
+                    [
+                        [
+                            'label' => '继续前往',
+                            'href' => url($redirect),
+                            'primary' => true
+                        ],
+                        [
+                            'label' => '返回首页',
+                            'href' => url('index.php')
+                        ]
+                    ]
+                );
             } else {
                 $error = $quickLoginResult['message'];
             }
@@ -102,8 +127,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($auth) && $auth) {
     $result = $auth->login($usernameOrEmail, $password, $remember, $captchaInput);
     if ($result['success']) {
         $redirect = normalizeRedirectPath($_POST['redirect'] ?? '', 'index.php');
-        header('Location: ' . $redirect);
-        exit;
+        renderActionPage(
+            '登录成功',
+            '登录已完成，请继续。',
+            [
+                [
+                    'label' => '继续前往',
+                    'href' => url($redirect),
+                    'primary' => true
+                ],
+                [
+                    'label' => '返回首页',
+                    'href' => url('index.php')
+                ]
+            ]
+        );
     } else {
         $error = $result['message'];
     }

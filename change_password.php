@@ -33,8 +33,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $result = $auth->changePassword($user['id'], $currentPassword, $newPassword);
         if ($result['success']) {
             $success = $result['message'];
-            // 密码修改成功后，用户会被登出，3秒后跳转到登录页
-            header('Refresh: 3; URL=login.php');
+            // 密码修改成功后，要求重新登录
+            $auth->logout();
+            renderActionPage(
+                '密码已更新',
+                '密码修改成功，请重新登录。',
+                [
+                    [
+                        'label' => '前往登录',
+                        'href' => url('login.php'),
+                        'primary' => true
+                    ],
+                    [
+                        'label' => '返回首页',
+                        'href' => url('index.php')
+                    ]
+                ]
+            );
         } else {
             $error = $result['message'];
         }
@@ -236,7 +251,7 @@ $minPasswordLength = $userConfig['password_min_length'] ?? 6;
             <?php if ($success): ?>
                 <div class="alert alert-success">
                     <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($success); ?>
-                    <br><small>3秒后跳转到登录页面...</small>
+                    <br><small>请前往登录页面重新登录。</small>
                 </div>
             <?php else: ?>
                 <form class="auth-form" method="POST" action="">

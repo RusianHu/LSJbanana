@@ -198,7 +198,7 @@ class AdminAuth {
     /**
      * 验证管理员权限(中间件)
      *
-     * @param bool $redirect 是否自动跳转到登录页
+     * @param bool $redirect 是否自动显示登录提示页
      * @return bool 是否已认证
      */
     public function requireAuth(bool $redirect = true): bool {
@@ -265,7 +265,21 @@ class AdminAuth {
         }
 
         $this->clearCookie();
-        $this->redirectToLogin();
+        renderActionPage(
+            '已退出登录',
+            '您已安全退出管理员账户。',
+            [
+                [
+                    'label' => '管理员登录',
+                    'href' => url('admin/login.php'),
+                    'primary' => true
+                ],
+                [
+                    'label' => '返回首页',
+                    'href' => url('index.php')
+                ]
+            ]
+        );
     }
 
     /**
@@ -276,15 +290,35 @@ class AdminAuth {
     }
 
     /**
-     * 跳转到登录页
+     * 显示登录提示页
      */
     private function redirectToLogin(string $reason = ''): void {
-        $url = 'login.php';
-        if ($reason) {
-            $url .= '?' . $reason . '=1';
+        $message = '请先登录后继续访问管理后台。';
+        if ($reason === 'expired') {
+            $message = '会话已过期，请重新登录。';
         }
-        header('Location: ' . $url);
-        exit;
+
+        $loginUrl = 'admin/login.php';
+        if ($reason) {
+            $loginUrl .= '?' . $reason . '=1';
+        }
+
+        renderActionPage(
+            '需要管理员登录',
+            $message,
+            [
+                [
+                    'label' => '管理员登录',
+                    'href' => url($loginUrl),
+                    'primary' => true
+                ],
+                [
+                    'label' => '返回首页',
+                    'href' => url('index.php')
+                ]
+            ],
+            401
+        );
     }
 
     /**

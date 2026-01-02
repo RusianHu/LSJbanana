@@ -1,5 +1,5 @@
 <?php
-ob_start(); // 启用输出缓冲，确保 header() 跳转正常工作
+ob_start(); // 启用输出缓冲，避免意外的提前输出
 
 /**
  * 用户注册页面
@@ -24,10 +24,23 @@ try {
     $config = null;
 }
 
-// 如果已登录，跳转到首页
+// 如果已登录，提示返回首页
 if (isset($auth) && $auth && $auth->isLoggedIn()) {
-    header('Location: index.php');
-    exit;
+    renderActionPage(
+        '已登录',
+        '您已登录，无需重复注册。',
+        [
+            [
+                'label' => '返回首页',
+                'href' => url('index.php'),
+                'primary' => true
+            ],
+            [
+                'label' => '前往充值',
+                'href' => url('recharge.php')
+            ]
+        ]
+    );
 }
 
 // 检查是否开放注册
@@ -56,8 +69,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($auth) && $auth) {
     } else {
         $result = $auth->register($username, $email, $password, $captchaInput);
         if ($result['success']) {
-            $success = '注册成功！正在跳转到登录页面...';
-            header('Refresh: 2; URL=login.php');
+            renderActionPage(
+                '注册成功',
+                '账号已创建，请使用新账号登录。',
+                [
+                    [
+                        'label' => '前往登录',
+                        'href' => url('login.php'),
+                        'primary' => true
+                    ],
+                    [
+                        'label' => '返回首页',
+                        'href' => url('index.php')
+                    ]
+                ]
+            );
         } else {
             $error = $result['message'];
         }

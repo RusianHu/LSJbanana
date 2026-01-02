@@ -480,7 +480,7 @@ class Auth {
     }
 
     /**
-     * 要求登录（如果未登录则跳转或返回错误）
+     * 要求登录（如果未登录则提示并终止）
      */
     public function requireLogin(bool $redirect = true): bool {
         if ($this->isLoggedIn()) {
@@ -489,8 +489,23 @@ class Auth {
 
         if ($redirect) {
             $redirectTarget = $this->buildRelativeRedirect($_SERVER['REQUEST_URI'] ?? '', 'index.php');
-            header('Location: login.php?redirect=' . urlencode($redirectTarget));
-            exit;
+            $loginUrl = 'login.php?redirect=' . urlencode($redirectTarget);
+            renderActionPage(
+                '需要登录',
+                '请先登录后继续访问该页面。',
+                [
+                    [
+                        'label' => '立即登录',
+                        'href' => url($loginUrl),
+                        'primary' => true
+                    ],
+                    [
+                        'label' => '返回首页',
+                        'href' => url('index.php')
+                    ]
+                ],
+                401
+            );
         }
 
         return false;

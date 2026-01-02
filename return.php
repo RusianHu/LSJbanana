@@ -59,6 +59,7 @@ $user = null;
 if ($auth->isLoggedIn()) {
     $user = $auth->refreshCurrentUser();
 }
+$isPending = (!$success && strpos($message, '处理中') !== false);
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -177,11 +178,6 @@ if ($auth->isLoggedIn()) {
         .btn-secondary-link:hover {
             background: #e0e0e0;
         }
-        .auto-redirect {
-            margin-top: 20px;
-            font-size: 0.85rem;
-            color: #999;
-        }
     </style>
 </head>
 <body>
@@ -225,13 +221,6 @@ if ($auth->isLoggedIn()) {
                 <h1 class="result-title">支付处理中</h1>
                 <p class="result-message"><?php echo htmlspecialchars($message); ?></p>
 
-                <p class="auto-redirect">页面将在 5 秒后自动刷新...</p>
-                <script>
-                    setTimeout(function() {
-                        location.reload();
-                    }, 5000);
-                </script>
-
             <?php else: ?>
                 <div class="result-icon error">
                     <i class="fas fa-times-circle"></i>
@@ -241,10 +230,15 @@ if ($auth->isLoggedIn()) {
             <?php endif; ?>
 
             <div class="action-buttons">
-                <a href="index.php" class="btn-primary-link">
+                <?php if ($isPending): ?>
+                    <a href="<?php echo htmlspecialchars($_SERVER['REQUEST_URI'] ?? url('return.php')); ?>" class="btn-secondary-link">
+                        <i class="fas fa-sync-alt"></i> 刷新状态
+                    </a>
+                <?php endif; ?>
+                <a href="<?php echo htmlspecialchars(url('index.php')); ?>" class="btn-primary-link">
                     <i class="fas fa-home"></i> 返回首页
                 </a>
-                <a href="recharge.php" class="btn-secondary-link">
+                <a href="<?php echo htmlspecialchars(url('recharge.php')); ?>" class="btn-secondary-link">
                     <i class="fas fa-redo"></i> 继续充值
                 </a>
             </div>

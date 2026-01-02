@@ -42,8 +42,21 @@ if (!is_array($supportedResolutions) || $supportedResolutions === []) {
 // 处理登出请求
 if (isset($_GET['action']) && $_GET['action'] === 'logout') {
     $auth->logout();
-    header('Location: index.php');
-    exit;
+    renderActionPage(
+        '已退出登录',
+        '您已安全退出登录。',
+        [
+            [
+                'label' => '返回首页',
+                'href' => url('index.php'),
+                'primary' => true
+            ],
+            [
+                'label' => '前往登录',
+                'href' => url('login.php')
+            ]
+        ]
+    );
 }
 ?>
 <!DOCTYPE html>

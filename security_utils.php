@@ -377,3 +377,109 @@ function url(string $path): string {
     }
     return $base . $path;
 }
+
+/**
+ * 渲染简单的提示页面并终止执行
+ *
+ * @param string $title 页面标题
+ * @param string $message 提示内容
+ * @param array $actions 操作按钮列表
+ * @param int $httpStatus HTTP 状态码
+ */
+function renderActionPage(string $title, string $message, array $actions = [], int $httpStatus = 200): void {
+    if ($httpStatus >= 400) {
+        http_response_code($httpStatus);
+    }
+
+    header('Content-Type: text/html; charset=utf-8');
+
+    $titleSafe = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
+    $messageSafe = nl2br(htmlspecialchars($message, ENT_QUOTES, 'UTF-8'));
+    $styleHref = htmlspecialchars(url('/style.css'), ENT_QUOTES, 'UTF-8');
+
+    if (empty($actions)) {
+        $actions = [
+            [
+                'label' => '返回首页',
+                'href' => url('index.php'),
+                'primary' => true
+            ]
+        ];
+    }
+
+    $actionsHtml = '';
+    foreach ($actions as $action) {
+        $label = htmlspecialchars($action['label'] ?? '继续', ENT_QUOTES, 'UTF-8');
+        $href = htmlspecialchars($action['href'] ?? '#', ENT_QUOTES, 'UTF-8');
+        $primary = !empty($action['primary']);
+        $newTab = !empty($action['new_tab']);
+        $className = $primary ? 'btn-primary' : 'btn-secondary';
+        $targetAttr = $newTab ? ' target="_blank" rel="noopener"' : '';
+        $actionsHtml .= '<a class="' . $className . '" href="' . $href . '"' . $targetAttr . '>' . $label . '</a>';
+    }
+
+    echo <<<HTML
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{$titleSafe}</title>
+    <link rel="stylesheet" href="{$styleHref}">
+    <style>
+        .action-page {
+            max-width: 520px;
+            margin: 80px auto;
+            padding: 0 20px;
+        }
+        .action-card {
+            background: var(--panel-bg);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            padding: 36px 32px;
+            text-align: center;
+        }
+        .action-title {
+            font-size: 1.6rem;
+            margin-bottom: 12px;
+            color: #333;
+        }
+        .action-message {
+            color: #666;
+            line-height: 1.6;
+        }
+        .action-links {
+            margin-top: 24px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            justify-content: center;
+        }
+        .action-links a {
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: auto;
+            padding: 10px 18px;
+        }
+        .action-links .btn-primary,
+        .action-links .btn-secondary {
+            width: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="action-page">
+        <div class="action-card">
+            <div class="action-title">{$titleSafe}</div>
+            <div class="action-message">{$messageSafe}</div>
+            <div class="action-links">{$actionsHtml}</div>
+        </div>
+    </div>
+</body>
+</html>
+HTML;
+
+    exit;
+}

@@ -23,8 +23,21 @@ try {
             $setupService = new AdminSetupService($fullConfig);
             $setupStatus = $setupService->getStatus();
             if ($setupStatus['enabled'] && $setupStatus['ip_allowed'] && !empty($setupStatus['missing_tables']) && !isset($_GET['skip_setup'])) {
-                header('Location: ../setup_admin.php?from=admin_login');
-                exit;
+                renderActionPage(
+                    '需要初始化管理员系统',
+                    '检测到管理员表缺失，请先完成初始化引导。',
+                    [
+                        [
+                            'label' => '开始初始化',
+                            'href' => url('setup_admin.php?from=admin_login'),
+                            'primary' => true
+                        ],
+                        [
+                            'label' => '返回首页',
+                            'href' => url('index.php')
+                        ]
+                    ]
+                );
             }
         }
     }
@@ -43,10 +56,23 @@ try {
         // logout() 方法内部会 exit，不会执行到这里
     }
 
-    // 如果已登录,跳转到管理后台首页
+    // 如果已登录,提示进入管理后台
     if ($adminAuth->requireAuth(false)) {
-        header('Location: index.php');
-        exit;
+        renderActionPage(
+            '已登录',
+            '您已登录管理员账户，可以继续访问后台。',
+            [
+                [
+                    'label' => '进入后台',
+                    'href' => url('admin/index.php'),
+                    'primary' => true
+                ],
+                [
+                    'label' => '返回首页',
+                    'href' => url('index.php')
+                ]
+            ]
+        );
     }
 } catch (Exception $e) {
     // 捕获初始化错误
@@ -79,9 +105,21 @@ if (!$initError && isset($_GET['quick_login']) && $_GET['quick_login'] === '1') 
             $quickLoginResult = $adminAuth->quickLogin($timestamp, $signature);
 
             if ($quickLoginResult['success']) {
-                // 快速登录成功，跳转到管理后台首页
-                header('Location: index.php');
-                exit;
+                renderActionPage(
+                    '登录成功',
+                    '管理员快速登录已完成，请继续进入后台。',
+                    [
+                        [
+                            'label' => '进入后台',
+                            'href' => url('admin/index.php'),
+                            'primary' => true
+                        ],
+                        [
+                            'label' => '返回首页',
+                            'href' => url('index.php')
+                        ]
+                    ]
+                );
             } else {
                 $error = $quickLoginResult['message'];
             }
@@ -111,8 +149,21 @@ if (!$initError && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $result = $adminAuth->login($key, $captchaInput);
 
         if ($result['success']) {
-            header('Location: index.php');
-            exit;
+            renderActionPage(
+                '登录成功',
+                '管理员登录已完成，请继续进入后台。',
+                [
+                    [
+                        'label' => '进入后台',
+                        'href' => url('admin/index.php'),
+                        'primary' => true
+                    ],
+                    [
+                        'label' => '返回首页',
+                        'href' => url('index.php')
+                    ]
+                ]
+            );
         } else {
             $error = $result['message'];
             $lockoutTime = $result['lockout_time'] ?? 0;
