@@ -103,7 +103,8 @@ class AdminAuth {
             return 0;
         }
 
-        $lastAttemptTime = strtotime($result['attempt_time']);
+        // SQLite 的 datetime() 返回 UTC 时间，需要明确指定时区
+        $lastAttemptTime = strtotime($result['attempt_time'] . ' UTC');
         $unlockTime = $lastAttemptTime + $lockoutDuration;
         $remaining = $unlockTime - time();
 
@@ -222,7 +223,8 @@ class AdminAuth {
         }
 
         // 检查是否过期
-        if (strtotime($session['expires_at']) < time()) {
+        // 注意：SQLite 的 datetime() 函数返回 UTC 时间，需要在解析时明确指定时区
+        if (strtotime($session['expires_at'] . ' UTC') < time()) {
             $this->db->deleteAdminSession($token);
             if ($redirect) {
                 $this->clearCookie();
