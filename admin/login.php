@@ -23,7 +23,7 @@ try {
             $setupService = new AdminSetupService($fullConfig);
             $setupStatus = $setupService->getStatus();
             if ($setupStatus['enabled'] && $setupStatus['ip_allowed'] && !empty($setupStatus['missing_tables']) && !isset($_GET['skip_setup'])) {
-                header('Location: ' . url('/setup_admin.php?from=admin_login'));
+                header('Location: ../setup_admin.php?from=admin_login');
                 exit;
             }
         }
@@ -45,7 +45,7 @@ try {
 
     // 如果已登录,跳转到管理后台首页
     if ($adminAuth->requireAuth(false)) {
-        header('Location: ' . url('/admin/index.php'));
+        header('Location: index.php');
         exit;
     }
 } catch (Exception $e) {
@@ -80,7 +80,7 @@ if (!$initError && isset($_GET['quick_login']) && $_GET['quick_login'] === '1') 
 
             if ($quickLoginResult['success']) {
                 // 快速登录成功，跳转到管理后台首页
-                header('Location: ' . url('/admin/index.php'));
+                header('Location: index.php');
                 exit;
             } else {
                 $error = $quickLoginResult['message'];
@@ -111,7 +111,7 @@ if (!$initError && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $result = $adminAuth->login($key, $captchaInput);
 
         if ($result['success']) {
-            header('Location: ' . url('/admin/index.php'));
+            header('Location: index.php');
             exit;
         } else {
             $error = $result['message'];

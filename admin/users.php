@@ -297,6 +297,10 @@ function formatTime($datetime): string {
         </div>
     </div>
 
+    <script>
+    // 注入 API 端点配置 (可选,script.js 会回退到相对路径)
+    window.ADMIN_API_ENDPOINT = '<?php echo url('/admin/api.php'); ?>';
+    </script>
     <script src="<?php echo url('/admin/script.js'); ?>"></script>
     <script>
         // 查看用户详情

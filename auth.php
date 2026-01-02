@@ -440,6 +440,46 @@ class Auth {
     }
 
     /**
+     * Build a relative redirect target.
+     */
+    private function buildRelativeRedirect(string $requestUri, string $default = 'index.php'): string {
+        $requestUri = trim($requestUri);
+        if ($requestUri === '') {
+            return $default;
+        }
+
+        $parts = parse_url($requestUri);
+        $path = $parts['path'] ?? '';
+        $query = $parts['query'] ?? '';
+        $fragment = $parts['fragment'] ?? '';
+
+        $path = str_replace('\\', '/', $path);
+        $basePath = function_exists('getBasePath') ? getBasePath() : '';
+
+        if ($basePath !== '' && $path === $basePath) {
+            $path = '';
+        } elseif ($basePath !== '' && strpos($path, $basePath . '/') === 0) {
+            $path = substr($path, strlen($basePath) + 1);
+        } else {
+            $path = ltrim($path, '/');
+        }
+
+        if ($path === '') {
+            $path = $default;
+        }
+
+        $relative = $path;
+        if ($query !== '') {
+            $relative .= '?' . $query;
+        }
+        if ($fragment !== '') {
+            $relative .= '#' . $fragment;
+        }
+
+        return $relative;
+    }
+
+    /**
      * 要求登录（如果未登录则跳转或返回错误）
      */
     public function requireLogin(bool $redirect = true): bool {
@@ -448,7 +488,8 @@ class Auth {
         }
 
         if ($redirect) {
-            header('Location: login.php?redirect=' . urlencode($_SERVER['REQUEST_URI']));
+            $redirectTarget = $this->buildRelativeRedirect($_SERVER['REQUEST_URI'] ?? '', 'index.php');
+            header('Location: login.php?redirect=' . urlencode($redirectTarget));
             exit;
         }
 
@@ -697,12 +738,13 @@ class Auth {
     }
 
     /**
-     * 获取网站基础URL
+     * 获取网站基础URL (包含子目录路径)
      */
     private function getBaseUrl(): string {
         $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
         $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-        return $protocol . '://' . $host;
+        $basePath = getBasePath(); // 包含子目录路径,例如 /LSJbanana
+        return $protocol . '://' . $host . $basePath;
     }
 
     // ============================================================

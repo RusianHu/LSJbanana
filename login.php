@@ -17,13 +17,49 @@ try {
     $auth = null;
 }
 
+function normalizeRedirectPath(string $redirect, string $default = 'index.php'): string {
+    $redirect = trim($redirect);
+    if ($redirect === '') {
+        return $default;
+    }
+
+    if (strpos($redirect, '//') !== false || strpos($redirect, ':') !== false) {
+        return $default;
+    }
+
+    $redirect = str_replace('\\', '/', $redirect);
+    $parts = parse_url($redirect);
+    $path = $parts['path'] ?? '';
+    $query = $parts['query'] ?? '';
+    $fragment = $parts['fragment'] ?? '';
+
+    $basePath = function_exists('getBasePath') ? getBasePath() : '';
+    if ($basePath !== '' && $path === $basePath) {
+        $path = '';
+    } elseif ($basePath !== '' && strpos($path, $basePath . '/') === 0) {
+        $path = substr($path, strlen($basePath) + 1);
+    } else {
+        $path = ltrim($path, '/');
+    }
+
+    if ($path === '') {
+        $path = $default;
+    }
+
+    $normalized = $path;
+    if ($query !== '') {
+        $normalized .= '?' . $query;
+    }
+    if ($fragment !== '') {
+        $normalized .= '#' . $fragment;
+    }
+
+    return $normalized;
+}
+
 // 如果已登录，跳转到首页或指定页面
 if (isset($auth) && $auth && $auth->isLoggedIn()) {
-    $redirect = !empty($_GET['redirect']) ? $_GET['redirect'] : 'index.php';
-    // 防止开放重定向攻击
-    if (strpos($redirect, '//') !== false || strpos($redirect, ':') !== false) {
-        $redirect = 'index.php';
-    }
+    $redirect = normalizeRedirectPath($_GET['redirect'] ?? '', 'index.php');
     header('Location: ' . $redirect);
     exit;
 }
@@ -42,10 +78,7 @@ if (!isset($initError) && isset($auth) && $auth && isset($_GET['quick_login']) &
 
             if ($quickLoginResult['success']) {
                 // 快速登录成功，跳转到首页
-                $redirect = !empty($_GET['redirect']) ? $_GET['redirect'] : 'index.php';
-                if (strpos($redirect, '//') !== false || strpos($redirect, ':') !== false) {
-                    $redirect = 'index.php';
-                }
+                $redirect = normalizeRedirectPath($_GET['redirect'] ?? '', 'index.php');
                 header('Location: ' . $redirect);
                 exit;
             } else {
@@ -68,11 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($auth) && $auth) {
 
     $result = $auth->login($usernameOrEmail, $password, $remember, $captchaInput);
     if ($result['success']) {
-        $redirect = !empty($_POST['redirect']) ? $_POST['redirect'] : 'index.php';
-        // 防止开放重定向攻击
-        if (strpos($redirect, '//') !== false || strpos($redirect, ':') !== false) {
-            $redirect = 'index.php';
-        }
+        $redirect = normalizeRedirectPath($_POST['redirect'] ?? '', 'index.php');
         header('Location: ' . $redirect);
         exit;
     } else {
@@ -80,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($auth) && $auth) {
     }
 }
 
-$redirect = $_GET['redirect'] ?? '';
+$redirect = normalizeRedirectPath($_GET['redirect'] ?? '', '');
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">

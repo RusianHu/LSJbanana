@@ -61,7 +61,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($result['success']) {
             // 跳转到支付页面
-            header('Location: ' . $result['url']);
+            $auth->startSession();
+            $_SESSION['payment_redirect_url'] = $result['url'];
+            header('Location: payment_redirect.php');
             exit;
         } else {
             $error = $result['message'] ?? '创建支付订单失败';

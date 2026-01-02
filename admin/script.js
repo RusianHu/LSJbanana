@@ -25,7 +25,9 @@ function confirm(message, callback) {
 }
 
 // AJAX 请求封装
-const ADMIN_API_ENDPOINT = '/admin/api.php';
+// 注意: ADMIN_API_ENDPOINT 应该在 HTML 中通过 PHP 注入
+// 如果未定义,则回退到相对路径 (在二级目录中也能正常工作)
+const ADMIN_API_ENDPOINT = window.ADMIN_API_ENDPOINT || 'api.php';
 
 async function apiRequest(action, data = {}) {
     try {
