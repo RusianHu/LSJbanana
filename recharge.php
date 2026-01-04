@@ -17,7 +17,11 @@ $auth->requireLogin(true);
 $config = require __DIR__ . '/config.php';
 $billingConfig = $config['billing'] ?? [];
 $pricePerTask = (float) ($billingConfig['price_per_task'] ?? $billingConfig['price_per_image'] ?? 0.20);
+$orderExpireMinutes = (int) ($billingConfig['order_expire_minutes'] ?? 5);
 $user = $auth->getCurrentUser();
+
+// 确保数据库表有 expires_at 字段（自动迁移）
+$db->migrateAddExpiresAtColumn();
 
 $error = '';
 $success = '';
@@ -47,8 +51,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $outTradeNo = $payment->generateOutTradeNo();
         $userId = $auth->getCurrentUserId();
 
-        // 创建充值订单记录
-        $db->createRechargeOrder($userId, $outTradeNo, $amount, $payType ?: null);
+        // 创建充值订单记录（带过期时间）
+        $db->createRechargeOrder($userId, $outTradeNo, $amount, $payType ?: null, $orderExpireMinutes);
 
         // 创建支付订单
         $result = $payment->createOrder(

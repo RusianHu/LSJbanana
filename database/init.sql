@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS recharge_orders (
     pay_type VARCHAR(20),                       -- 支付方式: alipay/wxpay/qqpay
     status INTEGER DEFAULT 0,                   -- 0:待支付, 1:已支付, 2:已取消, 3:已退款
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME,                        -- 订单过期时间
     paid_at DATETIME,
     notify_data TEXT,                           -- 支付回调原始数据 (JSON)
     FOREIGN KEY (user_id) REFERENCES users(id)
@@ -45,6 +46,8 @@ CREATE INDEX IF NOT EXISTS idx_recharge_trade_no ON recharge_orders(trade_no);
 CREATE INDEX IF NOT EXISTS idx_recharge_user_id ON recharge_orders(user_id);
 -- 状态索引
 CREATE INDEX IF NOT EXISTS idx_recharge_status ON recharge_orders(status);
+-- 过期时间索引
+CREATE INDEX IF NOT EXISTS idx_recharge_expires_at ON recharge_orders(expires_at);
 
 -- 余额变动日志表 (管理员手动充值/扣款)
 CREATE TABLE IF NOT EXISTS balance_logs (

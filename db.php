@@ -585,10 +585,20 @@ class Database {
 
     /**
      * 创建充值订单
+     *
+     * @param int $userId 用户ID
+     * @param string $outTradeNo 商户订单号
+     * @param float $amount 金额
+     * @param string|null $payType 支付方式
+     * @param int $expireMinutes 过期时间（分钟），0表示不过期
+     * @return int 订单ID
      */
-    public function createRechargeOrder(int $userId, string $outTradeNo, float $amount, ?string $payType = null): int {
-        $sql = "INSERT INTO recharge_orders (user_id, out_trade_no, amount, pay_type, status, created_at)
-                VALUES (:user_id, :out_trade_no, :amount, :pay_type, 0, :created_at)";
+    public function createRechargeOrder(int $userId, string $outTradeNo, float $amount, ?string $payType = null, int $expireMinutes = 5): int {
+        $now = $this->now();
+        $expiresAt = $expireMinutes > 0 ? date('Y-m-d H:i:s', time() + $expireMinutes * 60) : null;
+        
+        $sql = "INSERT INTO recharge_orders (user_id, out_trade_no, amount, pay_type, status, created_at, expires_at)
+                VALUES (:user_id, :out_trade_no, :amount, :pay_type, 0, :created_at, :expires_at)";
         
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
@@ -596,7 +606,8 @@ class Database {
             ':out_trade_no' => $outTradeNo,
             ':amount' => $amount,
             ':pay_type' => $payType,
-            ':created_at' => $this->now(),
+            ':created_at' => $now,
+            ':expires_at' => $expiresAt,
         ]);
         return (int) $this->pdo->lastInsertId();
     }
@@ -610,6 +621,128 @@ class Database {
         $stmt->execute([':out_trade_no' => $outTradeNo]);
         $order = $stmt->fetch();
         return $order ?: null;
+    }
+
+    /**
+     * 检查订单是否已过期
+     *
+     * @param array $order 订单数据
+     * @return bool 是否已过期
+     */
+    public function isOrderExpired(array $order): bool {
+        // 只有待支付订单才检查过期
+        if ((int)$order['status'] !== 0) {
+            return false;
+        }
+        
+        // 如果没有设置过期时间，则不过期
+        if (empty($order['expires_at'])) {
+            return false;
+        }
+        
+        return strtotime($order['expires_at']) < time();
+    }
+
+    /**
+     * 获取已过期的待支付订单
+     *
+     * @param int $limit 限制数量
+     * @return array 过期订单列表
+     */
+    public function getExpiredPendingOrders(int $limit = 100): array {
+        $sql = "SELECT * FROM recharge_orders
+                WHERE status = 0
+                AND expires_at IS NOT NULL
+                AND expires_at < :now
+                ORDER BY created_at ASC
+                LIMIT :limit";
+        
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindValue(':now', $this->now());
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * 获取过期待支付订单数量
+     *
+     * @return int 过期订单数量
+     */
+    public function getExpiredPendingOrderCount(): int {
+        $sql = "SELECT COUNT(*) as count FROM recharge_orders
+                WHERE status = 0
+                AND expires_at IS NOT NULL
+                AND expires_at < :now";
+        
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':now' => $this->now()]);
+        $result = $stmt->fetch();
+        return (int)($result['count'] ?? 0);
+    }
+
+    /**
+     * 批量取消过期订单
+     *
+     * @param int $limit 每次处理的最大数量
+     * @return int 取消的订单数量
+     */
+    public function cancelExpiredOrders(int $limit = 100): int {
+        $sql = "UPDATE recharge_orders
+                SET status = 2
+                WHERE status = 0
+                AND expires_at IS NOT NULL
+                AND expires_at < :now
+                LIMIT :limit";
+        
+        // SQLite 不支持 UPDATE ... LIMIT，需要用子查询
+        $sql = "UPDATE recharge_orders
+                SET status = 2
+                WHERE id IN (
+                    SELECT id FROM recharge_orders
+                    WHERE status = 0
+                    AND expires_at IS NOT NULL
+                    AND expires_at < :now
+                    LIMIT :limit
+                )";
+        
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindValue(':now', $this->now());
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->rowCount();
+    }
+
+    /**
+     * 取消指定订单
+     *
+     * @param string $outTradeNo 商户订单号
+     * @return bool 是否成功
+     */
+    public function cancelOrder(string $outTradeNo): bool {
+        $sql = "UPDATE recharge_orders SET status = 2 WHERE out_trade_no = :out_trade_no AND status = 0";
+        $stmt = $this->pdo->prepare($sql);
+        return $stmt->execute([':out_trade_no' => $outTradeNo]);
+    }
+
+    /**
+     * 批量取消订单（按ID列表）
+     *
+     * @param array $orderIds 订单ID列表
+     * @return int 取消的订单数量
+     */
+    public function cancelOrdersByIds(array $orderIds): int {
+        if (empty($orderIds)) {
+            return 0;
+        }
+        
+        // 构建占位符
+        $placeholders = implode(',', array_fill(0, count($orderIds), '?'));
+        $sql = "UPDATE recharge_orders SET status = 2 WHERE id IN ($placeholders) AND status = 0";
+        
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($orderIds);
+        return $stmt->rowCount();
     }
 
     /**
@@ -642,6 +775,111 @@ class Database {
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
         return $stmt->fetchAll();
+    }
+
+    /**
+     * 迁移：为现有数据库添加 expires_at 字段
+     *
+     * @return bool 是否成功
+     */
+    public function migrateAddExpiresAtColumn(): bool {
+        try {
+            // 检查列是否存在
+            $result = $this->pdo->query("PRAGMA table_info(recharge_orders)");
+            $columns = $result->fetchAll(PDO::FETCH_ASSOC);
+            $hasExpiresAt = false;
+            
+            foreach ($columns as $column) {
+                if ($column['name'] === 'expires_at') {
+                    $hasExpiresAt = true;
+                    break;
+                }
+            }
+            
+            if (!$hasExpiresAt) {
+                $this->pdo->exec("ALTER TABLE recharge_orders ADD COLUMN expires_at DATETIME");
+                $this->pdo->exec("CREATE INDEX IF NOT EXISTS idx_recharge_expires_at ON recharge_orders(expires_at)");
+                
+                // 为旧的待支付订单回填过期时间（创建时间 + 5分钟）
+                $this->backfillExpiredAtForOldOrders(5);
+                
+                return true;
+            }
+            
+            return true; // 列已存在
+        } catch (PDOException $e) {
+            error_log('Migration error: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 回填旧订单的过期时间
+     *
+     * 为没有 expires_at 的待支付订单设置过期时间（创建时间 + 指定分钟数）
+     *
+     * @param int $expireMinutes 过期时间（分钟）
+     * @return int 更新的订单数量
+     */
+    public function backfillExpiredAtForOldOrders(int $expireMinutes = 5): int {
+        // 使用 SQLite 的 datetime 函数计算过期时间
+        // 公式: expires_at = created_at + expireMinutes 分钟
+        $sql = "UPDATE recharge_orders
+                SET expires_at = datetime(created_at, '+{$expireMinutes} minutes')
+                WHERE expires_at IS NULL
+                AND status = 0";
+        
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute();
+        $count = $stmt->rowCount();
+        
+        if ($count > 0) {
+            error_log("Backfilled expires_at for {$count} old pending orders");
+        }
+        
+        return $count;
+    }
+
+    /**
+     * 获取没有过期时间的待支付订单数量
+     *
+     * @return int 订单数量
+     */
+    public function getPendingOrdersWithoutExpiresAt(): int {
+        $sql = "SELECT COUNT(*) as count FROM recharge_orders
+                WHERE status = 0 AND expires_at IS NULL";
+        
+        $stmt = $this->pdo->query($sql);
+        $result = $stmt->fetch();
+        return (int)($result['count'] ?? 0);
+    }
+
+    /**
+     * 手动回填所有旧订单的过期时间
+     *
+     * 可用于管理员手动触发回填操作
+     *
+     * @param int $expireMinutes 过期时间（分钟）
+     * @return array 结果信息
+     */
+    public function manualBackfillExpiredAt(int $expireMinutes = 5): array {
+        $beforeCount = $this->getPendingOrdersWithoutExpiresAt();
+        
+        if ($beforeCount === 0) {
+            return [
+                'success' => true,
+                'message' => '没有需要回填的订单',
+                'updated_count' => 0
+            ];
+        }
+        
+        $updatedCount = $this->backfillExpiredAtForOldOrders($expireMinutes);
+        
+        return [
+            'success' => true,
+            'message' => "已为 {$updatedCount} 个旧订单回填过期时间",
+            'updated_count' => $updatedCount
+        ];
     }
 
     // ============================================================

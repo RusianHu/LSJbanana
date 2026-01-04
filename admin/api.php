@@ -387,6 +387,88 @@ try {
             }
             break;
 
+        // ============================================================
+        // 订单管理相关
+        // ============================================================
+
+        case 'cancel_expired_orders':
+            // 批量取消过期订单
+            $cancelledCount = $db->cancelExpiredOrders(1000);  // 每次最多处理1000个
+            
+            // 记录操作日志
+            $db->logAdminOperation('cancel_expired_orders', null, [
+                'cancelled_count' => $cancelledCount
+            ], getClientIp());
+            
+            jsonResponse(true, "已取消 {$cancelledCount} 个过期订单", [
+                'cancelled_count' => $cancelledCount
+            ]);
+            break;
+
+        case 'cancel_order':
+            // 取消单个订单
+            $outTradeNo = trim($_POST['out_trade_no'] ?? '');
+            if (empty($outTradeNo)) {
+                jsonResponse(false, '订单号不能为空');
+            }
+            
+            $order = $db->getRechargeOrderByOutTradeNo($outTradeNo);
+            if (!$order) {
+                jsonResponse(false, '订单不存在');
+            }
+            
+            if ((int)$order['status'] !== 0) {
+                jsonResponse(false, '只能取消待支付订单');
+            }
+            
+            $result = $db->cancelOrder($outTradeNo);
+            if ($result) {
+                // 记录操作日志
+                $db->logAdminOperation('cancel_order', $order['user_id'], [
+                    'out_trade_no' => $outTradeNo,
+                    'amount' => $order['amount']
+                ], getClientIp());
+                
+                jsonResponse(true, '订单已取消');
+            } else {
+                jsonResponse(false, '取消失败');
+            }
+            break;
+
+        case 'get_expired_order_count':
+            // 获取过期订单数量
+            $count = $db->getExpiredPendingOrderCount();
+            jsonResponse(true, '获取成功', ['count' => $count]);
+            break;
+
+        case 'backfill_expired_at':
+            // 手动为旧订单回填过期时间
+            $expireMinutes = (int)($_POST['expire_minutes'] ?? 5);
+            if ($expireMinutes <= 0) {
+                $expireMinutes = 5;
+            }
+            
+            $result = $db->manualBackfillExpiredAt($expireMinutes);
+            
+            if ($result['updated_count'] > 0) {
+                // 记录操作日志
+                $db->logAdminOperation('backfill_expired_at', null, [
+                    'expire_minutes' => $expireMinutes,
+                    'updated_count' => $result['updated_count']
+                ], getClientIp());
+            }
+            
+            jsonResponse($result['success'], $result['message'], [
+                'updated_count' => $result['updated_count']
+            ]);
+            break;
+
+        case 'get_orders_without_expires':
+            // 获取没有过期时间的待支付订单数量
+            $count = $db->getPendingOrdersWithoutExpiresAt();
+            jsonResponse(true, '获取成功', ['count' => $count]);
+            break;
+
         default:
             jsonResponse(false, '未知的操作: ' . $action);
     }

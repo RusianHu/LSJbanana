@@ -52,6 +52,22 @@ if ((int)$order['status'] === 1) {
     exit;
 }
 
+// 检查订单是否已取消
+if ((int)$order['status'] === 2) {
+    $logData = date('Y-m-d H:i:s') . " - Order cancelled: {$outTradeNo}\n";
+    file_put_contents(__DIR__ . '/logs/notify.log', $logData, FILE_APPEND | LOCK_EX);
+    echo 'fail';
+    exit;
+}
+
+// 检查订单是否过期（但仍接受支付，因为用户可能在过期前已付款）
+// 注意：这里不拒绝已过期但已付款的订单，因为支付回调可能延迟
+if ($db->isOrderExpired($order)) {
+    $logData = date('Y-m-d H:i:s') . " - Order expired but paid, processing: {$outTradeNo}\n";
+    file_put_contents(__DIR__ . '/logs/notify.log', $logData, FILE_APPEND | LOCK_EX);
+    // 继续处理，因为支付已完成
+}
+
 // 验证金额
 if (abs((float)$order['amount'] - $money) > 0.01) {
     $logData = date('Y-m-d H:i:s') . " - Amount mismatch: order={$order['amount']}, paid={$money}\n";
