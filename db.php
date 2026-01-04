@@ -766,9 +766,19 @@ class Database {
 
     /**
      * 获取用户的充值记录
+     *
+     * @param int $userId 用户ID
+     * @param int $limit 限制数量
+     * @param int $offset 偏移量
+     * @param bool $excludeCancelled 是否排除已取消的订单（默认true）
+     * @return array 订单列表
      */
-    public function getUserRechargeOrders(int $userId, int $limit = 20, int $offset = 0): array {
-        $sql = "SELECT * FROM recharge_orders WHERE user_id = :user_id ORDER BY created_at DESC LIMIT :limit OFFSET :offset";
+    public function getUserRechargeOrders(int $userId, int $limit = 20, int $offset = 0, bool $excludeCancelled = true): array {
+        $sql = "SELECT * FROM recharge_orders WHERE user_id = :user_id";
+        if ($excludeCancelled) {
+            $sql .= " AND status != 2";
+        }
+        $sql .= " ORDER BY created_at DESC LIMIT :limit OFFSET :offset";
         $stmt = $this->pdo->prepare($sql);
         $stmt->bindValue(':user_id', $userId, PDO::PARAM_INT);
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
