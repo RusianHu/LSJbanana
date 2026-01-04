@@ -184,13 +184,14 @@ try {
                 // 记录充值日志
                 $db->execute(
                     "INSERT INTO balance_logs (user_id, type, amount, balance_before, balance_after, remark, created_at)
-                     VALUES (:user_id, 'recharge', :amount, :before, :after, :remark, datetime('now'))",
+                     VALUES (:user_id, 'recharge', :amount, :before, :after, :remark, :created_at)",
                     [
                         'user_id' => $userId,
                         'amount' => $amount,
                         'before' => $user['balance'],
                         'after' => $newBalance,
-                        'remark' => '管理员人工充值: ' . $remark
+                        'remark' => '管理员人工充值: ' . $remark,
+                        'created_at' => date('Y-m-d H:i:s')
                     ]
                 );
 
@@ -243,13 +244,14 @@ try {
                 // 记录扣款日志
                 $db->execute(
                     "INSERT INTO balance_logs (user_id, type, amount, balance_before, balance_after, remark, created_at)
-                     VALUES (:user_id, 'deduct', :amount, :before, :after, :remark, datetime('now'))",
+                     VALUES (:user_id, 'deduct', :amount, :before, :after, :remark, :created_at)",
                     [
                         'user_id' => $userId,
                         'amount' => -$amount,
                         'before' => $user['balance'],
                         'after' => $newBalance,
-                        'remark' => '管理员人工扣款: ' . $remark
+                        'remark' => '管理员人工扣款: ' . $remark,
+                        'created_at' => date('Y-m-d H:i:s')
                     ]
                 );
 

@@ -28,8 +28,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $customAmount = (float) ($_POST['custom_amount'] ?? 0);
     $payType = $_POST['pay_type'] ?? '';
 
-    // 如果选择了自定义金额
-    if ($amount === 0 && $customAmount > 0) {
+    // 如果选择了自定义金额（使用 <= 0 避免 float/int 类型比较问题）
+    if ($amount <= 0 && $customAmount > 0) {
         $amount = $customAmount;
     }
 

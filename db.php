@@ -1,7 +1,7 @@
 <?php
 /**
  * 数据库操作类
- * 
+ *
  * 使用 SQLite3 作为数据库，提供用户、订单、消费记录的 CRUD 操作
  */
 
@@ -9,6 +9,18 @@ class Database {
     private static ?Database $instance = null;
     private ?PDO $pdo = null;
     private array $config;
+    
+    /**
+     * 获取当前本地时间的 ISO 格式字符串
+     *
+     * 注意：SQLite 的 datetime('now') 返回 UTC 时间，
+     * 为确保时间显示正确，使用 PHP 的 date() 函数生成本地时间
+     *
+     * @return string 格式为 'Y-m-d H:i:s' 的时间字符串
+     */
+    private function now(): string {
+        return date('Y-m-d H:i:s');
+    }
 
     /**
      * 私有构造函数（单例模式）
@@ -368,8 +380,9 @@ class Database {
      * 创建用户
      */
     public function createUser(string $username, string $email, string $passwordHash, float $initialBalance = 0.00): ?int {
+        $now = $this->now();
         $sql = "INSERT INTO users (username, email, password_hash, balance, status, created_at, updated_at)
-                VALUES (:username, :email, :password_hash, :balance, 1, datetime('now'), datetime('now'))";
+                VALUES (:username, :email, :password_hash, :balance, 1, :created_at, :updated_at)";
         
         try {
             $stmt = $this->pdo->prepare($sql);
@@ -378,6 +391,8 @@ class Database {
                 ':email' => $email,
                 ':password_hash' => $passwordHash,
                 ':balance' => $initialBalance,
+                ':created_at' => $now,
+                ':updated_at' => $now,
             ]);
             return (int) $this->pdo->lastInsertId();
         } catch (PDOException $e) {
@@ -426,18 +441,18 @@ class Database {
      * 更新用户余额
      */
     public function updateUserBalance(int $userId, float $amount): bool {
-        $sql = "UPDATE users SET balance = balance + :amount, updated_at = datetime('now') WHERE id = :id";
+        $sql = "UPDATE users SET balance = balance + :amount, updated_at = :updated_at WHERE id = :id";
         $stmt = $this->pdo->prepare($sql);
-        return $stmt->execute([':amount' => $amount, ':id' => $userId]);
+        return $stmt->execute([':amount' => $amount, ':id' => $userId, ':updated_at' => $this->now()]);
     }
 
     /**
      * 设置用户余额（绝对值）
      */
     public function setUserBalance(int $userId, float $balance): bool {
-        $sql = "UPDATE users SET balance = :balance, updated_at = datetime('now') WHERE id = :id";
+        $sql = "UPDATE users SET balance = :balance, updated_at = :updated_at WHERE id = :id";
         $stmt = $this->pdo->prepare($sql);
-        return $stmt->execute([':balance' => $balance, ':id' => $userId]);
+        return $stmt->execute([':balance' => $balance, ':id' => $userId, ':updated_at' => $this->now()]);
     }
 
     /**
@@ -468,13 +483,14 @@ class Database {
         // 原子扣费：只有当 balance >= amount 时才执行扣除
         // 先执行 UPDATE，避免预查询带来的性能开销
         $sql = "UPDATE users
-                SET balance = balance - :amount, updated_at = datetime('now')
+                SET balance = balance - :amount, updated_at = :updated_at
                 WHERE id = :id AND balance >= :amount_check";
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
             ':amount' => $amount,
             ':id' => $userId,
-            ':amount_check' => $amount
+            ':amount_check' => $amount,
+            ':updated_at' => $this->now()
         ]);
         
         // 检查是否成功扣除（rowCount > 0 表示更新了行）
@@ -526,10 +542,10 @@ class Database {
         }
         
         $sql = "UPDATE users
-                SET balance = balance + :amount, updated_at = datetime('now')
+                SET balance = balance + :amount, updated_at = :updated_at
                 WHERE id = :id";
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([':amount' => $amount, ':id' => $userId]);
+        $stmt->execute([':amount' => $amount, ':id' => $userId, ':updated_at' => $this->now()]);
         return $stmt->rowCount() > 0;
     }
 
@@ -537,9 +553,10 @@ class Database {
      * 更新用户登录信息
      */
     public function updateUserLogin(int $userId, string $ip): bool {
-        $sql = "UPDATE users SET last_login_at = datetime('now'), last_login_ip = :ip, updated_at = datetime('now') WHERE id = :id";
+        $now = $this->now();
+        $sql = "UPDATE users SET last_login_at = :last_login_at, last_login_ip = :ip, updated_at = :updated_at WHERE id = :id";
         $stmt = $this->pdo->prepare($sql);
-        return $stmt->execute([':ip' => $ip, ':id' => $userId]);
+        return $stmt->execute([':ip' => $ip, ':id' => $userId, ':last_login_at' => $now, ':updated_at' => $now]);
     }
 
     /**
@@ -571,7 +588,7 @@ class Database {
      */
     public function createRechargeOrder(int $userId, string $outTradeNo, float $amount, ?string $payType = null): int {
         $sql = "INSERT INTO recharge_orders (user_id, out_trade_no, amount, pay_type, status, created_at)
-                VALUES (:user_id, :out_trade_no, :amount, :pay_type, 0, datetime('now'))";
+                VALUES (:user_id, :out_trade_no, :amount, :pay_type, 0, :created_at)";
         
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
@@ -579,6 +596,7 @@ class Database {
             ':out_trade_no' => $outTradeNo,
             ':amount' => $amount,
             ':pay_type' => $payType,
+            ':created_at' => $this->now(),
         ]);
         return (int) $this->pdo->lastInsertId();
     }
@@ -598,9 +616,9 @@ class Database {
      * 更新订单为已支付
      */
     public function markOrderPaid(string $outTradeNo, string $tradeNo, string $payType, ?string $notifyData = null): bool {
-        $sql = "UPDATE recharge_orders 
-                SET status = 1, trade_no = :trade_no, pay_type = :pay_type, 
-                    paid_at = datetime('now'), notify_data = :notify_data
+        $sql = "UPDATE recharge_orders
+                SET status = 1, trade_no = :trade_no, pay_type = :pay_type,
+                    paid_at = :paid_at, notify_data = :notify_data
                 WHERE out_trade_no = :out_trade_no AND status = 0";
         
         $stmt = $this->pdo->prepare($sql);
@@ -609,6 +627,7 @@ class Database {
             ':pay_type' => $payType,
             ':notify_data' => $notifyData,
             ':out_trade_no' => $outTradeNo,
+            ':paid_at' => $this->now(),
         ]);
     }
 
@@ -642,9 +661,9 @@ class Database {
         ?string $modelName = null,
         ?string $remark = null
     ): int {
-        $sql = "INSERT INTO consumption_logs 
+        $sql = "INSERT INTO consumption_logs
                 (user_id, action, amount, balance_before, balance_after, image_count, model_name, remark, created_at)
-                VALUES (:user_id, :action, :amount, :balance_before, :balance_after, :image_count, :model_name, :remark, datetime('now'))";
+                VALUES (:user_id, :action, :amount, :balance_before, :balance_after, :image_count, :model_name, :remark, :created_at)";
         
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
@@ -656,6 +675,7 @@ class Database {
             ':image_count' => $imageCount,
             ':model_name' => $modelName,
             ':remark' => $remark,
+            ':created_at' => $this->now(),
         ]);
         return (int) $this->pdo->lastInsertId();
     }
@@ -695,16 +715,19 @@ class Database {
      * 创建用户会话
      */
     public function createSession(int $userId, string $tokenHash, int $expiresInSeconds, ?string $ip = null, ?string $userAgent = null): int {
+        $now = $this->now();
+        $expiresAt = date('Y-m-d H:i:s', time() + $expiresInSeconds);
         $sql = "INSERT INTO user_sessions (user_id, token_hash, expires_at, ip_address, user_agent, created_at)
-                VALUES (:user_id, :token_hash, datetime('now', '+' || :expires || ' seconds'), :ip, :user_agent, datetime('now'))";
+                VALUES (:user_id, :token_hash, :expires_at, :ip, :user_agent, :created_at)";
         
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
             ':user_id' => $userId,
             ':token_hash' => $tokenHash,
-            ':expires' => $expiresInSeconds,
+            ':expires_at' => $expiresAt,
             ':ip' => $ip,
             ':user_agent' => $userAgent,
+            ':created_at' => $now,
         ]);
         return (int) $this->pdo->lastInsertId();
     }
@@ -713,9 +736,9 @@ class Database {
      * 根据 token 哈希获取有效会话
      */
     public function getValidSession(string $tokenHash): ?array {
-        $sql = "SELECT * FROM user_sessions WHERE token_hash = :token_hash AND expires_at > datetime('now') LIMIT 1";
+        $sql = "SELECT * FROM user_sessions WHERE token_hash = :token_hash AND expires_at > :now LIMIT 1";
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([':token_hash' => $tokenHash]);
+        $stmt->execute([':token_hash' => $tokenHash, ':now' => $this->now()]);
         $session = $stmt->fetch();
         return $session ?: null;
     }
@@ -742,8 +765,10 @@ class Database {
      * 清理过期会话
      */
     public function cleanExpiredSessions(): int {
-        $sql = "DELETE FROM user_sessions WHERE expires_at <= datetime('now')";
-        return $this->pdo->exec($sql);
+        $sql = "DELETE FROM user_sessions WHERE expires_at <= :now";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':now' => $this->now()]);
+        return $stmt->rowCount();
     }
 
     // ============================================================
@@ -755,7 +780,7 @@ class Database {
      */
     public function logLogin(int $userId, string $ip, ?string $userAgent = null, string $loginType = 'password', int $status = 1): int {
         $sql = "INSERT INTO login_logs (user_id, ip_address, user_agent, login_type, status, created_at)
-                VALUES (:user_id, :ip, :user_agent, :login_type, :status, datetime('now'))";
+                VALUES (:user_id, :ip, :user_agent, :login_type, :status, :created_at)";
         
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
@@ -764,6 +789,7 @@ class Database {
             ':user_agent' => $userAgent,
             ':login_type' => $loginType,
             ':status' => $status,
+            ':created_at' => $this->now(),
         ]);
         return (int) $this->pdo->lastInsertId();
     }
@@ -816,15 +842,19 @@ class Database {
      * 创建管理员会话
      */
     public function createAdminSession(string $token, string $ip, ?string $userAgent, int $expiresIn): int {
-        $sql = "INSERT INTO admin_sessions (session_token, ip_address, user_agent, expires_at)
-                VALUES (:token, :ip, :ua, datetime('now', '+' || :expires || ' seconds'))";
+        $now = $this->now();
+        $expiresAt = date('Y-m-d H:i:s', time() + $expiresIn);
+        $sql = "INSERT INTO admin_sessions (session_token, ip_address, user_agent, expires_at, created_at, last_activity)
+                VALUES (:token, :ip, :ua, :expires_at, :created_at, :last_activity)";
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
             ':token' => $token,
             ':ip' => $ip,
             ':ua' => $userAgent,
-            ':expires' => $expiresIn,
+            ':expires_at' => $expiresAt,
+            ':created_at' => $now,
+            ':last_activity' => $now,
         ]);
         return (int) $this->pdo->lastInsertId();
     }
@@ -844,9 +874,9 @@ class Database {
      * 更新管理员活动时间
      */
     public function updateAdminActivity(string $token): bool {
-        $sql = "UPDATE admin_sessions SET last_activity = datetime('now') WHERE session_token = :token";
+        $sql = "UPDATE admin_sessions SET last_activity = :last_activity WHERE session_token = :token";
         $stmt = $this->pdo->prepare($sql);
-        return $stmt->execute([':token' => $token]);
+        return $stmt->execute([':token' => $token, ':last_activity' => $this->now()]);
     }
 
     /**
@@ -862,9 +892,9 @@ class Database {
      * 清理过期的管理员会话
      */
     public function cleanExpiredAdminSessions(): int {
-        $sql = "DELETE FROM admin_sessions WHERE expires_at < datetime('now')";
+        $sql = "DELETE FROM admin_sessions WHERE expires_at < :now";
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute();
+        $stmt->execute([':now' => $this->now()]);
         return $stmt->rowCount();
     }
 
@@ -886,13 +916,14 @@ class Database {
      * 获取最近的登录尝试次数(失败的)
      */
     public function getRecentAdminAttempts(string $ip, int $minutes): int {
+        $cutoffTime = date('Y-m-d H:i:s', time() - ($minutes * 60));
         $sql = "SELECT COUNT(*) as count FROM admin_login_attempts
                 WHERE ip_address = :ip
                 AND success = 0
-                AND attempt_time > datetime('now', '-' || :minutes || ' minutes')";
+                AND attempt_time > :cutoff_time";
 
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([':ip' => $ip, ':minutes' => $minutes]);
+        $stmt->execute([':ip' => $ip, ':cutoff_time' => $cutoffTime]);
         $result = $stmt->fetch();
 
         return (int) ($result['count'] ?? 0);
@@ -1013,9 +1044,9 @@ class Database {
      * 更新用户邮箱
      */
     public function updateUserEmail(int $userId, string $email): bool {
-        $sql = "UPDATE users SET email = :email, updated_at = datetime('now') WHERE id = :id";
+        $sql = "UPDATE users SET email = :email, updated_at = :updated_at WHERE id = :id";
         $stmt = $this->pdo->prepare($sql);
-        return $stmt->execute([':email' => $email, ':id' => $userId]);
+        return $stmt->execute([':email' => $email, ':id' => $userId, ':updated_at' => $this->now()]);
     }
 
     /**
@@ -1023,18 +1054,18 @@ class Database {
      */
     public function toggleUserStatus(int $userId): bool {
         $sql = "UPDATE users SET status = CASE WHEN status = 1 THEN 0 ELSE 1 END,
-                updated_at = datetime('now') WHERE id = :id";
+                updated_at = :updated_at WHERE id = :id";
         $stmt = $this->pdo->prepare($sql);
-        return $stmt->execute([':id' => $userId]);
+        return $stmt->execute([':id' => $userId, ':updated_at' => $this->now()]);
     }
 
     /**
      * 更新用户密码
      */
     public function updateUserPassword(int $userId, string $passwordHash): bool {
-        $sql = "UPDATE users SET password_hash = :hash, updated_at = datetime('now') WHERE id = :id";
+        $sql = "UPDATE users SET password_hash = :hash, updated_at = :updated_at WHERE id = :id";
         $stmt = $this->pdo->prepare($sql);
-        return $stmt->execute([':hash' => $passwordHash, ':id' => $userId]);
+        return $stmt->execute([':hash' => $passwordHash, ':id' => $userId, ':updated_at' => $this->now()]);
     }
 
     /**
@@ -1089,8 +1120,10 @@ class Database {
         $stats['total_users'] = (int) $stmt->fetchColumn();
 
         // 今日新增用户
-        $sql = "SELECT COUNT(*) as today FROM users WHERE DATE(created_at) = DATE('now')";
-        $stmt = $this->pdo->query($sql);
+        $today = date('Y-m-d');
+        $sql = "SELECT COUNT(*) as today FROM users WHERE DATE(created_at) = :today";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':today' => $today]);
         $stats['today_new_users'] = (int) $stmt->fetchColumn();
 
         // 总充值金额
@@ -1100,8 +1133,9 @@ class Database {
 
         // 今日充值金额
         $sql = "SELECT COALESCE(SUM(amount), 0) as today FROM recharge_orders
-                WHERE status = 1 AND DATE(paid_at) = DATE('now')";
-        $stmt = $this->pdo->query($sql);
+                WHERE status = 1 AND DATE(paid_at) = :today";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':today' => $today]);
         $stats['today_recharge'] = (float) $stmt->fetchColumn();
 
         // 总消费金额
@@ -1111,8 +1145,9 @@ class Database {
 
         // 今日消费金额
         $sql = "SELECT COALESCE(SUM(amount), 0) as today FROM consumption_logs
-                WHERE DATE(created_at) = DATE('now')";
-        $stmt = $this->pdo->query($sql);
+                WHERE DATE(created_at) = :today";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':today' => $today]);
         $stats['today_consumption'] = (float) $stmt->fetchColumn();
 
         // 总生成图片数
@@ -1122,8 +1157,9 @@ class Database {
 
         // 今日生成图片数
         $sql = "SELECT COALESCE(SUM(image_count), 0) as today FROM consumption_logs
-                WHERE DATE(created_at) = DATE('now')";
-        $stmt = $this->pdo->query($sql);
+                WHERE DATE(created_at) = :today";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':today' => $today]);
         $stats['today_images'] = (int) $stmt->fetchColumn();
 
         return $stats;
@@ -1167,16 +1203,19 @@ class Database {
     public function createPasswordResetToken(int $userId, string $email, int $expiresIn = 86400): string {
         $token = SecurityUtils::generateSecureToken(32);
         $tokenHash = hash('sha256', $token);
+        $now = $this->now();
+        $expiresAt = date('Y-m-d H:i:s', time() + $expiresIn);
 
-        $sql = "INSERT INTO password_reset_tokens (user_id, token_hash, email, expires_at)
-                VALUES (:user_id, :token_hash, :email, datetime('now', '+' || :expires || ' seconds'))";
+        $sql = "INSERT INTO password_reset_tokens (user_id, token_hash, email, expires_at, created_at)
+                VALUES (:user_id, :token_hash, :email, :expires_at, :created_at)";
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
             ':user_id' => $userId,
             ':token_hash' => $tokenHash,
             ':email' => $email,
-            ':expires' => $expiresIn,
+            ':expires_at' => $expiresAt,
+            ':created_at' => $now,
         ]);
 
         return $token; // 返回原始token,不是哈希值
@@ -1191,11 +1230,11 @@ class Database {
         $sql = "SELECT * FROM password_reset_tokens
                 WHERE token_hash = :token_hash
                 AND used = 0
-                AND expires_at > datetime('now')
+                AND expires_at > :now
                 LIMIT 1";
 
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([':token_hash' => $tokenHash]);
+        $stmt->execute([':token_hash' => $tokenHash, ':now' => $this->now()]);
         $result = $stmt->fetch();
 
         return $result ?: null;
