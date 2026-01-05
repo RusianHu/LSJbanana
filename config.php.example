@@ -30,6 +30,42 @@ $paymentConfig = [
     'notify_url' => '',                                     // 异步通知地址 (留空则自动生成)
     'return_url' => '',                                     // 同步跳转地址 (留空则自动生成)
     'default_pay_type' => '',                               // 默认支付方式 (空则跳转收银台)
+
+    // 支付渠道开关配置
+    // 设置为 true 启用，false 禁用
+    'channels' => [
+        'cashier' => [
+            'enabled' => true,                              // 收银台（默认/自动选择）
+            'name' => '收银台',                              // 显示名称
+            'icon' => 'fas fa-cash-register',               // 图标类名
+            'value' => '',                                  // 传递给支付网关的值（空表示收银台）
+            'sort' => 0,                                    // 排序权重（越小越靠前）
+        ],
+        'alipay' => [
+            'enabled' => true,                              // 支付宝
+            'name' => '支付宝',
+            'icon' => 'fab fa-alipay',
+            'icon_color' => '#1677ff',                      // 图标颜色
+            'value' => 'alipay',
+            'sort' => 1,
+        ],
+        'wxpay' => [
+            'enabled' => true,                              // 微信支付
+            'name' => '微信支付',
+            'icon' => 'fab fa-weixin',
+            'icon_color' => '#07c160',
+            'value' => 'wxpay',
+            'sort' => 2,
+        ],
+        'qqpay' => [
+            'enabled' => false,                             // QQ支付（默认禁用）
+            'name' => 'QQ支付',
+            'icon' => 'fab fa-qq',
+            'icon_color' => '#12b7f5',
+            'value' => 'qqpay',
+            'sort' => 3,
+        ],
+    ],
 ];
 
 // 计费配置
@@ -40,6 +76,7 @@ $billingConfig = [
     'max_recharge' => 1000.00,                              // 最高充值金额 (RMB)
     'recharge_options' => [5, 10, 20, 50, 100],             // 快捷充值选项 (RMB)
     'free_quota' => 0,                                      // 新用户免费额度 (次)
+    'order_expire_minutes' => 5,                            // 订单过期时间 (分钟)，0表示不过期
 ];
 
 // 用户系统配置

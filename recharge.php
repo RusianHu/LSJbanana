@@ -16,9 +16,23 @@ $auth->requireLogin(true);
 
 $config = require __DIR__ . '/config.php';
 $billingConfig = $config['billing'] ?? [];
+$paymentConfig = $config['payment'] ?? [];
 $pricePerTask = (float) ($billingConfig['price_per_task'] ?? $billingConfig['price_per_image'] ?? 0.20);
 $orderExpireMinutes = (int) ($billingConfig['order_expire_minutes'] ?? 5);
 $user = $auth->getCurrentUser();
+
+// 获取启用的支付渠道并按 sort 排序
+$paymentChannels = [];
+$channelsConfig = $paymentConfig['channels'] ?? [];
+foreach ($channelsConfig as $key => $channel) {
+    if (!empty($channel['enabled'])) {
+        $channel['key'] = $key;
+        $paymentChannels[] = $channel;
+    }
+}
+usort($paymentChannels, function($a, $b) {
+    return ($a['sort'] ?? 99) - ($b['sort'] ?? 99);
+});
 
 // 确保数据库表有 expires_at 字段（自动迁移）
 $db->migrateAddExpiresAtColumn();
@@ -272,15 +286,6 @@ $rechargeOrders = $db->getUserRechargeOrders($user['id'], 10);
         .pay-method-option i {
             font-size: 1.2rem;
         }
-        .pay-method-option .alipay-icon {
-            color: #1677ff;
-        }
-        .pay-method-option .wxpay-icon {
-            color: #07c160;
-        }
-        .pay-method-option .qqpay-icon {
-            color: #12b7f5;
-        }
         .alert {
             padding: 12px 16px;
             border-radius: 6px;
@@ -435,29 +440,33 @@ $rechargeOrders = $db->getUserRechargeOrders($user['id'], 10);
                 </div>
 
                 <!-- 支付方式 -->
+                <?php if (!empty($paymentChannels)): ?>
                 <div class="pay-methods">
                     <label>选择支付方式</label>
                     <div class="pay-method-options">
+                        <?php
+                        $isFirst = true;
+                        foreach ($paymentChannels as $channel):
+                            $channelKey = htmlspecialchars($channel['key']);
+                            $channelValue = htmlspecialchars($channel['value'] ?? '');
+                            $channelName = htmlspecialchars($channel['name'] ?? $channelKey);
+                            $channelIcon = htmlspecialchars($channel['icon'] ?? 'fas fa-credit-card');
+                            $iconColor = $channel['icon_color'] ?? '';
+                            $iconStyle = $iconColor ? 'style="color: ' . htmlspecialchars($iconColor) . ';"' : '';
+                        ?>
                         <div class="pay-method-option">
-                            <input type="radio" name="pay_type" id="pay_auto" value="" checked>
-                            <label for="pay_auto">
-                                <i class="fas fa-cash-register"></i> 收银台
+                            <input type="radio" name="pay_type" id="pay_<?php echo $channelKey; ?>" value="<?php echo $channelValue; ?>" <?php echo $isFirst ? 'checked' : ''; ?>>
+                            <label for="pay_<?php echo $channelKey; ?>">
+                                <i class="<?php echo $channelIcon; ?>" <?php echo $iconStyle; ?>></i> <?php echo $channelName; ?>
                             </label>
                         </div>
-                        <div class="pay-method-option">
-                            <input type="radio" name="pay_type" id="pay_alipay" value="alipay">
-                            <label for="pay_alipay">
-                                <i class="fab fa-alipay alipay-icon"></i> 支付宝
-                            </label>
-                        </div>
-                        <div class="pay-method-option">
-                            <input type="radio" name="pay_type" id="pay_wxpay" value="wxpay">
-                            <label for="pay_wxpay">
-                                <i class="fab fa-weixin wxpay-icon"></i> 微信
-                            </label>
-                        </div>
+                        <?php
+                        $isFirst = false;
+                        endforeach;
+                        ?>
                     </div>
                 </div>
+                <?php endif; ?>
 
                 <button type="submit" class="btn-primary">
                     <i class="fas fa-bolt"></i> 立即充值
