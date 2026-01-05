@@ -200,6 +200,10 @@ return [
         ]
     ],
 
+    // 图片生成提示词前缀 (用于强制 AI 理解这是图片生成请求，而非问答)
+    // 注意：此前缀仅应用于文生图模式，编辑模式不使用前缀以避免语义冲突
+    'image_generation_prefix' => '请生成图片：',
+
     // 思维摘要配置
     'thinking_config' => [
         'include_thoughts' => true,

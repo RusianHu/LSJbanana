@@ -537,21 +537,26 @@ if (isset($_POST['use_search']) && $_POST['use_search'] === 'on') {
 }
 
 // 根据操作类型构建 contents
+// 获取图片生成前缀配置（仅用于文生图，强制 AI 理解这是图片生成请求）
+// 注意：编辑模式不使用前缀，避免"请生成图片"干扰编辑意图
+$imageGenPrefix = $config['image_generation_prefix'] ?? '';
+
 if ($action === 'generate') {
-    // 文生图
+    // 文生图：使用前缀增强提示词
+    $enhancedPrompt = ($imageGenPrefix !== '') ? ($imageGenPrefix . $prompt) : $prompt;
     $requestData['contents'][] = [
         'parts' => [
-            ['text' => $prompt]
+            ['text' => $enhancedPrompt]
         ]
     ];
 } elseif ($action === 'edit') {
-    // 图生图/编辑
+    // 图生图/编辑：直接使用原始提示词，不添加前缀
     if (!isset($_FILES['image'])) {
         sendError('请上传至少一张图片', 400);
     }
 
     $parts = [];
-    // 添加提示词
+    // 添加提示词（不带前缀，保持编辑指令的语义清晰）
     $parts[] = ['text' => $prompt];
 
     // 规范化 $_FILES 数组
