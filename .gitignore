@@ -29,3 +29,4 @@ logs/*.log
 cache/
 tmp/
 *.tmp
+/.playwright-mcp
