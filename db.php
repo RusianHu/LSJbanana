@@ -1498,4 +1498,125 @@ class Database {
         $stmt = $this->pdo->prepare($sql);
         return $stmt->execute([':token_hash' => $tokenHash]);
     }
+
+    // ============================================================
+    // 用户操作记录查询（管理后台）
+    // ============================================================
+
+    /**
+     * 获取用户登录历史
+     *
+     * @param int $userId 用户ID
+     * @param int $limit 限制数量
+     * @param int $offset 偏移量
+     * @return array ['logs' => array, 'total' => int]
+     */
+    public function getUserLoginLogs(int $userId, int $limit = 10, int $offset = 0): array {
+        // 获取记录
+        $sql = "SELECT * FROM login_logs WHERE user_id = :user_id ORDER BY created_at DESC LIMIT :limit OFFSET :offset";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindValue(':user_id', $userId, PDO::PARAM_INT);
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+        $logs = $stmt->fetchAll();
+
+        // 获取总数
+        $countSql = "SELECT COUNT(*) as total FROM login_logs WHERE user_id = :user_id";
+        $countStmt = $this->pdo->prepare($countSql);
+        $countStmt->execute([':user_id' => $userId]);
+        $total = (int) ($countStmt->fetch()['total'] ?? 0);
+
+        return ['logs' => $logs, 'total' => $total];
+    }
+
+    /**
+     * 获取用户消费明细（带分页）
+     *
+     * @param int $userId 用户ID
+     * @param int $limit 限制数量
+     * @param int $offset 偏移量
+     * @return array ['logs' => array, 'total' => int]
+     */
+    public function getUserConsumptionLogsPaginated(int $userId, int $limit = 10, int $offset = 0): array {
+        // 获取记录
+        $sql = "SELECT * FROM consumption_logs WHERE user_id = :user_id ORDER BY created_at DESC LIMIT :limit OFFSET :offset";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindValue(':user_id', $userId, PDO::PARAM_INT);
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+        $logs = $stmt->fetchAll();
+
+        // 获取总数
+        $countSql = "SELECT COUNT(*) as total FROM consumption_logs WHERE user_id = :user_id";
+        $countStmt = $this->pdo->prepare($countSql);
+        $countStmt->execute([':user_id' => $userId]);
+        $total = (int) ($countStmt->fetch()['total'] ?? 0);
+
+        return ['logs' => $logs, 'total' => $total];
+    }
+
+    /**
+     * 获取用户余额变动记录（管理员手动操作）
+     *
+     * @param int $userId 用户ID
+     * @param int $limit 限制数量
+     * @param int $offset 偏移量
+     * @return array ['logs' => array, 'total' => int]
+     */
+    public function getUserBalanceLogs(int $userId, int $limit = 10, int $offset = 0): array {
+        // 获取记录
+        $sql = "SELECT * FROM balance_logs WHERE user_id = :user_id ORDER BY created_at DESC LIMIT :limit OFFSET :offset";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindValue(':user_id', $userId, PDO::PARAM_INT);
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+        $logs = $stmt->fetchAll();
+
+        // 获取总数
+        $countSql = "SELECT COUNT(*) as total FROM balance_logs WHERE user_id = :user_id";
+        $countStmt = $this->pdo->prepare($countSql);
+        $countStmt->execute([':user_id' => $userId]);
+        $total = (int) ($countStmt->fetch()['total'] ?? 0);
+
+        return ['logs' => $logs, 'total' => $total];
+    }
+
+    /**
+     * 获取用户充值订单记录（带分页）
+     *
+     * @param int $userId 用户ID
+     * @param int $limit 限制数量
+     * @param int $offset 偏移量
+     * @param bool $includeAll 是否包含所有状态（包括已取消）
+     * @return array ['orders' => array, 'total' => int]
+     */
+    public function getUserRechargeOrdersPaginated(int $userId, int $limit = 10, int $offset = 0, bool $includeAll = true): array {
+        // 获取记录
+        $sql = "SELECT * FROM recharge_orders WHERE user_id = :user_id";
+        if (!$includeAll) {
+            $sql .= " AND status != 2"; // 排除已取消
+        }
+        $sql .= " ORDER BY created_at DESC LIMIT :limit OFFSET :offset";
+        
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindValue(':user_id', $userId, PDO::PARAM_INT);
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+        $orders = $stmt->fetchAll();
+
+        // 获取总数
+        $countSql = "SELECT COUNT(*) as total FROM recharge_orders WHERE user_id = :user_id";
+        if (!$includeAll) {
+            $countSql .= " AND status != 2";
+        }
+        $countStmt = $this->pdo->prepare($countSql);
+        $countStmt->execute([':user_id' => $userId]);
+        $total = (int) ($countStmt->fetch()['total'] ?? 0);
+
+        return ['orders' => $orders, 'total' => $total];
+    }
 }

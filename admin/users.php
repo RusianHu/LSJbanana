@@ -206,16 +206,69 @@ function formatTime($datetime): string {
         </div>
     </div>
 
-    <!-- 用户详情模态框 -->
+    <!-- 用户详情模态框（标签页形式） -->
     <div id="userDetailModal" class="modal">
-        <div class="modal-content">
+        <div class="modal-content modal-lg">
             <div class="modal-header">
-                <h3><i class="fas fa-user"></i> 用户详情</h3>
+                <h3><i class="fas fa-user"></i> 用户详情 - <span id="userDetailTitle"></span></h3>
                 <span class="close" onclick="hideModal('userDetailModal')">&times;</span>
             </div>
-            <div class="modal-body" id="userDetailContent">
-                <div class="text-center">
-                    <i class="fas fa-spinner fa-spin"></i> 加载中...
+            <div class="modal-body">
+                <!-- 标签页导航 -->
+                <div class="tabs-nav" id="userDetailTabs">
+                    <button class="tab-btn active" data-tab="basic" onclick="switchTab('basic')">
+                        <i class="fas fa-info-circle"></i> 基本信息
+                    </button>
+                    <button class="tab-btn" data-tab="login" onclick="switchTab('login')">
+                        <i class="fas fa-sign-in-alt"></i> 登录历史
+                    </button>
+                    <button class="tab-btn" data-tab="consumption" onclick="switchTab('consumption')">
+                        <i class="fas fa-shopping-cart"></i> 消费明细
+                    </button>
+                    <button class="tab-btn" data-tab="balance" onclick="switchTab('balance')">
+                        <i class="fas fa-wallet"></i> 余额变动
+                    </button>
+                    <button class="tab-btn" data-tab="orders" onclick="switchTab('orders')">
+                        <i class="fas fa-receipt"></i> 充值订单
+                    </button>
+                </div>
+                
+                <!-- 标签页内容 -->
+                <div class="tabs-content">
+                    <!-- 基本信息标签页 -->
+                    <div class="tab-pane active" id="tab-basic">
+                        <div id="userBasicContent">
+                            <div class="text-center"><i class="fas fa-spinner fa-spin"></i> 加载中...</div>
+                        </div>
+                    </div>
+                    
+                    <!-- 登录历史标签页 -->
+                    <div class="tab-pane" id="tab-login">
+                        <div id="userLoginContent">
+                            <div class="text-center"><i class="fas fa-spinner fa-spin"></i> 加载中...</div>
+                        </div>
+                    </div>
+                    
+                    <!-- 消费明细标签页 -->
+                    <div class="tab-pane" id="tab-consumption">
+                        <div id="userConsumptionContent">
+                            <div class="text-center"><i class="fas fa-spinner fa-spin"></i> 加载中...</div>
+                        </div>
+                    </div>
+                    
+                    <!-- 余额变动标签页 -->
+                    <div class="tab-pane" id="tab-balance">
+                        <div id="userBalanceContent">
+                            <div class="text-center"><i class="fas fa-spinner fa-spin"></i> 加载中...</div>
+                        </div>
+                    </div>
+                    
+                    <!-- 充值订单标签页 -->
+                    <div class="tab-pane" id="tab-orders">
+                        <div id="userOrdersContent">
+                            <div class="text-center"><i class="fas fa-spinner fa-spin"></i> 加载中...</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -303,64 +356,447 @@ function formatTime($datetime): string {
     </script>
     <script src="<?php echo url('/admin/script.js'); ?>"></script>
     <script>
+        // 当前查看的用户ID
+        let currentUserId = null;
+        
+        // 标签页分页状态
+        let tabPagination = {
+            login: { page: 1, perPage: 10 },
+            consumption: { page: 1, perPage: 10 },
+            balance: { page: 1, perPage: 10 },
+            orders: { page: 1, perPage: 10 }
+        };
+
+        // 切换标签页
+        function switchTab(tabName) {
+            // 更新导航按钮状态
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.dataset.tab === tabName) {
+                    btn.classList.add('active');
+                }
+            });
+            
+            // 更新内容面板显示
+            document.querySelectorAll('.tab-pane').forEach(pane => {
+                pane.classList.remove('active');
+            });
+            document.getElementById('tab-' + tabName).classList.add('active');
+            
+            // 加载标签页数据
+            loadTabData(tabName);
+        }
+        
+        // 加载标签页数据
+        async function loadTabData(tabName) {
+            if (!currentUserId) return;
+            
+            // 基本信息已在viewUser中加载
+            if (tabName === 'basic') return;
+            
+            const contentId = {
+                login: 'userLoginContent',
+                consumption: 'userConsumptionContent',
+                balance: 'userBalanceContent',
+                orders: 'userOrdersContent'
+            }[tabName];
+            
+            const actionMap = {
+                login: 'get_user_login_logs',
+                consumption: 'get_user_consumption_logs',
+                balance: 'get_user_balance_logs',
+                orders: 'get_user_recharge_orders'
+            };
+            
+            const container = document.getElementById(contentId);
+            container.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> 加载中...</div>';
+            
+            const pagination = tabPagination[tabName];
+            const result = await apiRequest(actionMap[tabName], {
+                user_id: currentUserId,
+                page: pagination.page,
+                per_page: pagination.perPage
+            });
+            
+            if (result.success) {
+                renderTabContent(tabName, result.data, container);
+            } else {
+                container.innerHTML = `<div class="alert alert-danger">${escapeHtml(result.message || '加载失败')}</div>`;
+            }
+        }
+        
+        // 渲染标签页内容
+        function renderTabContent(tabName, data, container) {
+            switch(tabName) {
+                case 'login':
+                    renderLoginLogs(data, container);
+                    break;
+                case 'consumption':
+                    renderConsumptionLogs(data, container);
+                    break;
+                case 'balance':
+                    renderBalanceLogs(data, container);
+                    break;
+                case 'orders':
+                    renderRechargeOrders(data, container);
+                    break;
+            }
+        }
+        
+        // 渲染登录历史
+        function renderLoginLogs(data, container) {
+            if (!data.logs || data.logs.length === 0) {
+                container.innerHTML = '<div class="text-center text-muted">暂无登录记录</div>';
+                return;
+            }
+            
+            let html = `
+                <div class="admin-table compact-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>登录时间</th>
+                                <th>IP地址</th>
+                                <th>登录方式</th>
+                                <th>状态</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            data.logs.forEach(log => {
+                const statusBadge = log.status == 1
+                    ? '<span class="badge badge-success">成功</span>'
+                    : '<span class="badge badge-danger">失败</span>';
+                const loginType = log.login_type === 'password' ? '密码' : (log.login_type === 'token' ? '令牌' : log.login_type);
+                
+                html += `
+                    <tr>
+                        <td>${log.created_at}</td>
+                        <td><code>${log.ip_address}</code></td>
+                        <td>${loginType}</td>
+                        <td>${statusBadge}</td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table></div>';
+            html += renderPagination('login', data);
+            container.innerHTML = html;
+        }
+        
+        // 解析消费记录的remark字段（支持新旧格式）
+        function parseConsumptionRemark(remark) {
+            if (!remark) return { prompt: '', images: [] };
+            
+            // 尝试解析JSON格式（新格式）
+            try {
+                const data = JSON.parse(remark);
+                if (data && typeof data === 'object') {
+                    return {
+                        prompt: data.prompt || '',
+                        images: Array.isArray(data.images) ? data.images : []
+                    };
+                }
+            } catch (e) {
+                // 不是JSON，使用旧格式（直接是提示词字符串）
+            }
+            
+            return { prompt: remark, images: [] };
+        }
+        
+        // 渲染消费明细
+        function renderConsumptionLogs(data, container) {
+            if (!data.logs || data.logs.length === 0) {
+                container.innerHTML = '<div class="text-center text-muted">暂无消费记录</div>';
+                return;
+            }
+            
+            let html = `
+                <div class="admin-table compact-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>时间</th>
+                                <th>类型</th>
+                                <th>金额</th>
+                                <th>图片数</th>
+                                <th>模型</th>
+                                <th>提示词摘要</th>
+                                <th>生成文件</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            data.logs.forEach(log => {
+                const actionLabel = log.action === 'generate' ? '生成' : (log.action === 'edit' ? '编辑' : log.action);
+                const remarkData = parseConsumptionRemark(log.remark);
+                const prompt = remarkData.prompt;
+                const promptSummary = prompt.length > 50 ? prompt.substring(0, 50) + '...' : prompt;
+                const imageFiles = remarkData.images;
+                
+                // 生成文件列表展示
+                let imageDisplay = '-';
+                if (imageFiles.length > 0) {
+                    if (imageFiles.length === 1) {
+                        imageDisplay = `<code style="font-size: 0.7rem;">${escapeHtml(imageFiles[0])}</code>`;
+                    } else {
+                        imageDisplay = `<span class="badge badge-info" title="${escapeHtml(imageFiles.join(', '))}">${imageFiles.length} 个文件</span>`;
+                    }
+                }
+                
+                html += `
+                    <tr>
+                        <td>${log.created_at}</td>
+                        <td><span class="badge badge-info">${actionLabel}</span></td>
+                        <td class="text-danger">-¥${parseFloat(log.amount).toFixed(4)}</td>
+                        <td>${log.image_count || 1}</td>
+                        <td><small>${log.model_name || '-'}</small></td>
+                        <td title="${escapeHtml(prompt)}"><small>${escapeHtml(promptSummary)}</small></td>
+                        <td>${imageDisplay}</td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table></div>';
+            html += renderPagination('consumption', data);
+            container.innerHTML = html;
+        }
+        
+        // 渲染余额变动
+        function renderBalanceLogs(data, container) {
+            if (!data.logs || data.logs.length === 0) {
+                container.innerHTML = '<div class="text-center text-muted">暂无余额变动记录</div>';
+                return;
+            }
+            
+            let html = `
+                <div class="admin-table compact-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>时间</th>
+                                <th>类型</th>
+                                <th>金额</th>
+                                <th>变动前</th>
+                                <th>变动后</th>
+                                <th>备注</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            data.logs.forEach(log => {
+                const isRecharge = log.type === 'recharge';
+                const typeBadge = isRecharge
+                    ? '<span class="badge badge-success">充值</span>'
+                    : '<span class="badge badge-danger">扣款</span>';
+                const amountClass = isRecharge ? 'text-success' : 'text-danger';
+                const amountSign = isRecharge ? '+' : '';
+                
+                html += `
+                    <tr>
+                        <td>${log.created_at}</td>
+                        <td>${typeBadge}</td>
+                        <td class="${amountClass}">${amountSign}¥${parseFloat(Math.abs(log.amount)).toFixed(2)}</td>
+                        <td>¥${parseFloat(log.balance_before).toFixed(2)}</td>
+                        <td>¥${parseFloat(log.balance_after).toFixed(2)}</td>
+                        <td><small>${escapeHtml(log.remark || '-')}</small></td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table></div>';
+            html += renderPagination('balance', data);
+            container.innerHTML = html;
+        }
+        
+        // 渲染充值订单
+        function renderRechargeOrders(data, container) {
+            if (!data.orders || data.orders.length === 0) {
+                container.innerHTML = '<div class="text-center text-muted">暂无充值订单</div>';
+                return;
+            }
+            
+            const statusMap = {
+                0: { label: '待支付', class: 'warning' },
+                1: { label: '已支付', class: 'success' },
+                2: { label: '已取消', class: 'danger' },
+                3: { label: '已退款', class: 'info' }
+            };
+            
+            const payTypeMap = {
+                'alipay': '支付宝',
+                'wxpay': '微信支付',
+                'qqpay': 'QQ支付'
+            };
+            
+            let html = `
+                <div class="admin-table compact-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>订单号</th>
+                                <th>金额</th>
+                                <th>支付方式</th>
+                                <th>状态</th>
+                                <th>创建时间</th>
+                                <th>支付时间</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            data.orders.forEach(order => {
+                const status = statusMap[order.status] || { label: '未知', class: 'secondary' };
+                const payType = payTypeMap[order.pay_type] || order.pay_type || '-';
+                
+                html += `
+                    <tr>
+                        <td><code style="font-size: 0.75rem;">${order.out_trade_no}</code></td>
+                        <td>¥${parseFloat(order.amount).toFixed(2)}</td>
+                        <td>${payType}</td>
+                        <td><span class="badge badge-${status.class}">${status.label}</span></td>
+                        <td><small>${order.created_at}</small></td>
+                        <td><small>${order.paid_at || '-'}</small></td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table></div>';
+            html += renderPagination('orders', data);
+            container.innerHTML = html;
+        }
+        
+        // 渲染分页
+        function renderPagination(tabName, data) {
+            if (data.total_pages <= 1) return '';
+            
+            let html = '<div class="tab-pagination">';
+            
+            // 上一页
+            if (data.page > 1) {
+                html += `<button class="btn btn-sm" onclick="goToPage('${tabName}', ${data.page - 1})"><i class="fas fa-chevron-left"></i></button>`;
+            }
+            
+            html += `<span class="page-info">第 ${data.page} / ${data.total_pages} 页 (共 ${data.total} 条)</span>`;
+            
+            // 下一页
+            if (data.page < data.total_pages) {
+                html += `<button class="btn btn-sm" onclick="goToPage('${tabName}', ${data.page + 1})"><i class="fas fa-chevron-right"></i></button>`;
+            }
+            
+            html += '</div>';
+            return html;
+        }
+        
+        // 分页跳转
+        function goToPage(tabName, page) {
+            tabPagination[tabName].page = page;
+            loadTabData(tabName);
+        }
+        
+        // HTML转义（用于防止XSS）
+        function escapeHtml(text) {
+            if (text === null || text === undefined) return '';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+        
+        // JavaScript字符串转义（用于嵌入JS属性）
+        function escapeJs(text) {
+            if (text === null || text === undefined) return '';
+            return String(text)
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, "\\'")
+                .replace(/"/g, '\\"')
+                .replace(/\n/g, '\\n')
+                .replace(/\r/g, '\\r');
+        }
+
         // 查看用户详情
         async function viewUser(userId) {
+            currentUserId = userId;
+            
+            // 重置分页状态
+            Object.keys(tabPagination).forEach(key => {
+                tabPagination[key].page = 1;
+            });
+            
+            // 重置标签页到基本信息
+            switchTab('basic');
+            
             showModal('userDetailModal');
-            document.getElementById('userDetailContent').innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> 加载中...</div>';
+            document.getElementById('userBasicContent').innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> 加载中...</div>';
+            document.getElementById('userDetailTitle').textContent = '';
 
             const result = await apiRequest('get_user_detail', { user_id: userId });
 
             if (result.success) {
                 const user = result.data.user;
                 const stats = result.data.stats;
+                
+                document.getElementById('userDetailTitle').textContent = user.username;
 
-                document.getElementById('userDetailContent').innerHTML = `
-                    <div class="form-group">
-                        <label>用户ID</label>
-                        <input type="text" class="form-control" value="#${user.id}" disabled>
-                    </div>
-                    <div class="form-group">
-                        <label>用户名</label>
-                        <input type="text" class="form-control" value="${user.username}" disabled>
-                    </div>
-                    <div class="form-group">
-                        <label>邮箱</label>
-                        <div style="display: flex; gap: 10px;">
-                            <input type="text" class="form-control" value="${user.email}" disabled style="flex: 1;">
-                            <button class="btn btn-warning" onclick="editEmail(${user.id}, '${user.email}')">
-                                <i class="fas fa-edit"></i> 修改
-                            </button>
+                // 使用转义函数防止XSS
+                const safeUsername = escapeHtml(user.username);
+                const safeEmail = escapeHtml(user.email);
+                const safeCreatedAt = escapeHtml(user.created_at);
+                const jsEscapedEmail = escapeJs(user.email);
+
+                document.getElementById('userBasicContent').innerHTML = `
+                    <div class="user-info-grid">
+                        <div class="form-group">
+                            <label>用户ID</label>
+                            <input type="text" class="form-control" value="#${user.id}" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label>用户名</label>
+                            <input type="text" class="form-control" value="${safeUsername}" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label>邮箱</label>
+                            <div style="display: flex; gap: 10px;">
+                                <input type="text" class="form-control" value="${safeEmail}" disabled style="flex: 1;">
+                                <button class="btn btn-warning btn-sm" onclick="editEmail(${user.id}, '${jsEscapedEmail}')">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>余额</label>
+                            <input type="text" class="form-control" value="¥${parseFloat(user.balance).toFixed(2)}" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label>状态</label>
+                            <input type="text" class="form-control" value="${user.status == 1 ? '正常' : '禁用'}" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label>注册时间</label>
+                            <input type="text" class="form-control" value="${safeCreatedAt}" disabled>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label>余额</label>
-                        <input type="text" class="form-control" value="¥${parseFloat(user.balance).toFixed(2)}" disabled>
-                    </div>
-                    <div class="form-group">
-                        <label>状态</label>
-                        <input type="text" class="form-control" value="${user.status == 1 ? '正常' : '禁用'}" disabled>
-                    </div>
-                    <div class="form-group">
-                        <label>注册时间</label>
-                        <input type="text" class="form-control" value="${user.created_at}" disabled>
+                    <hr>
+                    <h4><i class="fas fa-chart-bar"></i> 统计数据</h4>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">累计充值</span>
+                            <span class="stat-value text-success">¥${parseFloat(stats.total_recharge || 0).toFixed(2)}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">累计消费</span>
+                            <span class="stat-value text-danger">¥${parseFloat(stats.total_consumption || 0).toFixed(2)}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">生成图片</span>
+                            <span class="stat-value">${parseInt(stats.total_images) || 0} 张</span>
+                        </div>
                     </div>
                     <hr>
-                    <h4>统计数据</h4>
-                    <div class="form-group">
-                        <label>累计充值</label>
-                        <input type="text" class="form-control" value="¥${parseFloat(stats.total_recharge || 0).toFixed(2)}" disabled>
-                    </div>
-                    <div class="form-group">
-                        <label>累计消费</label>
-                        <input type="text" class="form-control" value="¥${parseFloat(stats.total_consumption || 0).toFixed(2)}" disabled>
-                    </div>
-                    <div class="form-group">
-                        <label>生成图片数</label>
-                        <input type="text" class="form-control" value="${stats.total_images || 0} 张" disabled>
-                    </div>
-                    <hr>
-                    <h4>快捷操作</h4>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <h4><i class="fas fa-tools"></i> 快捷操作</h4>
+                    <div class="action-grid">
                         <button class="btn btn-success" onclick="hideModal('userDetailModal'); showBalanceModal(${user.id}, 'add')">
                             <i class="fas fa-plus-circle"></i> 充值
                         </button>
@@ -370,13 +806,13 @@ function formatTime($datetime): string {
                         <button class="btn btn-warning" onclick="hideModal('userDetailModal'); showResetPasswordModal(${user.id})">
                             <i class="fas fa-key"></i> 重置密码
                         </button>
-                        <button class="btn btn-${user.status == 1 ? 'danger' : 'success'}" onclick="toggleUserStatus(${user.id})">
+                        <button class="btn btn-${user.status == 1 ? 'secondary' : 'success'}" onclick="toggleUserStatus(${user.id})">
                             <i class="fas fa-${user.status == 1 ? 'ban' : 'check'}"></i> ${user.status == 1 ? '禁用' : '启用'}
                         </button>
                     </div>
                 `;
             } else {
-                document.getElementById('userDetailContent').innerHTML = `<div class="alert alert-danger">${result.message}</div>`;
+                document.getElementById('userBasicContent').innerHTML = `<div class="alert alert-danger">${escapeHtml(result.message || '获取用户信息失败')}</div>`;
             }
         }
 

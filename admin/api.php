@@ -72,6 +72,95 @@ try {
             ]);
             break;
 
+        // ============================================================
+        // 用户操作记录查询
+        // ============================================================
+
+        case 'get_user_login_logs':
+            $userId = (int)($_POST['user_id'] ?? 0);
+            $page = max(1, (int)($_POST['page'] ?? 1));
+            $perPage = min(50, max(1, (int)($_POST['per_page'] ?? 10)));
+            $offset = ($page - 1) * $perPage;
+
+            if ($userId <= 0) {
+                jsonResponse(false, '无效的用户ID');
+            }
+
+            $result = $db->getUserLoginLogs($userId, $perPage, $offset);
+            
+            jsonResponse(true, '获取成功', [
+                'logs' => $result['logs'],
+                'total' => $result['total'],
+                'page' => $page,
+                'per_page' => $perPage,
+                'total_pages' => ceil($result['total'] / $perPage)
+            ]);
+            break;
+
+        case 'get_user_consumption_logs':
+            $userId = (int)($_POST['user_id'] ?? 0);
+            $page = max(1, (int)($_POST['page'] ?? 1));
+            $perPage = min(50, max(1, (int)($_POST['per_page'] ?? 10)));
+            $offset = ($page - 1) * $perPage;
+
+            if ($userId <= 0) {
+                jsonResponse(false, '无效的用户ID');
+            }
+
+            $result = $db->getUserConsumptionLogsPaginated($userId, $perPage, $offset);
+            
+            jsonResponse(true, '获取成功', [
+                'logs' => $result['logs'],
+                'total' => $result['total'],
+                'page' => $page,
+                'per_page' => $perPage,
+                'total_pages' => ceil($result['total'] / $perPage)
+            ]);
+            break;
+
+        case 'get_user_balance_logs':
+            $userId = (int)($_POST['user_id'] ?? 0);
+            $page = max(1, (int)($_POST['page'] ?? 1));
+            $perPage = min(50, max(1, (int)($_POST['per_page'] ?? 10)));
+            $offset = ($page - 1) * $perPage;
+
+            if ($userId <= 0) {
+                jsonResponse(false, '无效的用户ID');
+            }
+
+            $result = $db->getUserBalanceLogs($userId, $perPage, $offset);
+            
+            jsonResponse(true, '获取成功', [
+                'logs' => $result['logs'],
+                'total' => $result['total'],
+                'page' => $page,
+                'per_page' => $perPage,
+                'total_pages' => ceil($result['total'] / $perPage)
+            ]);
+            break;
+
+        case 'get_user_recharge_orders':
+            $userId = (int)($_POST['user_id'] ?? 0);
+            $page = max(1, (int)($_POST['page'] ?? 1));
+            $perPage = min(50, max(1, (int)($_POST['per_page'] ?? 10)));
+            $offset = ($page - 1) * $perPage;
+            $includeAll = ($_POST['include_all'] ?? 'true') === 'true';
+
+            if ($userId <= 0) {
+                jsonResponse(false, '无效的用户ID');
+            }
+
+            $result = $db->getUserRechargeOrdersPaginated($userId, $perPage, $offset, $includeAll);
+            
+            jsonResponse(true, '获取成功', [
+                'orders' => $result['orders'],
+                'total' => $result['total'],
+                'page' => $page,
+                'per_page' => $perPage,
+                'total_pages' => ceil($result['total'] / $perPage)
+            ]);
+            break;
+
         case 'update_user_email':
             $userId = (int)($_POST['user_id'] ?? 0);
             $email = trim($_POST['email'] ?? '');

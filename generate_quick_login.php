@@ -1,17 +1,19 @@
 <?php
 /**
- * 生成快速登录URL的命令行工具
+ * 生成快速登录/访问URL的命令行工具
  *
  * 用法:
  *   php generate_quick_login.php [type] [base_url]
  *
  * 参数:
- *   type     - 登录类型: admin (管理员) 或 user (普通用户)，默认 admin
+ *   type     - 类型: admin (管理员登录), user (用户登录), diagnostic (诊断接口)
+ *              默认 admin
  *   base_url - 基础URL，默认 http://127.0.0.1:8080
  *
  * 示例:
  *   php generate_quick_login.php admin http://127.0.0.1:8080
  *   php generate_quick_login.php user http://127.0.0.1:8080
+ *   php generate_quick_login.php diagnostic http://127.0.0.1:8080
  *   php generate_quick_login.php user
  *   php generate_quick_login.php
  */
@@ -32,7 +34,7 @@ $baseUrl = 'http://127.0.0.1:8080';
 
 if (isset($argv[1])) {
     // 检查第一个参数是类型还是URL
-    if (in_array(strtolower($argv[1]), ['admin', 'user'], true)) {
+    if (in_array(strtolower($argv[1]), ['admin', 'user', 'diagnostic'], true)) {
         $type = strtolower($argv[1]);
         $baseUrl = $argv[2] ?? 'http://127.0.0.1:8080';
     } elseif (filter_var($argv[1], FILTER_VALIDATE_URL)) {
@@ -41,10 +43,11 @@ if (isset($argv[1])) {
     } else {
         fwrite(STDERR, "错误: 无效的参数 - {$argv[1]}\n");
         fwrite(STDERR, "用法: php generate_quick_login.php [type] [base_url]\n");
-        fwrite(STDERR, "  type: admin 或 user\n");
+        fwrite(STDERR, "  type: admin, user 或 diagnostic\n");
         fwrite(STDERR, "示例:\n");
         fwrite(STDERR, "  php generate_quick_login.php admin http://127.0.0.1:8080\n");
         fwrite(STDERR, "  php generate_quick_login.php user http://127.0.0.1:8080\n");
+        fwrite(STDERR, "  php generate_quick_login.php diagnostic http://127.0.0.1:8080\n");
         exit(1);
     }
 }
@@ -91,7 +94,7 @@ try {
         echo "----------------------------------------\n";
         echo "\n";
 
-    } else {
+    } elseif ($type === 'user') {
         // 用户快速登录
         $auth = getAuth();
 
@@ -137,6 +140,74 @@ try {
         echo "  2. 生产环境请务必关闭快速登录功能\n";
         echo "  3. 请勿将此链接分享给他人\n";
         echo "  4. 测试用户首次访问时自动创建\n";
+        echo "----------------------------------------\n";
+        echo "\n";
+
+    } else {
+        // 诊断接口访问URL
+        // 加载配置
+        $configFile = __DIR__ . '/config.php';
+        if (!file_exists($configFile)) {
+            fwrite(STDERR, "错误: 配置文件不存在 - config.php\n");
+            exit(1);
+        }
+
+        $fullConfig = require $configFile;
+        $adminConfig = $fullConfig['admin'] ?? [];
+        $diagnosticConfig = $adminConfig['debug_diagnostic'] ?? [];
+        $keyHash = $adminConfig['key_hash'] ?? '';
+
+        // 检查诊断接口是否启用
+        if (empty($diagnosticConfig['enabled'])) {
+            fwrite(STDERR, "错误: 调试诊断接口未启用\n");
+            fwrite(STDERR, "请在 config.php 中设置 admin.debug_diagnostic.enabled = true\n");
+            exit(1);
+        }
+
+        // 检查管理员密钥是否配置
+        if (empty($keyHash)) {
+            fwrite(STDERR, "错误: 管理员密钥未配置\n");
+            fwrite(STDERR, "请先在 config.php 中配置 admin.key_hash\n");
+            exit(1);
+        }
+
+        // 获取有效期配置
+        $expiresSeconds = $diagnosticConfig['expires_seconds'] ?? 300;
+
+        // 生成时间戳和签名
+        $timestamp = time();
+        $signature = hash_hmac('sha256', 'diagnostic:' . $timestamp, $keyHash);
+
+        // 构建基础URL（带签名参数）
+        $diagnosticUrl = rtrim($baseUrl, '/') . '/debug_diagnostic.php'
+            . '?t=' . $timestamp
+            . '&sig=' . $signature;
+
+        // 输出结果
+        echo "\n";
+        echo "========================================\n";
+        echo "   诊断接口访问URL生成成功\n";
+        echo "========================================\n";
+        echo "\n";
+        echo "基础URL（添加 action 参数使用）:\n";
+        echo "  {$diagnosticUrl}\n";
+        echo "\n";
+        echo "常用查询示例:\n";
+        echo "  状态检查: {$diagnosticUrl}&action=status\n";
+        echo "  配置信息: {$diagnosticUrl}&action=config\n";
+        echo "  数据库健康: {$diagnosticUrl}&action=db_health\n";
+        echo "  环境诊断: {$diagnosticUrl}&action=env\n";
+        echo "  系统统计: {$diagnosticUrl}&action=stats\n";
+        echo "\n";
+        echo "过期时间: " . date('Y-m-d H:i:s', $timestamp + $expiresSeconds) . "\n";
+        echo "有效期: {$expiresSeconds} 秒\n";
+        echo "\n";
+        echo "----------------------------------------\n";
+        echo "安全提示:\n";
+        echo "  1. 此链接仅用于开发调试环境\n";
+        echo "  2. 生产环境请务必关闭诊断接口功能\n";
+        echo "  3. 请勿将此链接分享给他人\n";
+        echo "  4. 链接过期后需重新生成\n";
         echo "----------------------------------------\n";
         echo "\n";
     }

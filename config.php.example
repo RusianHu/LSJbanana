@@ -134,6 +134,14 @@ $adminConfig = [
         'ip_whitelist' => ['127.0.0.1', '::1'],            // IP 白名单 (空数组表示不限制IP)
         'expires_seconds' => 300,                           // 快速登录链接有效期 (秒，默认5分钟)
     ],
+
+    // 调试诊断接口配置 (仅用于开发环境，生产环境务必关闭)
+    // 提供系统配置、状态、用户信息等诊断功能，需要管理员密钥认证
+    'debug_diagnostic' => [
+        'enabled' => false,                                 // 是否启用调试诊断接口 (生产环境必须为 false)
+        'ip_whitelist' => ['127.0.0.1', '::1'],            // IP 白名单 (空数组表示不限制IP)
+        'log_requests' => true,                             // 是否记录请求日志到 logs/debug_diagnostic.log
+    ],
 ];
 
 // 管理员初始化引导配置

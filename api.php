@@ -718,6 +718,15 @@ $billingResult = null;
 $imageCount = count($resultImages);
 
 if (!empty($resultImages)) {
+    // 构建增强的消费记录备注（包含提示词摘要和图片标识）
+    $remarkData = [
+        'prompt' => mb_substr($prompt, 0, 200, 'UTF-8'),  // 提示词摘要
+        'images' => array_map(function($path) {
+            return basename($path);  // 只保存文件名
+        }, $resultImages)
+    ];
+    $remarkJson = json_encode($remarkData, JSON_UNESCAPED_UNICODE);
+    
     // 生成成功，记录消费日志
     $db->logConsumption(
         $userId,
@@ -727,7 +736,7 @@ if (!empty($resultImages)) {
         $balanceAfterDeduct,
         $imageCount,
         $modelName,
-        mb_substr($prompt, 0, 200, 'UTF-8')
+        $remarkJson
     );
     
     $billingResult = [

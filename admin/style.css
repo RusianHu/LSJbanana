@@ -691,3 +691,199 @@ select.form-control {
 .text-muted { color: #718096; }
 .text-danger { color: var(--admin-danger); }
 .text-success { color: var(--admin-success); }
+
+/* ============================================================
+   标签页样式
+   ============================================================ */
+
+.modal-lg {
+    max-width: 900px;
+}
+
+.tabs-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    border-bottom: 2px solid #e2e8f0;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+}
+
+.tab-btn {
+    padding: 10px 16px;
+    border: none;
+    background: transparent;
+    color: #718096;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    border-radius: 6px 6px 0 0;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tab-btn:hover {
+    color: var(--admin-primary);
+    background: rgba(102, 126, 234, 0.08);
+}
+
+.tab-btn.active {
+    color: var(--admin-primary);
+    background: rgba(102, 126, 234, 0.12);
+    border-bottom: 2px solid var(--admin-primary);
+    margin-bottom: -12px;
+}
+
+.tab-btn i {
+    font-size: 0.85rem;
+}
+
+.tabs-content {
+    min-height: 300px;
+}
+
+.tab-pane {
+    display: none;
+}
+
+.tab-pane.active {
+    display: block;
+}
+
+/* 紧凑表格 */
+.compact-table table {
+    font-size: 0.85rem;
+}
+
+.compact-table th,
+.compact-table td {
+    padding: 10px 12px;
+}
+
+.compact-table code {
+    background: #f7fafc;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 0.8rem;
+}
+
+/* 标签页内分页 */
+.tab-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #e2e8f0;
+}
+
+.tab-pagination .page-info {
+    color: #718096;
+    font-size: 0.85rem;
+}
+
+.tab-pagination .btn-sm {
+    padding: 5px 12px;
+    font-size: 0.8rem;
+}
+
+/* 用户信息网格 */
+.user-info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+}
+
+@media (max-width: 600px) {
+    .user-info-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* 统计数据网格 */
+.stats-grid {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin: 15px 0;
+}
+
+.stat-item {
+    flex: 1;
+    min-width: 120px;
+    background: #f7fafc;
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.stat-item .stat-label {
+    display: block;
+    color: #718096;
+    font-size: 0.85rem;
+    margin-bottom: 5px;
+}
+
+.stat-item .stat-value {
+    display: block;
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+/* 操作按钮网格 */
+.action-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-top: 10px;
+}
+
+@media (max-width: 500px) {
+    .action-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .tabs-nav {
+        flex-direction: column;
+    }
+    
+    .tab-btn {
+        border-radius: 6px;
+        margin-bottom: 0;
+    }
+    
+    .tab-btn.active {
+        margin-bottom: 0;
+        border-bottom: none;
+        border-left: 3px solid var(--admin-primary);
+    }
+}
+
+/* 标签页内标题 */
+.tab-pane h4 {
+    font-size: 1rem;
+    color: #2d3748;
+    margin: 15px 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tab-pane h4 i {
+    color: var(--admin-primary);
+}
+
+.tab-pane hr {
+    border: none;
+    border-top: 1px solid #e2e8f0;
+    margin: 15px 0;
+}
+
+/* 辅助徽章样式 */
+.badge-secondary {
+    background: #e2e8f0;
+    color: #4a5568;
+}
