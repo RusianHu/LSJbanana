@@ -308,6 +308,39 @@ function extractThoughtsFromResponse(array $responseData): array {
     return $cleaned;
 }
 
+/**
+ * 计算最接近的支持宽高比
+ */
+function getClosestAspectRatio($width, $height) {
+    if ($height <= 0) return '1:1';
+    
+    $target = $width / $height;
+    $ratios = [
+        '1:1' => 1.0,
+        '2:3' => 2/3,
+        '3:2' => 3/2,
+        '3:4' => 3/4,
+        '4:3' => 4/3,
+        '4:5' => 4/5,
+        '5:4' => 5/4,
+        '9:16' => 9/16,
+        '16:9' => 16/9,
+        '21:9' => 21/9,
+    ];
+    
+    $closest = '1:1';
+    $minDiff = PHP_FLOAT_MAX;
+    
+    foreach ($ratios as $key => $val) {
+        $diff = abs($target - $val);
+        if ($diff < $minDiff) {
+            $minDiff = $diff;
+            $closest = $key;
+        }
+    }
+    return $closest;
+}
+
 // 检查请求方法
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     sendError('只支持 POST 请求', 405);
@@ -595,6 +628,18 @@ if ($action === 'generate') {
             $validated = SecurityUtils::validateUploadedImage($filePayload, $allowedMimeTypes, $maxFileSize);
         } catch (\RuntimeException $e) {
             continue;
+        }
+
+        // 如果未指定宽高比（保持原样），则根据第一张图片自动计算
+        if ($validImageCount === 0 && empty($aspectRatio) && !$isFlashImage) {
+            list($width, $height) = getimagesize($validated['tmp_name']);
+            if ($width && $height) {
+                $detectedRatio = getClosestAspectRatio($width, $height);
+                if (!isset($requestData['generationConfig']['imageConfig'])) {
+                    $requestData['generationConfig']['imageConfig'] = [];
+                }
+                $requestData['generationConfig']['imageConfig']['aspectRatio'] = $detectedRatio;
+            }
         }
 
         $imageData = file_get_contents($validated['tmp_name']);
