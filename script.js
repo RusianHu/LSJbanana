@@ -607,13 +607,94 @@ document.addEventListener('DOMContentLoaded', () => {
                     `;
                     outputContainer.appendChild(saveNotice);
 
-                    data.images.forEach(imgUrl => {
+                    data.images.forEach((imgUrl, index) => {
                         const imgDiv = document.createElement('div');
                         imgDiv.className = 'output-item';
-                        imgDiv.innerHTML = `
-                            <img src="${imgUrl}" alt="Generated Image">
-                            <p><a href="${imgUrl}" download target="_blank" class="btn-primary" style="display:inline-block; width:auto; padding: 5px 15px; font-size: 0.9rem; margin-top: 5px;">下载图片</a></p>
-                        `;
+                        
+                        // 创建图片容器（用于定位分辨率标签）
+                        const imgWrapper = document.createElement('div');
+                        imgWrapper.className = 'output-image-wrapper';
+                        
+                        // 创建图片元素
+                        const img = document.createElement('img');
+                        img.src = imgUrl;
+                        img.alt = `Generated Image ${index + 1}`;
+                        
+                        // 创建分辨率标签（初始加载状态）
+                        const resLabel = document.createElement('div');
+                        resLabel.className = 'resolution-label resolution-loading';
+                        resLabel.setAttribute('aria-label', '正在加载图片尺寸');
+                        resLabel.setAttribute('role', 'status');
+                        resLabel.innerHTML = '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i><span class="sr-only">加载中</span>';
+                        
+                        // 分辨率阈值常量
+                        const RESOLUTION_THRESHOLD_2K = 2000;
+                        const RESOLUTION_THRESHOLD_1K = 1000;
+                        
+                        // 图片加载完成后读取尺寸
+                        img.onload = function() {
+                            const w = img.naturalWidth;
+                            const h = img.naturalHeight;
+                            
+                            // 边界检查：确保尺寸有效
+                            if (!w || !h || w <= 0 || h <= 0) {
+                                resLabel.className = 'resolution-label resolution-error';
+                                resLabel.setAttribute('aria-label', '无法获取图片尺寸');
+                                resLabel.innerHTML = '<i class="fas fa-question-circle" aria-hidden="true"></i> 未知';
+                                return;
+                            }
+                            
+                            const maxDim = Math.max(w, h);
+                            
+                            // 判断分辨率档位
+                            let tierClass = 'resolution-low';
+                            let tierLabel = '';
+                            let tierDescription = '';
+                            
+                            if (maxDim >= RESOLUTION_THRESHOLD_2K) {
+                                tierClass = 'resolution-2k';
+                                tierLabel = '2K';
+                                tierDescription = '2K 高清';
+                            } else if (maxDim >= RESOLUTION_THRESHOLD_1K) {
+                                tierClass = 'resolution-1k';
+                                tierLabel = '1K';
+                                tierDescription = '1K 标清';
+                            } else {
+                                tierClass = 'resolution-low';
+                                tierLabel = 'SD';
+                                tierDescription = '标准分辨率';
+                            }
+                            
+                            const ariaText = `${tierDescription}，尺寸 ${w} 乘 ${h} 像素`;
+                            resLabel.className = `resolution-label ${tierClass}`;
+                            resLabel.setAttribute('aria-label', ariaText);
+                            resLabel.setAttribute('title', `${tierLabel} ${w}×${h}`);
+                            resLabel.innerHTML = `<span class="resolution-tier" aria-hidden="true">${tierLabel}</span><span class="resolution-size" aria-hidden="true">${w} × ${h}</span>`;
+                        };
+                        
+                        img.onerror = function() {
+                            resLabel.className = 'resolution-label resolution-error';
+                            resLabel.setAttribute('aria-label', '图片加载失败');
+                            resLabel.innerHTML = '<i class="fas fa-exclamation-circle" aria-hidden="true"></i> 加载失败';
+                        };
+                        
+                        // 点击分辨率标签也可以打开图片预览
+                        resLabel.style.cursor = 'pointer';
+                        resLabel.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            // 触发图片的点击事件以打开预览
+                            img.click();
+                        });
+                        
+                        imgWrapper.appendChild(img);
+                        imgWrapper.appendChild(resLabel);
+                        imgDiv.appendChild(imgWrapper);
+                        
+                        // 添加下载按钮
+                        const downloadLink = document.createElement('p');
+                        downloadLink.innerHTML = `<a href="${imgUrl}" download target="_blank" class="btn-primary" style="display:inline-block; width:auto; padding: 5px 15px; font-size: 0.9rem; margin-top: 5px;">下载图片</a>`;
+                        imgDiv.appendChild(downloadLink);
+                        
                         outputContainer.appendChild(imgDiv);
                     });
                 }

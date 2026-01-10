@@ -692,17 +692,175 @@ textarea {
     text-align: center;
 }
 
+/* 图片容器（用于定位分辨率标签） */
+.output-image-wrapper {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+}
+
 .output-item img {
     max-width: 100%;
     height: auto;
     border-radius: 4px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    display: block;
 }
 
 .output-item p {
     margin-top: 10px;
     color: #555;
     font-size: 0.9rem;
+}
+
+/* ========== 分辨率标签样式 ========== */
+.resolution-label {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #fff;
+    /* 优雅降级：先设置不透明背景，再用 backdrop-filter 增强 */
+    background: rgba(0, 0, 0, 0.75);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    transition: all 0.2s ease;
+    z-index: 10;
+}
+
+/* 支持 backdrop-filter 的浏览器使用毛玻璃效果 */
+@supports (backdrop-filter: blur(4px)) {
+    .resolution-label {
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+    }
+}
+
+.resolution-label:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* 焦点状态（可访问性） */
+.resolution-label:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+}
+
+/* 加载中状态 */
+.resolution-label.resolution-loading {
+    background: rgba(100, 100, 100, 0.8);
+    padding: 6px 14px;
+}
+
+@supports (backdrop-filter: blur(4px)) {
+    .resolution-label.resolution-loading {
+        background: rgba(100, 100, 100, 0.7);
+    }
+}
+
+.resolution-label.resolution-loading i {
+    font-size: 0.9rem;
+}
+
+/* 加载失败状态 */
+.resolution-label.resolution-error {
+    background: rgba(211, 47, 47, 0.9);
+}
+
+@supports (backdrop-filter: blur(4px)) {
+    .resolution-label.resolution-error {
+        background: rgba(211, 47, 47, 0.85);
+    }
+}
+
+/* 2K 分辨率 - 绿色 */
+.resolution-label.resolution-2k {
+    background: linear-gradient(135deg, #2e7d32 0%, #43a047 100%);
+    box-shadow: 0 2px 8px rgba(46, 125, 50, 0.4);
+}
+
+/* 1K 分辨率 - 蓝色 */
+.resolution-label.resolution-1k {
+    background: linear-gradient(135deg, #1565c0 0%, #1e88e5 100%);
+    box-shadow: 0 2px 8px rgba(21, 101, 192, 0.4);
+}
+
+/* 低分辨率 - 橙色 */
+.resolution-label.resolution-low {
+    background: linear-gradient(135deg, #e65100 0%, #f57c00 100%);
+    box-shadow: 0 2px 8px rgba(230, 81, 0, 0.4);
+}
+
+/* 档位标签 */
+.resolution-tier {
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+/* 尺寸文字 */
+.resolution-size {
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+    opacity: 0.95;
+}
+
+/* 屏幕阅读器专用类 */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* 移动端适配 */
+@media (max-width: 600px) {
+    .resolution-label {
+        bottom: 6px;
+        right: 6px;
+        padding: 4px 8px;
+        font-size: 0.75rem;
+        gap: 5px;
+    }
+    
+    .resolution-tier {
+        padding: 1px 4px;
+        font-size: 0.65rem;
+    }
+    
+    .resolution-size {
+        font-size: 0.7rem;
+    }
+}
+
+/* 减少动画偏好 */
+@media (prefers-reduced-motion: reduce) {
+    .resolution-label {
+        transition: none;
+    }
+    
+    .resolution-label:hover {
+        transform: none;
+    }
+    
+    .resolution-label.resolution-loading i {
+        animation: none;
+    }
 }
 
 /* 保存提示样式 */
