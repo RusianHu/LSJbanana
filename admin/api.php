@@ -19,6 +19,9 @@ if (!$adminAuth->requireAuthApi()) {
 $db = Database::getInstance();
 $auth = getAuth();
 
+// 确保数据库迁移已执行
+$db->migrateBalanceLogsVisibility();
+
 // 获取客户端IP
 function getClientIp(): string {
     if (!empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
@@ -244,6 +247,8 @@ try {
             $userId = (int)($_POST['user_id'] ?? 0);
             $amount = floatval($_POST['amount'] ?? 0);
             $remark = trim($_POST['remark'] ?? '');
+            $visibleToUser = (int)($_POST['visible_to_user'] ?? 0);
+            $userRemark = trim($_POST['user_remark'] ?? '');
 
             if ($userId <= 0) {
                 jsonResponse(false, '无效的用户ID');
@@ -255,6 +260,11 @@ try {
 
             if (empty($remark)) {
                 jsonResponse(false, '请填写充值备注');
+            }
+
+            // 如果选择显示给用户但没有填写用户可见说明，使用默认值
+            if ($visibleToUser && empty($userRemark)) {
+                $userRemark = '系统调整';
             }
 
             $user = $db->getUserById($userId);
@@ -270,16 +280,18 @@ try {
             );
 
             if ($result) {
-                // 记录充值日志
+                // 记录充值日志（包含可见性设置）
                 $db->execute(
-                    "INSERT INTO balance_logs (user_id, type, amount, balance_before, balance_after, remark, created_at)
-                     VALUES (:user_id, 'recharge', :amount, :before, :after, :remark, :created_at)",
+                    "INSERT INTO balance_logs (user_id, type, amount, balance_before, balance_after, remark, visible_to_user, user_remark, created_at)
+                     VALUES (:user_id, 'recharge', :amount, :before, :after, :remark, :visible_to_user, :user_remark, :created_at)",
                     [
                         'user_id' => $userId,
                         'amount' => $amount,
                         'before' => $user['balance'],
                         'after' => $newBalance,
-                        'remark' => '管理员人工充值: ' . $remark,
+                        'remark' => $remark,
+                        'visible_to_user' => $visibleToUser,
+                        'user_remark' => $userRemark ?: null,
                         'created_at' => date('Y-m-d H:i:s')
                     ]
                 );
@@ -288,6 +300,8 @@ try {
                 $db->logAdminOperation('balance_add', $userId, [
                     'amount' => $amount,
                     'remark' => $remark,
+                    'visible_to_user' => $visibleToUser,
+                    'user_remark' => $userRemark,
                     'balance_before' => $user['balance'],
                     'balance_after' => $newBalance
                 ], getClientIp());

@@ -278,6 +278,8 @@ class Database {
                     balance_before DECIMAL(10, 2) NOT NULL,
                     balance_after DECIMAL(10, 2) NOT NULL,
                     remark TEXT,
+                    visible_to_user INTEGER DEFAULT 0,
+                    user_remark TEXT,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (user_id) REFERENCES users(id)
                 )
@@ -307,7 +309,8 @@ class Database {
             "CREATE INDEX IF NOT EXISTS idx_reset_token ON password_reset_tokens(token_hash)",
             "CREATE INDEX IF NOT EXISTS idx_reset_user ON password_reset_tokens(user_id)",
             "CREATE INDEX IF NOT EXISTS idx_balance_logs_user_id ON balance_logs(user_id)",
-            "CREATE INDEX IF NOT EXISTS idx_balance_logs_created_at ON balance_logs(created_at)"
+            "CREATE INDEX IF NOT EXISTS idx_balance_logs_created_at ON balance_logs(created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_balance_logs_visible ON balance_logs(visible_to_user)"
         ];
 
         try {
@@ -1582,6 +1585,72 @@ class Database {
         $total = (int) ($countStmt->fetch()['total'] ?? 0);
 
         return ['logs' => $logs, 'total' => $total];
+    }
+
+    /**
+     * 获取用户可见的余额变动记录
+     * 用于充值页面展示管理员手动操作的可见记录
+     *
+     * @param int $userId 用户ID
+     * @param int $limit 限制数量
+     * @param int $offset 偏移量
+     * @return array ['logs' => array, 'total' => int]
+     */
+    public function getUserVisibleBalanceLogs(int $userId, int $limit = 10, int $offset = 0): array {
+        // 获取记录（只获取 visible_to_user = 1 的记录）
+        $sql = "SELECT * FROM balance_logs WHERE user_id = :user_id AND visible_to_user = 1 ORDER BY created_at DESC LIMIT :limit OFFSET :offset";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindValue(':user_id', $userId, PDO::PARAM_INT);
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+        $logs = $stmt->fetchAll();
+
+        // 获取总数
+        $countSql = "SELECT COUNT(*) as total FROM balance_logs WHERE user_id = :user_id AND visible_to_user = 1";
+        $countStmt = $this->pdo->prepare($countSql);
+        $countStmt->execute([':user_id' => $userId]);
+        $total = (int) ($countStmt->fetch()['total'] ?? 0);
+
+        return ['logs' => $logs, 'total' => $total];
+    }
+
+    /**
+     * 迁移：为 balance_logs 表添加 visible_to_user 和 user_remark 字段
+     *
+     * @return bool 是否成功
+     */
+    public function migrateBalanceLogsVisibility(): bool {
+        try {
+            // 检查列是否存在
+            $result = $this->pdo->query("PRAGMA table_info(balance_logs)");
+            $columns = $result->fetchAll(PDO::FETCH_ASSOC);
+            $hasVisibleToUser = false;
+            $hasUserRemark = false;
+            
+            foreach ($columns as $column) {
+                if ($column['name'] === 'visible_to_user') {
+                    $hasVisibleToUser = true;
+                }
+                if ($column['name'] === 'user_remark') {
+                    $hasUserRemark = true;
+                }
+            }
+            
+            if (!$hasVisibleToUser) {
+                $this->pdo->exec("ALTER TABLE balance_logs ADD COLUMN visible_to_user INTEGER DEFAULT 0");
+                $this->pdo->exec("CREATE INDEX IF NOT EXISTS idx_balance_logs_visible ON balance_logs(visible_to_user)");
+            }
+            
+            if (!$hasUserRemark) {
+                $this->pdo->exec("ALTER TABLE balance_logs ADD COLUMN user_remark TEXT");
+            }
+            
+            return true;
+        } catch (PDOException $e) {
+            error_log('Balance logs visibility migration error: ' . $e->getMessage());
+            return false;
+        }
     }
 
     /**

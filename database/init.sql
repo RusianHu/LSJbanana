@@ -57,13 +57,16 @@ CREATE TABLE IF NOT EXISTS balance_logs (
     amount DECIMAL(10, 2) NOT NULL,
     balance_before DECIMAL(10, 2) NOT NULL,
     balance_after DECIMAL(10, 2) NOT NULL,
-    remark TEXT,
+    remark TEXT,                                 -- 管理员内部备注
+    visible_to_user INTEGER DEFAULT 0,           -- 是否对用户可见: 0=隐藏, 1=可见
+    user_remark TEXT,                            -- 用户可见的说明
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_balance_logs_user_id ON balance_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_balance_logs_created_at ON balance_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_balance_logs_visible ON balance_logs(visible_to_user);
 
 -- 消费记录表 (图片生成扣费)
 CREATE TABLE IF NOT EXISTS consumption_logs (

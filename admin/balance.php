@@ -121,7 +121,7 @@ function formatTime($datetime): string {
 
                         <div class="form-group">
                             <label for="rechargeRemark">
-                                <i class="fas fa-comment"></i> 备注说明
+                                <i class="fas fa-comment"></i> 备注说明（仅管理员可见）
                             </label>
                             <textarea
                                 id="rechargeRemark"
@@ -131,6 +131,34 @@ function formatTime($datetime): string {
                                 placeholder="请填写充值原因或备注..."
                                 required
                             ></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="checkbox-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: normal;">
+                                <input
+                                    type="checkbox"
+                                    id="rechargeVisibleToUser"
+                                    name="visible_to_user"
+                                    style="width: auto;"
+                                    onchange="toggleUserRemarkField('recharge')"
+                                >
+                                <span><i class="fas fa-eye"></i> 显示给用户</span>
+                            </label>
+                            <small class="text-muted">勾选后，此充值记录将在用户的充值记录中显示</small>
+                        </div>
+
+                        <div class="form-group" id="rechargeUserRemarkGroup" style="display: none;">
+                            <label for="rechargeUserRemark">
+                                <i class="fas fa-user"></i> 用户可见说明
+                            </label>
+                            <input
+                                type="text"
+                                id="rechargeUserRemark"
+                                name="user_remark"
+                                class="form-control"
+                                placeholder="用户将看到此说明，如：活动奖励、系统赠送"
+                            >
+                            <small class="text-muted">留空则显示"系统调整"</small>
                         </div>
 
                         <button type="submit" class="btn btn-success btn-block">
@@ -328,18 +356,21 @@ function formatTime($datetime): string {
             const userId = document.getElementById('rechargeUserId').value;
             const amount = document.getElementById('rechargeAmount').value;
             const remark = document.getElementById('rechargeRemark').value;
+            const visibleToUser = document.getElementById('rechargeVisibleToUser').checked ? 1 : 0;
+            const userRemark = document.getElementById('rechargeUserRemark').value;
 
             if (!userId) {
                 showToast('请先搜索并选择用户', 'danger');
                 return;
             }
 
-            await addBalance(userId, amount, remark);
+            await addBalance(userId, amount, remark, visibleToUser, userRemark);
 
             // 重置表单
             e.target.reset();
             document.getElementById('rechargeUserInfo').innerHTML = '';
             document.getElementById('rechargeUserId').value = '';
+            document.getElementById('rechargeUserRemarkGroup').style.display = 'none';
             currentUserData.recharge = null;
         });
 
@@ -386,6 +417,15 @@ function formatTime($datetime): string {
                 searchUser('deduct');
             }
         });
+
+        // 切换用户可见说明输入框的显示/隐藏
+        function toggleUserRemarkField(type) {
+            const checkbox = document.getElementById(`${type}VisibleToUser`);
+            const remarkGroup = document.getElementById(`${type}UserRemarkGroup`);
+            if (checkbox && remarkGroup) {
+                remarkGroup.style.display = checkbox.checked ? 'block' : 'none';
+            }
+        }
     </script>
 </body>
 </html>

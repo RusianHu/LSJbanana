@@ -37,6 +37,9 @@ usort($paymentChannels, function($a, $b) {
 // 确保数据库表有 expires_at 字段（自动迁移）
 $db->migrateAddExpiresAtColumn();
 
+// 确保 balance_logs 表有 visible_to_user 和 user_remark 字段（自动迁移）
+$db->migrateBalanceLogsVisibility();
+
 $error = '';
 $success = '';
 
@@ -108,8 +111,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // 获取充值选项
 $rechargeOptions = $billingConfig['recharge_options'] ?? [5, 10, 20, 50, 100];
 
-// 获取充值记录
+// 获取充值记录（在线支付订单）
 $rechargeOrders = $db->getUserRechargeOrders($user['id'], 10);
+
+// 获取用户可见的余额变动记录（管理员手动操作且标记为可见的）
+$visibleBalanceLogs = $db->getUserVisibleBalanceLogs($user['id'], 10);
+
+// 合并两种记录并按时间排序
+$allRecords = [];
+
+// 处理在线支付订单
+foreach ($rechargeOrders as $order) {
+    $allRecords[] = [
+        'type' => 'order',
+        'time' => $order['created_at'],
+        'amount' => (float)$order['amount'],
+        'status' => (int)$order['status'],
+        'source' => '在线支付',
+        'order_no' => $order['out_trade_no'],
+        'raw' => $order
+    ];
+}
+
+// 处理可见的余额变动记录
+foreach ($visibleBalanceLogs['logs'] as $log) {
+    // 只显示充值类型的记录（recharge），不显示扣款
+    if ($log['type'] === 'recharge') {
+        $allRecords[] = [
+            'type' => 'balance_log',
+            'time' => $log['created_at'],
+            'amount' => (float)$log['amount'],
+            'status' => 1, // 已完成
+            'source' => $log['user_remark'] ?: '系统调整',
+            'order_no' => null,
+            'raw' => $log
+        ];
+    }
+}
+
+// 按时间降序排序
+usort($allRecords, function($a, $b) {
+    return strtotime($b['time']) - strtotime($a['time']);
+});
+
+// 只取前10条
+$allRecords = array_slice($allRecords, 0, 10);
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -475,24 +521,28 @@ $rechargeOrders = $db->getUserRechargeOrders($user['id'], 10);
         </div>
 
         <!-- 充值记录 -->
-        <?php if (!empty($rechargeOrders)): ?>
+        <?php if (!empty($allRecords)): ?>
         <div class="recharge-box recharge-orders">
             <h3><i class="fas fa-history"></i> 充值记录</h3>
             <div class="order-list">
-                <?php foreach ($rechargeOrders as $order): ?>
+                <?php foreach ($allRecords as $record): ?>
                     <div class="order-item">
                         <div class="order-info">
-                            <div class="order-no"><?php echo htmlspecialchars($order['out_trade_no']); ?></div>
-                            <div class="order-time"><?php echo $order['created_at']; ?></div>
+                            <?php if ($record['type'] === 'order'): ?>
+                                <div class="order-no"><?php echo htmlspecialchars($record['order_no']); ?></div>
+                            <?php else: ?>
+                                <div class="order-no"><?php echo htmlspecialchars($record['source']); ?></div>
+                            <?php endif; ?>
+                            <div class="order-time"><?php echo $record['time']; ?></div>
                         </div>
-                        <div class="order-amount">+<?php echo number_format((float)$order['amount'], 2); ?>元</div>
+                        <div class="order-amount">+<?php echo number_format($record['amount'], 2); ?>元</div>
                         <?php
                         $statusClass = 'pending';
                         $statusText = '待支付';
-                        if ($order['status'] == 1) {
+                        if ($record['status'] == 1) {
                             $statusClass = 'paid';
                             $statusText = '已完成';
-                        } elseif ($order['status'] == 2) {
+                        } elseif ($record['status'] == 2) {
                             $statusClass = 'cancelled';
                             $statusText = '已取消';
                         }

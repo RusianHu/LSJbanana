@@ -66,11 +66,13 @@ async function toggleUserStatus(userId) {
 }
 
 // 人工充值
-async function addBalance(userId, amount, remark) {
+async function addBalance(userId, amount, remark, visibleToUser = 0, userRemark = '') {
     const result = await apiRequest('add_balance', {
         user_id: userId,
         amount: amount,
-        remark: remark
+        remark: remark,
+        visible_to_user: visibleToUser,
+        user_remark: userRemark
     });
 
     if (result.success) {
