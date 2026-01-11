@@ -5,6 +5,7 @@
 
 require_once __DIR__ . '/../admin_auth.php';
 require_once __DIR__ . '/../security_utils.php';
+require_once __DIR__ . '/../i18n/I18n.php';
 
 $adminAuth = getAdminAuth();
 
@@ -54,13 +55,13 @@ function formatTime($datetime): string {
     $diff = time() - $timestamp;
 
     if ($diff < 60) {
-        return '刚刚';
+        return __('time.just_now');
     } elseif ($diff < 3600) {
-        return floor($diff / 60) . '分钟前';
+        return __('time.minutes_ago', ['n' => floor($diff / 60)]);
     } elseif ($diff < 86400) {
-        return floor($diff / 3600) . '小时前';
+        return __('time.hours_ago', ['n' => floor($diff / 3600)]);
     } elseif ($diff < 259200) {
-        return floor($diff / 86400) . '天前';
+        return __('time.days_ago', ['n' => floor($diff / 86400)]);
     } else {
         return date('Y-m-d H:i', $timestamp);
     }
@@ -68,23 +69,17 @@ function formatTime($datetime): string {
 
 // 辅助函数：操作类型翻译
 function translateOpType($opType): string {
-    $types = [
-        'user_edit' => '编辑用户',
-        'balance_add' => '人工充值',
-        'balance_deduct' => '人工扣款',
-        'user_disable' => '禁用用户',
-        'user_enable' => '启用用户',
-        'password_reset' => '重置密码',
-    ];
-    return $types[$opType] ?? $opType;
+    $key = 'admin.op_type.' . $opType;
+    $trans = i18n()->get($key);
+    return $trans === $key ? $opType : $trans;
 }
 ?>
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="<?php echo i18n()->getHtmlLang(); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>仪表盘 - 管理后台</title>
+    <title><?php _e('admin.dashboard.title'); ?> - <?php _e('admin.title'); ?></title>
     <link rel="stylesheet" href="<?php echo url('/admin/style.css'); ?>">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -95,11 +90,15 @@ function translateOpType($opType): string {
         <div class="admin-header">
             <h1>
                 <i class="fas fa-tachometer-alt"></i>
-                仪表盘
+                <?php _e('admin.dashboard.title'); ?>
             </h1>
             <div class="admin-user-info">
+                <div class="language-switcher" style="margin-right: 15px;">
+                    <a href="?lang=zh-CN" class="<?php echo isZhCN() ? 'active' : ''; ?>" style="text-decoration: none; margin-right: 8px; color: #666; font-size: 0.9em;">CN</a>
+                    <a href="?lang=en" class="<?php echo isEn() ? 'active' : ''; ?>" style="text-decoration: none; color: #666; font-size: 0.9em;">EN</a>
+                </div>
                 <i class="fas fa-user-shield"></i>
-                <span>管理员</span>
+                <span><?php _e('admin.administrator'); ?></span>
             </div>
         </div>
 
@@ -107,9 +106,9 @@ function translateOpType($opType): string {
             <?php if ($dataError): ?>
                 <div class="alert alert-danger" style="margin-bottom: 20px;">
                     <i class="fas fa-exclamation-triangle"></i>
-                    <strong>警告:</strong> <?php echo htmlspecialchars($dataError); ?>
+                    <strong>Warning:</strong> <?php echo htmlspecialchars($dataError); ?>
                     <p style="margin-top: 8px; font-size: 0.9rem;">
-                        部分数据可能无法正常显示。请检查数据库连接和表结构是否完整。
+                        <?php _e('error.partial_function'); ?>
                     </p>
                 </div>
             <?php endif; ?>
@@ -120,7 +119,7 @@ function translateOpType($opType): string {
                     <div class="stat-card-header">
                         <div>
                             <div class="stat-card-value"><?php echo number_format($stats['total_users']); ?></div>
-                            <div class="stat-card-label">总用户数</div>
+                            <div class="stat-card-label"><?php _e('admin.dashboard.total_users'); ?></div>
                         </div>
                         <div class="stat-card-icon">
                             <i class="fas fa-users"></i>
@@ -128,7 +127,7 @@ function translateOpType($opType): string {
                     </div>
                     <?php if ($stats['today_new_users'] > 0): ?>
                         <div class="stat-card-change up">
-                            <i class="fas fa-arrow-up"></i> 今日新增 <?php echo $stats['today_new_users']; ?> 人
+                            <i class="fas fa-arrow-up"></i> <?php _e('admin.dashboard.today_new', ['count' => $stats['today_new_users']]); ?>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -137,7 +136,7 @@ function translateOpType($opType): string {
                     <div class="stat-card-header">
                         <div>
                             <div class="stat-card-value">¥<?php echo formatAmount($stats['total_recharge']); ?></div>
-                            <div class="stat-card-label">总充值金额</div>
+                            <div class="stat-card-label"><?php _e('admin.dashboard.total_recharge'); ?></div>
                         </div>
                         <div class="stat-card-icon">
                             <i class="fas fa-wallet"></i>
@@ -145,7 +144,7 @@ function translateOpType($opType): string {
                     </div>
                     <?php if ($stats['today_recharge'] > 0): ?>
                         <div class="stat-card-change up">
-                            <i class="fas fa-arrow-up"></i> 今日充值 ¥<?php echo formatAmount($stats['today_recharge']); ?>
+                            <i class="fas fa-arrow-up"></i> <?php _e('admin.dashboard.today_recharge'); ?> ¥<?php echo formatAmount($stats['today_recharge']); ?>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -154,7 +153,7 @@ function translateOpType($opType): string {
                     <div class="stat-card-header">
                         <div>
                             <div class="stat-card-value">¥<?php echo formatAmount($stats['total_consumption']); ?></div>
-                            <div class="stat-card-label">总消费金额</div>
+                            <div class="stat-card-label"><?php _e('admin.dashboard.total_consumption'); ?></div>
                         </div>
                         <div class="stat-card-icon">
                             <i class="fas fa-credit-card"></i>
@@ -162,7 +161,7 @@ function translateOpType($opType): string {
                     </div>
                     <?php if ($stats['today_consumption'] > 0): ?>
                         <div class="stat-card-change up">
-                            <i class="fas fa-arrow-up"></i> 今日消费 ¥<?php echo formatAmount($stats['today_consumption']); ?>
+                            <i class="fas fa-arrow-up"></i> <?php _e('admin.dashboard.today_consumption'); ?> ¥<?php echo formatAmount($stats['today_consumption']); ?>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -171,7 +170,7 @@ function translateOpType($opType): string {
                     <div class="stat-card-header">
                         <div>
                             <div class="stat-card-value"><?php echo number_format($stats['total_images']); ?></div>
-                            <div class="stat-card-label">生成图片数</div>
+                            <div class="stat-card-label"><?php _e('admin.dashboard.total_images'); ?></div>
                         </div>
                         <div class="stat-card-icon">
                             <i class="fas fa-image"></i>
@@ -179,7 +178,7 @@ function translateOpType($opType): string {
                     </div>
                     <?php if ($stats['today_images'] > 0): ?>
                         <div class="stat-card-change up">
-                            <i class="fas fa-arrow-up"></i> 今日生成 <?php echo $stats['today_images']; ?> 张
+                            <i class="fas fa-arrow-up"></i> <?php _e('admin.dashboard.today_images', ['count' => $stats['today_images']]); ?>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -188,21 +187,21 @@ function translateOpType($opType): string {
             <!-- 最近活动 -->
             <div class="panel">
                 <div class="panel-header">
-                    <h3><i class="fas fa-clock"></i> 最近活动</h3>
+                    <h3><i class="fas fa-clock"></i> <?php _e('admin.dashboard.recent_activity'); ?></h3>
                 </div>
                 <div class="panel-body">
                     <!-- 最近注册用户 -->
-                    <h4 class="mb-10"><i class="fas fa-user-plus"></i> 最近注册用户</h4>
+                    <h4 class="mb-10"><i class="fas fa-user-plus"></i> <?php _e('admin.dashboard.recent_users'); ?></h4>
                     <?php if (!empty($recentUsers)): ?>
                         <div class="admin-table mb-20">
                             <table>
                                 <thead>
                                     <tr>
-                                        <th>用户ID</th>
-                                        <th>用户名</th>
-                                        <th>邮箱</th>
-                                        <th>余额</th>
-                                        <th>注册时间</th>
+                                        <th><?php _e('admin.table.user_id'); ?></th>
+                                        <th><?php _e('admin.table.username'); ?></th>
+                                        <th><?php _e('admin.table.email'); ?></th>
+                                        <th><?php _e('admin.table.balance'); ?></th>
+                                        <th><?php _e('admin.table.created_at'); ?></th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -219,21 +218,21 @@ function translateOpType($opType): string {
                             </table>
                         </div>
                     <?php else: ?>
-                        <p class="text-muted mb-20">暂无数据</p>
+                        <p class="text-muted mb-20"><?php _e('admin.dashboard.no_data'); ?></p>
                     <?php endif; ?>
 
                     <!-- 最近充值订单 -->
-                    <h4 class="mb-10"><i class="fas fa-money-bill-wave"></i> 最近充值订单</h4>
+                    <h4 class="mb-10"><i class="fas fa-money-bill-wave"></i> <?php _e('admin.dashboard.recent_orders'); ?></h4>
                     <?php if (!empty($recentOrders)): ?>
                         <div class="admin-table mb-20">
                             <table>
                                 <thead>
                                     <tr>
-                                        <th>订单号</th>
-                                        <th>用户</th>
-                                        <th>金额</th>
-                                        <th>状态</th>
-                                        <th>时间</th>
+                                        <th><?php _e('admin.table.order_no'); ?></th>
+                                        <th><?php _e('admin.table.user'); ?></th>
+                                        <th><?php _e('admin.table.amount'); ?></th>
+                                        <th><?php _e('admin.table.status'); ?></th>
+                                        <th><?php _e('admin.table.time'); ?></th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -244,37 +243,37 @@ function translateOpType($opType): string {
                                                 <?php if ($order['user_id']): ?>
                                                     #<?php echo $order['user_id']; ?>
                                                 <?php else: ?>
-                                                    <span class="text-muted">未知</span>
+                                                    <span class="text-muted"><?php _e('status.unknown'); ?></span>
                                                 <?php endif; ?>
                                             </td>
                                             <td>¥<?php echo formatAmount($order['amount']); ?></td>
                                             <td>
                                                 <?php
                                                 $statusClass = '';
-                                                $statusText = '';
+                                                $statusKey = '';
                                                 switch ($order['status']) {
                                                     case 'pending':
                                                         $statusClass = 'warning';
-                                                        $statusText = '待支付';
+                                                        $statusKey = 'admin.order_status.0';
                                                         break;
                                                     case 'paid':
                                                         $statusClass = 'success';
-                                                        $statusText = '已支付';
+                                                        $statusKey = 'admin.order_status.1';
                                                         break;
                                                     case 'cancelled':
                                                         $statusClass = 'danger';
-                                                        $statusText = '已取消';
+                                                        $statusKey = 'admin.order_status.2';
                                                         break;
                                                     case 'refunded':
                                                         $statusClass = 'info';
-                                                        $statusText = '已退款';
+                                                        $statusKey = 'admin.order_status.3';
                                                         break;
                                                     default:
                                                         $statusClass = 'info';
-                                                        $statusText = $order['status'];
+                                                        $statusKey = 'status.unknown';
                                                 }
                                                 ?>
-                                                <span class="badge badge-<?php echo $statusClass; ?>"><?php echo $statusText; ?></span>
+                                                <span class="badge badge-<?php echo $statusClass; ?>"><?php _e($statusKey); ?></span>
                                             </td>
                                             <td><?php echo formatTime($order['created_at']); ?></td>
                                         </tr>
@@ -283,21 +282,21 @@ function translateOpType($opType): string {
                             </table>
                         </div>
                     <?php else: ?>
-                        <p class="text-muted mb-20">暂无数据</p>
+                        <p class="text-muted mb-20"><?php _e('admin.dashboard.no_data'); ?></p>
                     <?php endif; ?>
 
                     <!-- 最近管理操作 -->
-                    <h4 class="mb-10"><i class="fas fa-tasks"></i> 最近管理操作</h4>
+                    <h4 class="mb-10"><i class="fas fa-tasks"></i> <?php _e('admin.dashboard.recent_ops'); ?></h4>
                     <?php if (!empty($recentOps['logs'])): ?>
                         <div class="admin-table">
                             <table>
                                 <thead>
                                     <tr>
-                                        <th>操作类型</th>
-                                        <th>目标用户</th>
-                                        <th>详细信息</th>
-                                        <th>操作IP</th>
-                                        <th>时间</th>
+                                        <th><?php _e('admin.table.op_type'); ?></th>
+                                        <th><?php _e('admin.table.target_user'); ?></th>
+                                        <th><?php _e('admin.table.details'); ?></th>
+                                        <th><?php _e('admin.table.ip'); ?></th>
+                                        <th><?php _e('admin.table.time'); ?></th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -316,7 +315,7 @@ function translateOpType($opType): string {
                                                 $details = json_decode($log['details'], true);
                                                 if ($details) {
                                                     if (isset($details['amount'])) {
-                                                        echo '金额: ¥' . formatAmount($details['amount']);
+                                                        echo __('admin.table.amount') . ': ¥' . formatAmount($details['amount']);
                                                     }
                                                     if (isset($details['remark'])) {
                                                         echo ' - ' . htmlspecialchars($details['remark']);
@@ -334,7 +333,7 @@ function translateOpType($opType): string {
                             </table>
                         </div>
                     <?php else: ?>
-                        <p class="text-muted">暂无操作记录</p>
+                        <p class="text-muted"><?php _e('admin.dashboard.no_records'); ?></p>
                     <?php endif; ?>
                 </div>
             </div>
@@ -344,7 +343,9 @@ function translateOpType($opType): string {
     <script>
     // 注入 API 端点配置 (可选,script.js 会回退到相对路径)
     window.ADMIN_API_ENDPOINT = '<?php echo url('/admin/api.php'); ?>';
+    window.LSJ_LANG = '<?php echo currentLocale(); ?>';
     </script>
+    <script src="<?php echo url('/i18n/i18n.js'); ?>"></script>
     <script src="<?php echo url('/admin/script.js'); ?>"></script>
 </body>
 </html>

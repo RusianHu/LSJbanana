@@ -8,6 +8,7 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/security_utils.php';
 require_once __DIR__ . '/captcha_utils.php';
+require_once __DIR__ . '/i18n/I18n.php';
 
 class AdminAuth {
     private Database $db;
@@ -33,7 +34,7 @@ class AdminAuth {
 
         // 验证配置完整性
         if (empty($config)) {
-            throw new Exception('管理员配置缺失，请检查 config.php 中的 admin 配置项');
+            throw new Exception(__('error.config_missing'));
         }
 
         $this->config = $config;
@@ -59,7 +60,7 @@ class AdminAuth {
 
                 if (!$initResult['success']) {
                     throw new Exception(
-                        "管理员系统初始化失败：" . $initResult['message']
+                        __('error.init_failed') . ": " . $initResult['message']
                     );
                 }
 
@@ -69,7 +70,7 @@ class AdminAuth {
                 }
             }
         } catch (PDOException $e) {
-            throw new Exception('数据库连接失败: ' . $e->getMessage());
+            throw new Exception(__('error.db_connection_failed') . ': ' . $e->getMessage());
         }
     }
 
@@ -119,7 +120,7 @@ class AdminAuth {
 
         // 检查管理员功能是否启用
         if (!($this->config['enabled'] ?? true)) {
-            return ['success' => false, 'message' => '管理员功能已禁用'];
+            return ['success' => false, 'message' => __('admin.feature_disabled')];
         }
 
         // 检查IP锁定
@@ -128,14 +129,14 @@ class AdminAuth {
             $minutes = ceil($lockoutTime / 60);
             return [
                 'success' => false,
-                'message' => "登录失败次数过多,IP已被锁定,请{$minutes}分钟后重试",
+                'message' => __('admin.ip_locked', ['minutes' => $minutes]),
                 'lockout_time' => $lockoutTime
             ];
         }
 
         // 验证码验证
         if ($this->captcha->isLoginEnabled() && !$this->captcha->verify($captcha)) {
-            return ['success' => false, 'message' => '验证码错误或已过期'];
+            return ['success' => false, 'message' => __('auth.error.captcha_invalid')];
         }
 
         // 验证密钥
@@ -143,7 +144,7 @@ class AdminAuth {
         $configKeyHash = $this->config['key_hash'] ?? '';
 
         if (empty($configKeyHash)) {
-            return ['success' => false, 'message' => '管理员密钥未配置'];
+            return ['success' => false, 'message' => __('error.config_missing')];
         }
 
         if ($keyHash !== $configKeyHash) {
@@ -157,12 +158,12 @@ class AdminAuth {
             if ($remaining > 0) {
                 return [
                     'success' => false,
-                    'message' => "管理员密钥错误,还剩{$remaining}次尝试机会"
+                    'message' => __('auth.error.username_or_password')
                 ];
             } else {
                 return [
                     'success' => false,
-                    'message' => '登录失败次数过多,IP已被锁定15分钟'
+                    'message' => __('admin.ip_locked', ['minutes' => 15])
                 ];
             }
         }
@@ -193,7 +194,7 @@ class AdminAuth {
             $cookieHttpOnly
         );
 
-        return ['success' => true, 'message' => '登录成功'];
+        return ['success' => true, 'message' => __('admin.login_success')];
     }
 
     /**
@@ -248,7 +249,7 @@ class AdminAuth {
             http_response_code(401);
             echo json_encode([
                 'success' => false,
-                'message' => '未授权访问',
+                'message' => __('api.unauthorized'),
                 'code' => 'UNAUTHORIZED'
             ], JSON_UNESCAPED_UNICODE);
             exit;
@@ -268,16 +269,16 @@ class AdminAuth {
 
         $this->clearCookie();
         renderActionPage(
-            '已退出登录',
-            '您已安全退出管理员账户。',
+            __('auth.logout_success'),
+            __('auth.logout_success_desc'),
             [
                 [
-                    'label' => '管理员登录',
+                    'label' => __('admin.login_title'),
                     'href' => url('admin/login.php'),
                     'primary' => true
                 ],
                 [
-                    'label' => '返回首页',
+                    'label' => __('nav.back_home'),
                     'href' => url('index.php')
                 ]
             ]
@@ -295,9 +296,9 @@ class AdminAuth {
      * 显示登录提示页
      */
     private function redirectToLogin(string $reason = ''): void {
-        $message = '请先登录后继续访问管理后台。';
+        $message = __('auth.require_login_desc');
         if ($reason === 'expired') {
-            $message = '会话已过期，请重新登录。';
+            $message = __('auth.session_expired');
         }
 
         $loginUrl = 'admin/login.php';
@@ -306,16 +307,16 @@ class AdminAuth {
         }
 
         renderActionPage(
-            '需要管理员登录',
+            __('auth.require_login'),
             $message,
             [
                 [
-                    'label' => '管理员登录',
+                    'label' => __('admin.login_title'),
                     'href' => url($loginUrl),
                     'primary' => true
                 ],
                 [
-                    'label' => '返回首页',
+                    'label' => __('nav.back_home'),
                     'href' => url('index.php')
                 ]
             ],

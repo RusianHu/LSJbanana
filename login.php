@@ -8,6 +8,7 @@ ob_start(); // 启用输出缓冲，避免意外的提前输出
 // 尝试加载必需的依赖，捕获初始化错误
 try {
     require_once __DIR__ . '/auth.php';
+    require_once __DIR__ . '/i18n/I18n.php';
     $auth = getAuth();
     $captcha = getCaptcha();
 } catch (Exception $e) {
@@ -61,16 +62,16 @@ function normalizeRedirectPath(string $redirect, string $default = 'index.php'):
 if (isset($auth) && $auth && $auth->isLoggedIn()) {
     $redirect = normalizeRedirectPath($_GET['redirect'] ?? '', 'index.php');
     renderActionPage(
-        '已登录',
-        '您已登录，无需重复操作。',
+        __('auth.already_logged_in'),
+        __('auth.already_logged_in_desc'),
         [
             [
-                'label' => '继续前往',
+                'label' => __('auth.continue'),
                 'href' => url($redirect),
                 'primary' => true
             ],
             [
-                'label' => '返回首页',
+                'label' => __('nav.back_home'),
                 'href' => url('index.php')
             ]
         ]
@@ -92,16 +93,16 @@ if (!isset($initError) && isset($auth) && $auth && isset($_GET['quick_login']) &
             if ($quickLoginResult['success']) {
                 $redirect = normalizeRedirectPath($_GET['redirect'] ?? '', 'index.php');
                 renderActionPage(
-                    '登录成功',
-                    '快速登录已完成，请继续。',
+                    __('auth.login_success'),
+                    __('auth.quick_login_success'),
                     [
                         [
-                            'label' => '继续前往',
+                            'label' => __('auth.continue'),
                             'href' => url($redirect),
                             'primary' => true
                         ],
                         [
-                            'label' => '返回首页',
+                            'label' => __('nav.back_home'),
                             'href' => url('index.php')
                         ]
                     ]
@@ -110,10 +111,10 @@ if (!isset($initError) && isset($auth) && $auth && isset($_GET['quick_login']) &
                 $error = $quickLoginResult['message'];
             }
         } catch (Exception $e) {
-            $error = '快速登录失败: ' . $e->getMessage();
+            $error = __('auth.quick_login_failed') . ': ' . $e->getMessage();
         }
     } else {
-        $error = '无效的快速登录链接';
+        $error = __('auth.quick_login_invalid');
     }
 }
 
@@ -128,16 +129,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($auth) && $auth) {
     if ($result['success']) {
         $redirect = normalizeRedirectPath($_POST['redirect'] ?? '', 'index.php');
         renderActionPage(
-            '登录成功',
-            '登录已完成，请继续。',
+            __('auth.login_success'),
+            __('auth.login_success_desc'),
             [
                 [
-                    'label' => '继续前往',
+                    'label' => __('auth.continue'),
                     'href' => url($redirect),
                     'primary' => true
                 ],
                 [
-                    'label' => '返回首页',
+                    'label' => __('nav.back_home'),
                     'href' => url('index.php')
                 ]
             ]
@@ -150,11 +151,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($auth) && $auth) {
 $redirect = normalizeRedirectPath($_GET['redirect'] ?? '', '');
 ?>
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="<?php echo i18n()->getHtmlLang(); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>登录 - 老司机的香蕉</title>
+    <title><?php _e('auth.login'); ?> - <?php _e('site.title'); ?></title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -334,51 +335,56 @@ $redirect = normalizeRedirectPath($_GET['redirect'] ?? '', '');
 </head>
 <body>
     <?php if (isset($initError)): ?>
-        <!-- 初始化错误时显示友好错误页面 -->
-        <div class="auth-container">
-            <div class="auth-box">
-                <div class="auth-header">
-                    <div class="logo">&#127820;</div>
-                    <h1 style="color: #c62828;">系统初始化失败</h1>
-                </div>
-                <div class="alert alert-error">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    <strong>错误信息：</strong><br>
-                    <?php echo htmlspecialchars($initError); ?>
-                </div>
-                <div style="margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 6px;">
-                    <p style="margin: 0 0 10px 0; font-weight: bold;">可能的原因：</p>
-                    <ul style="margin: 0; padding-left: 20px;">
-                        <li>配置文件 (config.php) 不存在或格式错误</li>
-                        <li>数据库文件损坏或权限不足</li>
-                        <li>必需的 PHP 扩展未安装</li>
-                    </ul>
-                    <p style="margin: 15px 0 0 0; font-weight: bold;">建议操作：</p>
-                    <ul style="margin: 0; padding-left: 20px;">
-                        <li>检查 config.php.example 并创建正确的 config.php</li>
-                        <li>确认 database 目录存在且具有写入权限</li>
-                        <li>查看服务器错误日志获取详细信息</li>
-                    </ul>
-                </div>
-                <div style="text-align: center; margin-top: 20px;">
-                    <a href="index.php" class="btn-primary" style="display: inline-block; padding: 12px 24px; text-decoration: none;">
-                        <i class="fas fa-home"></i> 返回首页
-                    </a>
-                </div>
-            </div>
-        </div>
-    <?php else: ?>
+    <!-- 初始化错误时显示友好错误页面 -->
     <div class="auth-container">
-        <a href="index.php" class="back-link">
-            <i class="fas fa-arrow-left"></i> 返回首页
-        </a>
-
         <div class="auth-box">
             <div class="auth-header">
                 <div class="logo">&#127820;</div>
-                <h1>欢迎回来</h1>
-                <p>登录您的账号继续使用</p>
+                <h1 style="color: #c62828;"><?php _e('error.init_failed'); ?></h1>
             </div>
+            <div class="alert alert-error">
+                <i class="fas fa-exclamation-triangle"></i>
+                <strong>Error:</strong><br>
+                <?php echo htmlspecialchars($initError); ?>
+            </div>
+            <div style="margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 6px;">
+                <p style="margin: 0 0 10px 0; font-weight: bold;"><?php _e('error.possible_causes'); ?>:</p>
+                <ul style="margin: 0; padding-left: 20px;">
+                    <li><?php _e('error.cause_config'); ?></li>
+                    <li><?php _e('error.cause_db'); ?></li>
+                    <li><?php _e('error.cause_extension'); ?></li>
+                </ul>
+                <p style="margin: 15px 0 0 0; font-weight: bold;"><?php _e('error.suggested_actions'); ?>:</p>
+                <ul style="margin: 0; padding-left: 20px;">
+                    <li><?php _e('error.action_check_config'); ?></li>
+                    <li><?php _e('error.action_check_db'); ?></li>
+                    <li><?php _e('error.action_check_logs'); ?></li>
+                </ul>
+            </div>
+            <div style="text-align: center; margin-top: 20px;">
+                <a href="index.php" class="btn-primary" style="display: inline-block; padding: 12px 24px; text-decoration: none;">
+                    <i class="fas fa-home"></i> <?php _e('nav.back_home'); ?>
+                </a>
+            </div>
+        </div>
+    </div>
+<?php else: ?>
+<div class="auth-container">
+    <a href="index.php" class="back-link">
+        <i class="fas fa-arrow-left"></i> <?php _e('nav.back_home'); ?>
+    </a>
+
+    <div class="language-switcher" style="position: absolute; top: 20px; right: 20px;">
+        <a href="?lang=zh-CN" class="<?php echo isZhCN() ? 'active' : ''; ?>" style="text-decoration: none; margin-right: 10px; color: #666;">中文</a>
+        <a href="?lang=en" class="<?php echo isEn() ? 'active' : ''; ?>" style="text-decoration: none; color: #666;">English</a>
+    </div>
+
+    <div class="auth-box">
+        <div class="auth-header">
+            <div class="logo">&#127820;</div>
+            <h1><?php _e('auth.login_title'); ?></h1>
+            <p><?php _e('auth.login_subtitle'); ?></p>
+        </div>
 
             <?php if ($error): ?>
                 <div class="alert alert-error">
@@ -390,46 +396,46 @@ $redirect = normalizeRedirectPath($_GET['redirect'] ?? '', '');
                 <input type="hidden" name="redirect" value="<?php echo htmlspecialchars($redirect); ?>">
 
                 <div class="form-group">
-                    <label for="username">用户名 / 邮箱</label>
+                    <label for="username"><?php _e('user.username'); ?> / <?php _e('user.email'); ?></label>
                     <div class="input-icon-wrapper">
                         <i class="fas fa-user"></i>
                         <input type="text" id="username" name="username"
-                               placeholder="输入用户名或邮箱"
+                               placeholder="<?php _e('user.username_placeholder'); ?>"
                                value="<?php echo htmlspecialchars($_POST['username'] ?? ''); ?>"
                                required autocomplete="username">
                     </div>
                 </div>
 
                 <div class="form-group">
-                    <label for="password">密码</label>
+                    <label for="password"><?php _e('user.password'); ?></label>
                     <div class="input-icon-wrapper">
                         <i class="fas fa-lock"></i>
                         <input type="password" id="password" name="password"
-                               placeholder="输入密码"
+                               placeholder="<?php _e('user.password_placeholder'); ?>"
                                required autocomplete="current-password">
                     </div>
                 </div>
 
                 <?php if (isset($captcha) && $captcha && $captcha->isLoginEnabled()): ?>
                 <div class="form-group">
-                    <label for="captcha">验证码</label>
+                    <label for="captcha"><?php _e('form.captcha'); ?></label>
                     <div class="captcha-group">
                         <div class="captcha-input">
                             <input type="text" id="captcha" name="captcha"
-                                   placeholder="请输入验证码"
+                                   placeholder="<?php _e('form.captcha_placeholder'); ?>"
                                    maxlength="4"
                                    required autocomplete="off">
                         </div>
                         <div class="captcha-image-wrapper">
                             <img src="captcha_svg.php?t=<?php echo time(); ?>"
-                                 alt="验证码"
+                                 alt="<?php _e('form.captcha'); ?>"
                                  class="captcha-image"
                                  id="captcha-image"
                                  onclick="refreshCaptcha()">
                             <a href="javascript:void(0)"
                                onclick="refreshCaptcha()"
                                class="captcha-refresh">
-                                <i class="fas fa-sync-alt"></i> 换一张
+                                <i class="fas fa-sync-alt"></i> <?php _e('form.captcha_refresh'); ?>
                             </a>
                         </div>
                     </div>
@@ -439,18 +445,18 @@ $redirect = normalizeRedirectPath($_GET['redirect'] ?? '', '');
                 <div class="form-options">
                     <label class="remember-me">
                         <input type="checkbox" name="remember" value="1">
-                        <span>记住我</span>
+                        <span><?php _e('auth.remember_me'); ?></span>
                     </label>
-                    <!-- <a href="forgot_password.php" class="forgot-password">忘记密码？</a> -->
+                    <!-- <a href="forgot_password.php" class="forgot-password"><?php _e('auth.forgot_password'); ?></a> -->
                 </div>
 
                 <button type="submit" class="btn-primary">
-                    <i class="fas fa-sign-in-alt"></i> 登录
+                    <i class="fas fa-sign-in-alt"></i> <?php _e('auth.login'); ?>
                 </button>
             </form>
 
             <div class="auth-footer">
-                没有账号？ <a href="register.php">立即注册</a>
+                <?php _e('auth.no_account'); ?> <a href="register.php"><?php _e('auth.register_now'); ?></a>
             </div>
         </div>
     </div>

@@ -6,6 +6,7 @@ ob_start();
  */
 
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/i18n/I18n.php';
 
 $auth = getAuth();
 
@@ -24,11 +25,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // 验证新密码确认
     if ($newPassword !== $confirmPassword) {
-        $error = '两次输入的新密码不一致';
+        $error = __('password.error.mismatch');
     } elseif (empty($currentPassword)) {
-        $error = '请输入当前密码';
+        $error = __('password.error.current_required');
     } elseif (empty($newPassword)) {
-        $error = '请输入新密码';
+        $error = __('password.error.new_required');
     } else {
         $result = $auth->changePassword($user['id'], $currentPassword, $newPassword);
         if ($result['success']) {
@@ -36,16 +37,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // 密码修改成功后，要求重新登录
             $auth->logout();
             renderActionPage(
-                '密码已更新',
-                '密码修改成功，请重新登录。',
+                __('password.changed_success'),
+                __('password.changed_success_desc'),
                 [
                     [
-                        'label' => '前往登录',
+                        'label' => __('auth.go_login'),
                         'href' => url('login.php'),
                         'primary' => true
                     ],
                     [
-                        'label' => '返回首页',
+                        'label' => __('nav.back_home'),
                         'href' => url('index.php')
                     ]
                 ]
@@ -62,11 +63,11 @@ $userConfig = $config['user'] ?? [];
 $minPasswordLength = $userConfig['password_min_length'] ?? 6;
 ?>
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="<?php echo i18n()->getHtmlLang(); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>修改密码 - 老司机的香蕉</title>
+    <title><?php _e('password.change_title'); ?> - <?php _e('site.title'); ?></title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -220,15 +221,21 @@ $minPasswordLength = $userConfig['password_min_length'] ?? 6;
 </head>
 <body>
     <div class="auth-container">
-        <a href="index.php" class="back-link">
-            <i class="fas fa-arrow-left"></i> 返回首页
-        </a>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <a href="index.php" class="back-link" style="margin-bottom: 0;">
+                <i class="fas fa-arrow-left"></i> <?php _e('nav.back_home'); ?>
+            </a>
+            <div class="language-switcher">
+                <a href="?lang=zh-CN" class="<?php echo isZhCN() ? 'active' : ''; ?>" style="text-decoration: none; margin-right: 8px; color: #666;">CN</a>
+                <a href="?lang=en" class="<?php echo isEn() ? 'active' : ''; ?>" style="text-decoration: none; color: #666;">EN</a>
+            </div>
+        </div>
 
         <div class="auth-box">
             <div class="auth-header">
                 <div class="icon"><i class="fas fa-key"></i></div>
-                <h1>修改密码</h1>
-                <p>为了账户安全，请定期更换密码</p>
+                <h1><?php _e('password.change_title'); ?></h1>
+                <p><?php _e('password.change_subtitle'); ?></p>
             </div>
 
             <!-- 当前用户信息 -->
@@ -251,40 +258,40 @@ $minPasswordLength = $userConfig['password_min_length'] ?? 6;
             <?php if ($success): ?>
                 <div class="alert alert-success">
                     <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($success); ?>
-                    <br><small>请前往登录页面重新登录。</small>
+                    <br><small><?php _e('password.changed_success_desc'); ?></small>
                 </div>
             <?php else: ?>
                 <form class="auth-form" method="POST" action="">
                     <div class="form-group">
-                        <label for="current_password">当前密码</label>
+                        <label for="current_password"><?php _e('password.current_password'); ?></label>
                         <div class="input-icon-wrapper">
                             <i class="fas fa-lock"></i>
                             <input type="password" id="current_password" name="current_password"
-                                   placeholder="输入当前密码"
+                                   placeholder="<?php _e('password.current_placeholder'); ?>"
                                    required autocomplete="current-password">
                             <i class="fas fa-eye password-toggle" onclick="togglePassword('current_password', this)"></i>
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label for="new_password">新密码</label>
+                        <label for="new_password"><?php _e('password.new_password'); ?></label>
                         <div class="input-icon-wrapper">
                             <i class="fas fa-lock"></i>
                             <input type="password" id="new_password" name="new_password"
-                                   placeholder="输入新密码"
+                                   placeholder="<?php _e('password.new_placeholder'); ?>"
                                    required autocomplete="new-password"
                                    minlength="<?php echo $minPasswordLength; ?>">
                             <i class="fas fa-eye password-toggle" onclick="togglePassword('new_password', this)"></i>
                         </div>
-                        <p class="password-requirements">密码至少需要 <?php echo $minPasswordLength; ?> 个字符</p>
+                        <p class="password-requirements"><?php _e('user.password_hint', ['min' => $minPasswordLength]); ?></p>
                     </div>
 
                     <div class="form-group">
-                        <label for="confirm_password">确认新密码</label>
+                        <label for="confirm_password"><?php _e('password.confirm_password'); ?></label>
                         <div class="input-icon-wrapper">
                             <i class="fas fa-lock"></i>
                             <input type="password" id="confirm_password" name="confirm_password"
-                                   placeholder="再次输入新密码"
+                                   placeholder="<?php _e('password.confirm_placeholder'); ?>"
                                    required autocomplete="new-password"
                                    minlength="<?php echo $minPasswordLength; ?>">
                             <i class="fas fa-eye password-toggle" onclick="togglePassword('confirm_password', this)"></i>
@@ -292,7 +299,7 @@ $minPasswordLength = $userConfig['password_min_length'] ?? 6;
                     </div>
 
                     <button type="submit" class="btn-primary">
-                        <i class="fas fa-save"></i> 保存修改
+                        <i class="fas fa-save"></i> <?php _e('password.btn_save'); ?>
                     </button>
                 </form>
             <?php endif; ?>
@@ -320,7 +327,7 @@ $minPasswordLength = $userConfig['password_min_length'] ?? 6;
         
         if (newPassword !== confirmPassword) {
             e.preventDefault();
-            alert('两次输入的新密码不一致');
+            alert('<?php _e('password.error.mismatch'); ?>');
             return false;
         }
     });

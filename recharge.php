@@ -6,6 +6,7 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/payment.php';
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/i18n/I18n.php';
 
 $auth = getAuth();
 $payment = getPayment();
@@ -58,11 +59,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $maxRecharge = $billingConfig['max_recharge'] ?? 1000.00;
 
     if ($amount < $minRecharge) {
-        $error = "最低充值金额为 {$minRecharge} 元";
+        $error = __('recharge.error.min_amount', ['min' => $minRecharge]);
     } elseif ($amount > $maxRecharge) {
-        $error = "最高充值金额为 {$maxRecharge} 元";
+        $error = __('recharge.error.max_amount', ['max' => $maxRecharge]);
     } elseif (!$payment->isEnabled()) {
-        $error = '支付功能暂未开放';
+        $error = __('recharge.error.payment_disabled');
     } else {
         // 生成订单号
         $outTradeNo = $payment->generateOutTradeNo();
@@ -75,7 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $result = $payment->createOrder(
             $outTradeNo,
             $amount,
-            "老司机的香蕉 - 充值 {$amount} 元",
+            __('site.title') . ' - ' . __('recharge.page_title') . " {$amount}",
             $payType ?: null,
             json_encode(['user_id' => $userId])
         );
@@ -83,27 +84,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($result['success']) {
             $paymentUrl = $result['url'] ?? '';
             if ($paymentUrl === '' || !preg_match('#^https?://#i', $paymentUrl)) {
-                $error = '支付地址异常，请稍后重试';
+                $error = __('recharge.error.payment_url_invalid');
             } else {
                 renderActionPage(
-                    '订单已创建',
-                    '请点击下方按钮前往支付页面完成充值。',
+                    __('recharge.order_created'),
+                    __('recharge.order_created_desc'),
                     [
                         [
-                            'label' => '前往支付',
+                            'label' => __('recharge.go_pay'),
                             'href' => $paymentUrl,
                             'primary' => true,
                             'new_tab' => true
                         ],
                         [
-                            'label' => '返回首页',
+                            'label' => __('nav.back_home'),
                             'href' => url('index.php')
                         ]
                     ]
                 );
             }
         } else {
-            $error = $result['message'] ?? '创建支付订单失败';
+            $error = $result['message'] ?? __('recharge.error.create_failed');
         }
     }
 }
@@ -122,31 +123,31 @@ $allRecords = [];
 
 // 处理在线支付订单
 foreach ($rechargeOrders as $order) {
-    $allRecords[] = [
-        'type' => 'order',
-        'time' => $order['created_at'],
-        'amount' => (float)$order['amount'],
-        'status' => (int)$order['status'],
-        'source' => '在线支付',
-        'order_no' => $order['out_trade_no'],
-        'raw' => $order
-    ];
+$allRecords[] = [
+    'type' => 'order',
+    'time' => $order['created_at'],
+    'amount' => (float)$order['amount'],
+    'status' => (int)$order['status'],
+    'source' => __('recharge.source_online'),
+    'order_no' => $order['out_trade_no'],
+    'raw' => $order
+];
 }
 
 // 处理可见的余额变动记录
 foreach ($visibleBalanceLogs['logs'] as $log) {
-    // 只显示充值类型的记录（recharge），不显示扣款
-    if ($log['type'] === 'recharge') {
-        $allRecords[] = [
-            'type' => 'balance_log',
-            'time' => $log['created_at'],
-            'amount' => (float)$log['amount'],
-            'status' => 1, // 已完成
-            'source' => $log['user_remark'] ?: '系统调整',
-            'order_no' => null,
-            'raw' => $log
-        ];
-    }
+// 只显示充值类型的记录（recharge），不显示扣款
+if ($log['type'] === 'recharge') {
+    $allRecords[] = [
+        'type' => 'balance_log',
+        'time' => $log['created_at'],
+        'amount' => (float)$log['amount'],
+        'status' => 1, // 已完成
+        'source' => $log['user_remark'] ?: __('recharge.source_manual'),
+        'order_no' => null,
+        'raw' => $log
+    ];
+}
 }
 
 // 按时间降序排序
@@ -158,11 +159,11 @@ usort($allRecords, function($a, $b) {
 $allRecords = array_slice($allRecords, 0, 10);
 ?>
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="<?php echo i18n()->getHtmlLang(); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>充值 - 老司机的香蕉</title>
+    <title><?php _e('recharge.title'); ?> - <?php _e('site.title'); ?></title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -427,25 +428,31 @@ $allRecords = array_slice($allRecords, 0, 10);
 </head>
 <body>
     <div class="recharge-container">
-        <a href="index.php" class="back-link">
-            <i class="fas fa-arrow-left"></i> 返回首页
-        </a>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <a href="index.php" class="back-link" style="margin-bottom: 0;">
+                <i class="fas fa-arrow-left"></i> <?php _e('nav.back_home'); ?>
+            </a>
+            <div class="language-switcher">
+                <a href="?lang=zh-CN" class="<?php echo isZhCN() ? 'active' : ''; ?>" style="text-decoration: none; margin-right: 8px; color: #666;">CN</a>
+                <a href="?lang=en" class="<?php echo isEn() ? 'active' : ''; ?>" style="text-decoration: none; color: #666;">EN</a>
+            </div>
+        </div>
 
         <!-- 余额卡片 -->
         <div class="balance-card">
-            <h3>当前余额</h3>
+            <h3><?php _e('recharge.current_balance'); ?></h3>
             <div class="balance">
-                <?php echo number_format((float)($user['balance'] ?? 0), 2); ?> <small>元</small>
+                <?php echo number_format((float)($user['balance'] ?? 0), 2); ?> <small><?php _e('user.balance_unit'); ?></small>
             </div>
             <div class="balance-info">
                 <i class="fas fa-image"></i>
-                约可生成 <?php echo $pricePerTask > 0 ? floor((float)($user['balance'] ?? 0) / $pricePerTask) : 0; ?> 次任务
+                <?php _e('recharge.can_generate', ['count' => $pricePerTask > 0 ? floor((float)($user['balance'] ?? 0) / $pricePerTask) : 0]); ?>
             </div>
         </div>
 
         <!-- 充值表单 -->
         <div class="recharge-box">
-            <h2><i class="fas fa-coins"></i> 账户充值</h2>
+            <h2><i class="fas fa-coins"></i> <?php _e('recharge.page_title'); ?></h2>
 
             <?php if ($error): ?>
                 <div class="alert alert-error">
@@ -455,7 +462,7 @@ $allRecords = array_slice($allRecords, 0, 10);
 
             <div class="price-info">
                 <i class="fas fa-info-circle"></i>
-                当前价格: <strong><?php echo $pricePerTask; ?> 元/次</strong>，充值后可立即使用
+                <?php _e('recharge.price_info'); ?>: <strong><?php _e('recharge.price_per_task', ['price' => $pricePerTask]); ?></strong>，<?php _e('recharge.recharge_after_use'); ?>
             </div>
 
             <form method="POST" action="">
@@ -463,11 +470,11 @@ $allRecords = array_slice($allRecords, 0, 10);
                 <div class="amount-options">
                     <?php foreach ($rechargeOptions as $index => $option): ?>
                         <div class="amount-option">
-                            <input type="radio" name="amount" id="amount_<?php echo $index; ?>" 
+                            <input type="radio" name="amount" id="amount_<?php echo $index; ?>"
                                    value="<?php echo $option; ?>" <?php echo $index === 0 ? 'checked' : ''; ?>>
                             <label for="amount_<?php echo $index; ?>">
-                                <span class="amount-value"><?php echo $option; ?>元</span>
-                                <span class="amount-images">约<?php echo $pricePerTask > 0 ? floor($option / $pricePerTask) : 0; ?>次</span>
+                                <span class="amount-value"><?php echo $option; ?><?php _e('user.balance_unit'); ?></span>
+                                <span class="amount-images"><?php _e('misc.unit_times', ['count' => $pricePerTask > 0 ? floor($option / $pricePerTask) : 0]); ?></span>
                             </label>
                         </div>
                     <?php endforeach; ?>
@@ -475,20 +482,20 @@ $allRecords = array_slice($allRecords, 0, 10);
 
                 <!-- 自定义金额 -->
                 <div class="custom-amount">
-                    <label>自定义金额</label>
+                    <label><?php _e('recharge.custom_amount'); ?></label>
                     <div class="custom-amount-input">
-                        <input type="number" name="custom_amount" placeholder="输入充值金额" 
-                               min="<?php echo $billingConfig['min_recharge'] ?? 1; ?>" 
-                               max="<?php echo $billingConfig['max_recharge'] ?? 1000; ?>" 
+                        <input type="number" name="custom_amount" placeholder="<?php _e('recharge.custom_amount_placeholder'); ?>"
+                               min="<?php echo $billingConfig['min_recharge'] ?? 1; ?>"
+                               max="<?php echo $billingConfig['max_recharge'] ?? 1000; ?>"
                                step="0.01">
-                        <span>元</span>
+                        <span><?php _e('user.balance_unit'); ?></span>
                     </div>
                 </div>
 
                 <!-- 支付方式 -->
                 <?php if (!empty($paymentChannels)): ?>
                 <div class="pay-methods">
-                    <label>选择支付方式</label>
+                    <label><?php _e('recharge.pay_method'); ?></label>
                     <div class="pay-method-options">
                         <?php
                         $isFirst = true;
@@ -515,7 +522,7 @@ $allRecords = array_slice($allRecords, 0, 10);
                 <?php endif; ?>
 
                 <button type="submit" class="btn-primary">
-                    <i class="fas fa-bolt"></i> 立即充值
+                    <i class="fas fa-bolt"></i> <?php _e('recharge.btn_recharge'); ?>
                 </button>
             </form>
         </div>
@@ -523,7 +530,7 @@ $allRecords = array_slice($allRecords, 0, 10);
         <!-- 充值记录 -->
         <?php if (!empty($allRecords)): ?>
         <div class="recharge-box recharge-orders">
-            <h3><i class="fas fa-history"></i> 充值记录</h3>
+            <h3><i class="fas fa-history"></i> <?php _e('recharge.recharge_history'); ?></h3>
             <div class="order-list">
                 <?php foreach ($allRecords as $record): ?>
                     <div class="order-item">
@@ -535,16 +542,16 @@ $allRecords = array_slice($allRecords, 0, 10);
                             <?php endif; ?>
                             <div class="order-time"><?php echo $record['time']; ?></div>
                         </div>
-                        <div class="order-amount">+<?php echo number_format($record['amount'], 2); ?>元</div>
+                        <div class="order-amount">+<?php echo number_format($record['amount'], 2); ?><?php _e('user.balance_unit'); ?></div>
                         <?php
                         $statusClass = 'pending';
-                        $statusText = '待支付';
+                        $statusText = __('recharge.order_status.pending');
                         if ($record['status'] == 1) {
                             $statusClass = 'paid';
-                            $statusText = '已完成';
+                            $statusText = __('recharge.order_status.paid');
                         } elseif ($record['status'] == 2) {
                             $statusClass = 'cancelled';
-                            $statusText = '已取消';
+                            $statusText = __('recharge.order_status.cancelled');
                         }
                         ?>
                         <div class="order-status <?php echo $statusClass; ?>"><?php echo $statusText; ?></div>

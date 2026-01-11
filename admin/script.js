@@ -19,7 +19,9 @@ function showToast(message, type = 'success') {
 
 // 确认对话框
 function confirm(message, callback) {
-    if (window.confirm(message)) {
+    // 优先使用 callback，如果 message 是字符串则作为提示，否则使用默认提示
+    const msg = typeof message === 'string' ? message : (window.i18n ? window.i18n.t('misc.confirm_action') : '确定要执行此操作吗？');
+    if (window.confirm(msg)) {
         callback();
     }
 }
@@ -53,7 +55,8 @@ async function apiRequest(action, data = {}) {
 
 // 切换用户状态
 async function toggleUserStatus(userId) {
-    if (!confirm('确定要切换用户状态吗?')) return;
+    const msg = window.i18n ? window.i18n.t('misc.confirm_action') : '确定要切换用户状态吗?';
+    if (!window.confirm(msg)) return;
 
     const result = await apiRequest('toggle_user_status', { user_id: userId });
 
@@ -76,7 +79,7 @@ async function addBalance(userId, amount, remark, visibleToUser = 0, userRemark 
     });
 
     if (result.success) {
-        showToast('充值成功');
+        showToast(window.i18n ? window.i18n.t('admin.balance_added') : '充值成功');
         setTimeout(() => location.reload(), 1000);
     } else {
         showToast(result.message, 'danger');
@@ -85,7 +88,8 @@ async function addBalance(userId, amount, remark, visibleToUser = 0, userRemark 
 
 // 人工扣款
 async function deductBalance(userId, amount, remark) {
-    if (!confirm('确定要扣除用户余额吗?此操作不可撤销!')) return;
+    const msg = window.i18n ? window.i18n.t('misc.confirm_action') : '确定要扣除用户余额吗?此操作不可撤销!';
+    if (!window.confirm(msg)) return;
 
     const result = await apiRequest('deduct_balance', {
         user_id: userId,
@@ -94,7 +98,7 @@ async function deductBalance(userId, amount, remark) {
     });
 
     if (result.success) {
-        showToast('扣款成功');
+        showToast(window.i18n ? window.i18n.t('admin.balance_deducted') : '扣款成功');
         setTimeout(() => location.reload(), 1000);
     } else {
         showToast(result.message, 'danger');
@@ -103,7 +107,8 @@ async function deductBalance(userId, amount, remark) {
 
 // 重置密码
 async function resetPassword(userId, newPassword) {
-    if (!confirm('确定要重置用户密码吗?')) return;
+    const msg = window.i18n ? window.i18n.t('misc.confirm_action') : '确定要重置用户密码吗?';
+    if (!window.confirm(msg)) return;
 
     const result = await apiRequest('reset_password', {
         user_id: userId,
@@ -111,7 +116,7 @@ async function resetPassword(userId, newPassword) {
     });
 
     if (result.success) {
-        showToast('密码重置成功');
+        showToast(window.i18n ? window.i18n.t('admin.password_reset') : '密码重置成功');
         return result;
     } else {
         showToast(result.message, 'danger');

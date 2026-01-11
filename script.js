@@ -1,4 +1,5 @@
-document.addEventListener('DOMContentLoaded', () => {
+// 等待 i18n 就绪后再初始化
+window.addEventListener('i18nReady', () => {
     // 初始化用户菜单
     initUserMenu();
 
@@ -31,7 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
 	        }
 
 	        if (selectedEditFiles.length === 0) {
-	            filePreview.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> 点击或拖拽上传图片';
+	            filePreview.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> ' + window.i18n.t('index.upload_hint');
 	            filePreview.style.padding = '30px';
 	            filePreview.style.display = 'block';
 	            filePreview.style.flexWrap = '';
@@ -99,7 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 	            let remaining = MAX_EDIT_IMAGES - selectedEditFiles.length;
 	            if (remaining <= 0) {
-	                alert(`最多支持 ${MAX_EDIT_IMAGES} 张参考图片`);
+	                alert(window.i18n.t('index.max_images_error', {max: MAX_EDIT_IMAGES}));
 	                this.value = '';
 	                return;
 	            }
@@ -193,10 +194,10 @@ document.addEventListener('DOMContentLoaded', () => {
             summary.className = 'optimize-thoughts-summary';
             summary.innerHTML = `
                 <span class="optimize-thoughts-icon"><i class="fas fa-brain"></i></span>
-                <span class="optimize-thoughts-title">AI 思考过程</span>
+                <span class="optimize-thoughts-title">${window.i18n.t('result.ai_thinking')}</span>
                 <span class="optimize-thoughts-time">${elapsedTime}s</span>
                 <span class="optimize-thoughts-toggle"><i class="fas fa-chevron-down"></i></span>
-                <button type="button" class="optimize-thoughts-close" aria-label="关闭思考过程">
+                <button type="button" class="optimize-thoughts-close" aria-label="${window.i18n.t('form.close')}">
                     <i class="fas fa-xmark"></i>
                 </button>
             `;
@@ -243,16 +244,16 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!promptInput || !actionBtn) return;
             const rawPrompt = (promptInput.value || '').trim();
             if (!rawPrompt) {
-                setStatus('请先输入提示词，再试试优化。', true);
+                setStatus(window.i18n.t('api.prompt_required'), true);
                 promptInput.focus();
                 return;
             }
 
             const originalHtml = actionBtn.innerHTML;
             const startTime = Date.now();
-            setStatus('优化中，请稍候...');
+            setStatus(window.i18n.t('index.optimize_processing'));
             actionBtn.disabled = true;
-            actionBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> 优化中...';
+            actionBtn.innerHTML = `<i class="fas fa-circle-notch fa-spin"></i> ${window.i18n.t('form.processing')}`;
 
             // 清除之前的思考内容
             if (thoughtsContainer) thoughtsContainer.innerHTML = '';
@@ -281,17 +282,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (data.optimized_prompt) {
                     promptInput.value = data.optimized_prompt;
-                    setStatus('优化完成，已填入编辑框。');
+                    setStatus(window.i18n.t('index.optimize_done'));
 
                     // 显示思考内容
                     if (data.thoughts && data.thoughts.length > 0) {
                         renderOptimizeThoughts(data.thoughts, elapsedTime);
                     }
                 } else {
-                    throw new Error('未获取到优化结果');
+                    throw new Error(window.i18n.t('index.optimize_no_result'));
                 }
             } catch (err) {
-                setStatus(`优化失败：${err.message}`, true);
+                setStatus(window.i18n.t('index.optimize_failed', {message: err.message}), true);
             } finally {
                 actionBtn.disabled = false;
                 actionBtn.innerHTML = originalHtml;
@@ -380,7 +381,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 if (!title) {
-                    title = `阶段 ${stageIndex}`;
+                    title = `${window.i18n.t('result.stage')} ${stageIndex}`;
                 }
 
                 stages.push({
@@ -416,18 +417,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const badge = document.createElement('span');
         badge.className = 'thinking-badge';
-        badge.textContent = '思考过程';
+        badge.textContent = window.i18n.t('result.thinking_process');
 
         const time = document.createElement('span');
         time.className = 'thinking-time';
-        time.textContent = `思考耗时 ${elapsedSeconds} 秒`;
+        time.textContent = window.i18n.t('result.thinking_time', {seconds: elapsedSeconds});
 
         summaryLeft.appendChild(badge);
         summaryLeft.appendChild(time);
 
         const toggleHint = document.createElement('span');
         toggleHint.className = 'thinking-toggle';
-        toggleHint.textContent = '点击收起';
+        toggleHint.textContent = window.i18n.t('result.thinking_collapse');
 
         summary.appendChild(summaryLeft);
         summary.appendChild(toggleHint);
@@ -456,7 +457,7 @@ document.addEventListener('DOMContentLoaded', () => {
         details.appendChild(content);
 
         details.addEventListener('toggle', () => {
-            toggleHint.textContent = details.open ? '点击收起' : '点击展开';
+            toggleHint.textContent = details.open ? window.i18n.t('result.thinking_collapse') : window.i18n.t('result.thinking_expand');
         });
 
         outputContainer.appendChild(details);
@@ -486,7 +487,7 @@ document.addEventListener('DOMContentLoaded', () => {
 	                loading.classList.add('hidden');
 	            }
 	            if (errorMessage) {
-	                errorMessage.textContent = '请先选择至少一张参考图片（可多次从不同文件夹添加）。';
+	                errorMessage.textContent = window.i18n.t('index.no_image_error');
 	                errorMessage.classList.remove('hidden');
 	            }
 	            return;
@@ -505,13 +506,13 @@ document.addEventListener('DOMContentLoaded', () => {
 	        
 	        // 重置并启动计时器
 	        if (timerDisplay) {
-	            timerDisplay.textContent = "已耗时: 0.00 s";
+	            timerDisplay.textContent = window.i18n.t('index.elapsed_time', {time: '0.00'});
 	        }
 	        let startTime = Date.now();
 	        let timerInterval = setInterval(() => {
 	            const elapsedTime = (Date.now() - startTime) / 1000;
 	            if (timerDisplay) {
-	                timerDisplay.textContent = `已耗时: ${elapsedTime.toFixed(2)} s`;
+	                   timerDisplay.textContent = window.i18n.t('index.elapsed_time', {time: elapsedTime.toFixed(2)});
 	            }
 	        }, 10);
 	        
@@ -560,7 +561,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
-                throw new Error('服务器响应格式异常');
+                throw new Error(window.i18n.t('error.parse_failed'));
             }
 
             // 处理 HTTP 错误状态码（401、402 等）
@@ -600,8 +601,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="save-notice-content">
                             <i class="fas fa-exclamation-triangle"></i>
                             <div class="save-notice-text">
-                                <strong>请及时保存图片</strong>
-                                <p>生成的图片仅临时存储在服务器上，不会永久保留。建议立即下载保存到本地。</p>
+                                <strong>${window.i18n.t('index.save_notice_title')}</strong>
+                                <p>${window.i18n.t('index.save_notice_desc')}</p>
                             </div>
                         </div>
                     `;
@@ -623,9 +624,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         // 创建分辨率标签（初始加载状态）
                         const resLabel = document.createElement('div');
                         resLabel.className = 'resolution-label resolution-loading';
-                        resLabel.setAttribute('aria-label', '正在加载图片尺寸');
+                        resLabel.setAttribute('aria-label', window.i18n.t('resolution.loading'));
                         resLabel.setAttribute('role', 'status');
-                        resLabel.innerHTML = '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i><span class="sr-only">加载中</span>';
+                        resLabel.innerHTML = '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i><span class="sr-only">' + window.i18n.t('resolution.loading') + '</span>';
                         
                         // 分辨率阈值常量
                         const RESOLUTION_THRESHOLD_2K = 2000;
@@ -639,8 +640,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             // 边界检查：确保尺寸有效
                             if (!w || !h || w <= 0 || h <= 0) {
                                 resLabel.className = 'resolution-label resolution-error';
-                                resLabel.setAttribute('aria-label', '无法获取图片尺寸');
-                                resLabel.innerHTML = '<i class="fas fa-question-circle" aria-hidden="true"></i> 未知';
+                                resLabel.setAttribute('aria-label', window.i18n.t('resolution.unknown'));
+                                resLabel.innerHTML = '<i class="fas fa-question-circle" aria-hidden="true"></i> ' + window.i18n.t('resolution.unknown');
                                 return;
                             }
                             
@@ -654,18 +655,18 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (maxDim >= RESOLUTION_THRESHOLD_2K) {
                                 tierClass = 'resolution-2k';
                                 tierLabel = '2K';
-                                tierDescription = '2K 高清';
+                                tierDescription = window.i18n.t('resolution.2k');
                             } else if (maxDim >= RESOLUTION_THRESHOLD_1K) {
                                 tierClass = 'resolution-1k';
                                 tierLabel = '1K';
-                                tierDescription = '1K 标清';
+                                tierDescription = window.i18n.t('resolution.1k');
                             } else {
                                 tierClass = 'resolution-low';
                                 tierLabel = 'SD';
-                                tierDescription = '标准分辨率';
+                                tierDescription = window.i18n.t('resolution.sd');
                             }
                             
-                            const ariaText = `${tierDescription}，尺寸 ${w} 乘 ${h} 像素`;
+                            const ariaText = window.i18n.t('lightbox.image_info', {width: w, height: h});
                             resLabel.className = `resolution-label ${tierClass}`;
                             resLabel.setAttribute('aria-label', ariaText);
                             resLabel.setAttribute('title', `${tierLabel} ${w}×${h}`);
@@ -674,8 +675,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         
                         img.onerror = function() {
                             resLabel.className = 'resolution-label resolution-error';
-                            resLabel.setAttribute('aria-label', '图片加载失败');
-                            resLabel.innerHTML = '<i class="fas fa-exclamation-circle" aria-hidden="true"></i> 加载失败';
+                            resLabel.setAttribute('aria-label', window.i18n.t('resolution.load_failed'));
+                            resLabel.innerHTML = '<i class="fas fa-exclamation-circle" aria-hidden="true"></i> ' + window.i18n.t('resolution.load_failed');
                         };
                         
                         // 点击分辨率标签也可以打开图片预览
@@ -692,7 +693,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         
                         // 添加下载按钮
                         const downloadLink = document.createElement('p');
-                        downloadLink.innerHTML = `<a href="${imgUrl}" download target="_blank" class="btn-primary" style="display:inline-block; width:auto; padding: 5px 15px; font-size: 0.9rem; margin-top: 5px;">下载图片</a>`;
+                        downloadLink.innerHTML = `<a href="${imgUrl}" download target="_blank" class="btn-primary" style="display:inline-block; width:auto; padding: 5px 15px; font-size: 0.9rem; margin-top: 5px;">${window.i18n.t('index.download_image')}</a>`;
                         imgDiv.appendChild(downloadLink);
                         
                         outputContainer.appendChild(imgDiv);
@@ -716,7 +717,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     groundingDiv.style.borderRadius = '8px';
                     groundingDiv.style.marginTop = '15px';
                     
-                    let groundingHtml = '<h4><i class="fab fa-google"></i> 搜索来源信息</h4>';
+                    let groundingHtml = `<h4><i class="fab fa-google"></i> ${window.i18n.t('index.search_sources')}</h4>`;
                     
                     if (data.groundingMetadata.searchEntryPoint && data.groundingMetadata.searchEntryPoint.renderedContent) {
                         groundingHtml += `<div class="search-entry-point" style="margin-top: 10px;">${data.groundingMetadata.searchEntryPoint.renderedContent}</div>`;
@@ -742,7 +743,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 timeDiv.style.color = '#888';
                 timeDiv.style.fontSize = '0.8rem';
                 timeDiv.style.marginTop = '10px';
-                timeDiv.innerHTML = `<p><i class="fas fa-clock"></i> 生成耗时: ${finalTime} 秒</p>`;
+                timeDiv.innerHTML = `<p><i class="fas fa-clock"></i> ${window.i18n.t('index.generated_time', {time: finalTime})}</p>`;
                 outputContainer.appendChild(timeDiv);
 
             } else {
@@ -756,14 +757,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
                 // 其他业务错误
-                throw new Error(data.message || '未知错误');
+                throw new Error(data.message || window.i18n.t('error.unknown'));
             }
 
         } catch (error) {
             console.error('Error:', error);
             // 显示通用错误信息
             if (errorMessage) {
-                errorMessage.textContent = `发生错误: ${error.message}`;
+                errorMessage.textContent = window.i18n.t('index.generate_failed', {message: error.message});
                 errorMessage.classList.remove('hidden');
             }
         } finally {
@@ -822,11 +823,11 @@ function initVoiceInput() {
     // 如果两种方案都不支持，隐藏语音按钮
     if (!webSpeechSupported && !mediaRecorderSupported) {
         voiceButtons.forEach(btn => btn.style.display = 'none');
-        console.warn('当前浏览器不支持语音录入功能');
+        console.warn(window.i18n.t('voice.not_supported'));
         return;
     }
 
-    console.log(`语音识别: Web Speech API ${webSpeechSupported ? '可用' : '不可用'}, MediaRecorder ${mediaRecorderSupported ? '可用' : '不可用'}`);
+    // console.log(`Voice Recognition: Web Speech API ${webSpeechSupported ? 'Available' : 'Unavailable'}, MediaRecorder ${mediaRecorderSupported ? 'Available' : 'Unavailable'}`);
 
     // 状态管理
     let isListening = false;      // Web Speech API 监听状态
@@ -908,7 +909,7 @@ function initVoiceInput() {
             // 更新按钮状态
             btn.classList.add('recording');
             btn.querySelector('i').className = 'fas fa-stop';
-            btn.title = '点击停止识别 (Web Speech)';
+            btn.title = window.i18n.t('voice.stop_web_speech');
             isListening = true;
 
             // 识别结果处理
@@ -974,14 +975,14 @@ function initVoiceInput() {
 
                 switch (event.error) {
                     case 'not-allowed':
-                        errorMsg = '麦克风权限被拒绝';
+                        errorMsg = window.i18n.t('voice.mic_denied');
                         // 不回退，因为回退方案也需要麦克风权限
                         break;
                     case 'no-speech':
                         // 没有检测到语音，静默处理
                         break;
                     case 'network':
-                        errorMsg = '网络错误，切换到离线模式';
+                        errorMsg = window.i18n.t('voice.network_error');
                         shouldFallback = true;
                         break;
                     case 'service-not-allowed':
@@ -990,7 +991,7 @@ function initVoiceInput() {
                         shouldFallback = true;
                         break;
                     default:
-                        errorMsg = '语音识别出错: ' + event.error;
+                        errorMsg = window.i18n.t('voice.recognition_error') + ': ' + event.error;
                 }
 
                 if (errorMsg && event.error !== 'no-speech') {
@@ -1028,7 +1029,7 @@ function initVoiceInput() {
                 console.log('回退到 MediaRecorder + Gemini API');
                 startMediaRecording(btn);
             } else {
-                alert('无法启动语音识别');
+                alert(window.i18n.t('voice.start_failed'));
                 resetButtonState(btn);
             }
         }
@@ -1058,7 +1059,7 @@ function initVoiceInput() {
             // 更新按钮状态 - 使用不同的图标表示录音模式
             btn.classList.add('recording');
             btn.querySelector('i').className = 'fas fa-stop';
-            btn.title = '点击停止录音 (Gemini API)';
+            btn.title = window.i18n.t('voice.stop_gemini');
 
             mediaRecorder.ondataavailable = (event) => {
                 if (event.data.size > 0) {
@@ -1087,11 +1088,11 @@ function initVoiceInput() {
 
         } catch (error) {
             console.error('无法访问麦克风:', error);
-            let errorMsg = '无法访问麦克风';
+            let errorMsg = window.i18n.t('voice.mic_error');
             if (error.name === 'NotAllowedError') {
-                errorMsg = '麦克风权限被拒绝，请在浏览器设置中允许访问麦克风';
+                errorMsg = window.i18n.t('voice.mic_denied') + '，' + window.i18n.t('voice.mic_permission_hint');
             } else if (error.name === 'NotFoundError') {
-                errorMsg = '未检测到麦克风设备';
+                errorMsg = window.i18n.t('voice.mic_not_found');
             }
             alert(errorMsg);
             resetButtonState(btn);
@@ -1150,7 +1151,7 @@ function initVoiceInput() {
         // 显示处理中状态
         btn.classList.add('processing');
         btn.querySelector('i').className = 'fas fa-spinner fa-spin';
-        btn.title = '正在转换 (Gemini API)...';
+        btn.title = window.i18n.t('voice.converting');
         btn.disabled = true;
 
         try {
@@ -1179,13 +1180,13 @@ function initVoiceInput() {
                 targetTextarea.focus();
                 targetTextarea.setSelectionRange(targetTextarea.value.length, targetTextarea.value.length);
             } else if (result.message) {
-                alert('语音转换失败: ' + result.message);
+                alert(window.i18n.t('voice.convert_failed') + ': ' + result.message);
             } else {
-                alert('未能识别到语音内容，请重试');
+                alert(window.i18n.t('voice.no_speech'));
             }
         } catch (error) {
             console.error('语音转换请求失败:', error);
-            alert('语音转换失败，请检查网络连接后重试');
+            alert(window.i18n.t('voice.convert_failed') + '，' + window.i18n.t('voice.network_hint'));
         }
     }
 
@@ -1202,7 +1203,7 @@ function initVoiceInput() {
 
         btn.classList.remove('recording', 'processing');
         btn.querySelector('i').className = 'fas fa-microphone';
-        btn.title = webSpeechSupported ? '语音输入 (Web Speech)' : '语音输入 (Gemini API)';
+        btn.title = webSpeechSupported ? window.i18n.t('voice.web_speech') : window.i18n.t('voice.gemini');
         btn.disabled = false;
 
         isListening = false;
@@ -1377,7 +1378,7 @@ function initImagePreview() {
      */
     function updateImageInfo() {
         if (naturalWidth && naturalHeight) {
-            imageInfoDisplay.textContent = `${naturalWidth} x ${naturalHeight} 像素`;
+            imageInfoDisplay.textContent = window.i18n.t('lightbox.image_info', {width: naturalWidth, height: naturalHeight});
         }
     }
 
@@ -1628,12 +1629,12 @@ function showInsufficientBalanceError(currentBalance, required) {
             <div class="insufficient-balance-error">
                 <i class="fas fa-exclamation-triangle"></i>
                 <div class="error-content">
-                    <strong>余额不足</strong>
-                    <p>当前余额: <span class="balance">${parseFloat(currentBalance).toFixed(2)}</span> 元</p>
-                    <p>本次需要: <span class="required">${parseFloat(required).toFixed(2)}</span> 元</p>
+                    <strong>${window.i18n.t('balance.insufficient')}</strong>
+                    <p>${window.i18n.t('balance.current')}: <span class="balance">${parseFloat(currentBalance).toFixed(2)}</span> ${window.i18n.t('site.balance_unit', '元')}</p>
+                    <p>${window.i18n.t('balance.required')}: <span class="required">${parseFloat(required).toFixed(2)}</span> ${window.i18n.t('site.balance_unit', '元')}</p>
                 </div>
                 <a href="recharge.php" class="btn-recharge">
-                    <i class="fas fa-coins"></i> 立即充值
+                    <i class="fas fa-coins"></i> ${window.i18n.t('balance.recharge')}
                 </a>
             </div>
         `;
@@ -1657,15 +1658,15 @@ function showLoginRequiredError() {
             <div class="login-required-error">
                 <i class="fas fa-user-lock"></i>
                 <div class="error-content">
-                    <strong>请先登录</strong>
-                    <p>您需要登录账号才能使用图片生成功能</p>
+                    <strong>${window.i18n.t('auth.login_required')}</strong>
+                    <p>${window.i18n.t('auth.login_required_desc')}</p>
                 </div>
                 <div class="auth-buttons-inline">
                     <a href="login.php" class="btn-login-inline">
-                        <i class="fas fa-sign-in-alt"></i> 登录
+                        <i class="fas fa-sign-in-alt"></i> ${window.i18n.t('auth.login')}
                     </a>
                     <a href="register.php" class="btn-register-inline">
-                        <i class="fas fa-user-plus"></i> 注册
+                        <i class="fas fa-user-plus"></i> ${window.i18n.t('auth.register')}
                     </a>
                 </div>
             </div>

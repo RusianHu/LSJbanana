@@ -8,6 +8,7 @@ ob_start(); // 启用输出缓冲，避免意外的提前输出
 // 尝试加载必需的依赖，捕获初始化错误
 try {
     require_once __DIR__ . '/auth.php';
+    require_once __DIR__ . '/i18n/I18n.php';
     $auth = getAuth();
 
     $configFile = __DIR__ . '/config.php';
@@ -27,16 +28,16 @@ try {
 // 如果已登录，提示返回首页
 if (isset($auth) && $auth && $auth->isLoggedIn()) {
     renderActionPage(
-        '已登录',
-        '您已登录，无需重复注册。',
+        __('auth.already_logged_in'),
+        __('auth.already_logged_in_register'),
         [
             [
-                'label' => '返回首页',
+                'label' => __('nav.back_home'),
                 'href' => url('index.php'),
                 'primary' => true
             ],
             [
-                'label' => '前往充值',
+                'label' => __('auth.go_register'),
                 'href' => url('recharge.php')
             ]
         ]
@@ -65,21 +66,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($auth) && $auth) {
 
     // 验证密码确认
     if ($password !== $passwordConfirm) {
-        $error = '两次输入的密码不一致';
+        $error = __('auth.error.password_mismatch');
     } else {
         $result = $auth->register($username, $email, $password, $captchaInput);
         if ($result['success']) {
             renderActionPage(
-                '注册成功',
-                '账号已创建，请使用新账号登录。',
+                __('auth.register_success'),
+                __('auth.register_success_desc'),
                 [
                     [
-                        'label' => '前往登录',
+                        'label' => __('auth.go_login'),
                         'href' => url('login.php'),
                         'primary' => true
                     ],
                     [
-                        'label' => '返回首页',
+                        'label' => __('nav.back_home'),
                         'href' => url('index.php')
                     ]
                 ]
@@ -91,11 +92,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($auth) && $auth) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="<?php echo i18n()->getHtmlLang(); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>注册 - 老司机的香蕉</title>
+    <title><?php _e('auth.register'); ?> - <?php _e('site.title'); ?></title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -254,24 +255,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($auth) && $auth) {
         <div class="auth-container">
             <div class="auth-box">
                 <div class="auth-header">
-                    <h1 style="color: #c62828;">系统初始化失败</h1>
+                    <h1 style="color: #c62828;"><?php _e('error.init_failed'); ?></h1>
                 </div>
                 <div class="alert alert-error">
                     <i class="fas fa-exclamation-triangle"></i>
-                    <strong>错误信息：</strong><br>
+                    <strong>Error:</strong><br>
                     <?php echo htmlspecialchars($initError); ?>
                 </div>
                 <div style="margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 6px;">
-                    <p style="margin: 0 0 10px 0; font-weight: bold;">可能的原因：</p>
+                    <p style="margin: 0 0 10px 0; font-weight: bold;"><?php _e('error.possible_causes'); ?>:</p>
                     <ul style="margin: 0; padding-left: 20px;">
-                        <li>配置文件 (config.php) 不存在或格式错误</li>
-                        <li>数据库文件损坏或权限不足</li>
-                        <li>必需的 PHP 扩展未安装</li>
+                        <li><?php _e('error.cause_config'); ?></li>
+                        <li><?php _e('error.cause_db'); ?></li>
+                        <li><?php _e('error.cause_extension'); ?></li>
                     </ul>
                 </div>
                 <div style="text-align: center; margin-top: 20px;">
                     <a href="index.php" class="btn-primary" style="display: inline-block; padding: 12px 24px; text-decoration: none;">
-                        <i class="fas fa-home"></i> 返回首页
+                        <i class="fas fa-home"></i> <?php _e('nav.back_home'); ?>
                     </a>
                 </div>
             </div>
@@ -279,18 +280,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($auth) && $auth) {
     <?php else: ?>
     <div class="auth-container">
         <a href="index.php" class="back-link">
-            <i class="fas fa-arrow-left"></i> 返回首页
+            <i class="fas fa-arrow-left"></i> <?php _e('nav.back_home'); ?>
         </a>
+
+        <div class="language-switcher" style="position: absolute; top: 20px; right: 20px;">
+            <a href="?lang=zh-CN" class="<?php echo isZhCN() ? 'active' : ''; ?>" style="text-decoration: none; margin-right: 10px; color: #666;">中文</a>
+            <a href="?lang=en" class="<?php echo isEn() ? 'active' : ''; ?>" style="text-decoration: none; color: #666;">English</a>
+        </div>
 
         <div class="auth-box">
             <div class="auth-header">
-                <h1>创建账号</h1>
-                <p>加入老司机的香蕉，开始AI创作之旅</p>
+                <h1><?php _e('auth.register_title'); ?></h1>
+                <p><?php _e('auth.register_subtitle'); ?></p>
             </div>
 
             <?php if ($registrationClosed): ?>
                 <div class="alert alert-error">
-                    <i class="fas fa-lock"></i> 当前不开放注册，请稍后再试。
+                    <i class="fas fa-lock"></i> <?php _e('auth.registration_closed'); ?>
                 </div>
             <?php else: ?>
                 <?php if ($error): ?>
@@ -307,68 +313,68 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($auth) && $auth) {
 
                 <form class="auth-form" method="POST" action="">
                     <div class="form-group">
-                        <label for="username">用户名</label>
+                        <label for="username"><?php _e('user.username'); ?></label>
                         <div class="input-icon-wrapper">
                             <i class="fas fa-user"></i>
-                            <input type="text" id="username" name="username" 
-                                   placeholder="3-20个字符，支持中文"
+                            <input type="text" id="username" name="username"
+                                   placeholder="<?php _e('user.username_hint'); ?>"
                                    value="<?php echo htmlspecialchars($_POST['username'] ?? ''); ?>"
                                    required autocomplete="username">
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label for="email">邮箱</label>
+                        <label for="email"><?php _e('user.email'); ?></label>
                         <div class="input-icon-wrapper">
                             <i class="fas fa-envelope"></i>
                             <input type="email" id="email" name="email"
-                                   placeholder="用于找回密码"
+                                   placeholder="<?php _e('user.email_placeholder'); ?>"
                                    value="<?php echo htmlspecialchars($_POST['email'] ?? ''); ?>"
                                    required autocomplete="email">
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label for="password">密码</label>
+                        <label for="password"><?php _e('user.password'); ?></label>
                         <div class="input-icon-wrapper">
                             <i class="fas fa-lock"></i>
                             <input type="password" id="password" name="password"
-                                   placeholder="至少6个字符"
+                                   placeholder="<?php _e('user.password_hint', ['min' => $userConfig['password_min_length'] ?? 6]); ?>"
                                    required autocomplete="new-password">
                         </div>
-                        <p class="password-requirements">密码至少需要 <?php echo $userConfig['password_min_length'] ?? 6; ?> 个字符</p>
+                        <p class="password-requirements"><?php _e('user.password_hint', ['min' => $userConfig['password_min_length'] ?? 6]); ?></p>
                     </div>
 
                     <div class="form-group">
-                        <label for="password_confirm">确认密码</label>
+                        <label for="password_confirm"><?php _e('user.password_confirm'); ?></label>
                         <div class="input-icon-wrapper">
                             <i class="fas fa-lock"></i>
                             <input type="password" id="password_confirm" name="password_confirm"
-                                   placeholder="再次输入密码"
+                                   placeholder="<?php _e('user.password_confirm_placeholder'); ?>"
                                    required autocomplete="new-password">
                         </div>
                     </div>
 
                     <?php if (isset($captcha) && $captcha && $captcha->isRegisterEnabled()): ?>
                     <div class="form-group">
-                        <label for="captcha">验证码</label>
+                        <label for="captcha"><?php _e('form.captcha'); ?></label>
                         <div class="captcha-group">
                             <div class="captcha-input">
                                 <input type="text" id="captcha" name="captcha"
-                                       placeholder="请输入验证码"
+                                       placeholder="<?php _e('form.captcha_placeholder'); ?>"
                                        maxlength="4"
                                        required autocomplete="off">
                             </div>
                             <div class="captcha-image-wrapper">
                                 <img src="captcha_svg.php?t=<?php echo time(); ?>"
-                                     alt="验证码"
+                                     alt="<?php _e('form.captcha'); ?>"
                                      class="captcha-image"
                                      id="captcha-image"
                                      onclick="refreshCaptcha()">
                                 <a href="javascript:void(0)"
                                    onclick="refreshCaptcha()"
                                    class="captcha-refresh">
-                                    <i class="fas fa-sync-alt"></i> 换一张
+                                    <i class="fas fa-sync-alt"></i> <?php _e('form.captcha_refresh'); ?>
                                 </a>
                             </div>
                         </div>
@@ -376,12 +382,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($auth) && $auth) {
                     <?php endif; ?>
 
                     <button type="submit" class="btn-primary">
-                        <i class="fas fa-user-plus"></i> 注册
+                        <i class="fas fa-user-plus"></i> <?php _e('auth.register_now'); ?>
                     </button>
                 </form>
 
                 <div class="auth-footer">
-                    已有账号？ <a href="login.php">立即登录</a>
+                    <?php _e('auth.has_account'); ?> <a href="login.php"><?php _e('auth.login_now'); ?></a>
                 </div>
             <?php endif; ?>
         </div>

@@ -7,14 +7,27 @@ class PromptOptimizer
      */
     public static function getSystemInstruction(array $config, string $mode): string
     {
-        $instructs = $config['prompt_instructs'] ?? [];
+        // 优先使用国际化 System Prompt
+        require_once __DIR__ . '/i18n/I18n.php';
+        
+        // 尝试从配置文件获取自定义指令（保留原有逻辑作为覆盖）
+        $locale = currentLocale();
+        $instructs = $config['prompt_instructs'][$locale] ?? $config['prompt_instructs']['zh-CN'] ?? [];
+
+        // 如果是旧格式的配置（没有语言键），尝试直接使用
+        if (empty($instructs) && isset($config['prompt_instructs'][$mode])) {
+            $instructs = $config['prompt_instructs'];
+        }
+
         if (isset($instructs[$mode]) && is_string($instructs[$mode]) && $instructs[$mode] !== '') {
             return $instructs[$mode];
         }
         if (isset($instructs['basic']) && is_string($instructs['basic'])) {
             return $instructs['basic'];
         }
-        return '你是AI绘画提示词专家，请优化提示词并仅输出优化后的结果。';
+        
+        // 默认使用国际化 System Prompt
+        return __('ai.prompt_optimizer.system_prompt');
     }
 
     /**
@@ -65,7 +78,7 @@ class PromptOptimizer
                 }
             }
             $detail = $categories ? ('，类别：' . implode('、', $categories)) : '';
-            sendError('提示词被模型拒绝，原因：' . $reason . $detail, 400);
+            sendError(__('error.prompt_rejected', ['reason' => $reason . $detail]), 400);
         }
 
         $finishReason = $response['candidates'][0]['finishReason'] ?? 'UNKNOWN';
@@ -75,12 +88,12 @@ class PromptOptimizer
         $acceptableReasons = ['STOP', 'MAX_TOKENS', 'FINISH_REASON_UNSPECIFIED'];
         if (!in_array($finishReason, $acceptableReasons, true)) {
             $msg = $finishMsg ?: $finishReason;
-            sendError('提示词优化被中断: ' . $msg, 502);
+            sendError(__('error.optimization_interrupted', ['msg' => $msg]), 502);
         }
 
         $optimized = extractTextFromCandidates($response);
         if ($optimized === '') {
-            sendError('提示词优化未返回结果', 502);
+            sendError(__('error.optimization_no_result'), 502);
         }
 
         // 提取思考内容

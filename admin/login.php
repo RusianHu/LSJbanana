@@ -7,6 +7,7 @@ ob_start();
 
 require_once __DIR__ . '/../admin_auth.php';
 require_once __DIR__ . '/../security_utils.php';
+require_once __DIR__ . '/../i18n/I18n.php';
 
 $error = '';
 $lockoutTime = 0;
@@ -24,16 +25,16 @@ try {
             $setupStatus = $setupService->getStatus();
             if ($setupStatus['enabled'] && $setupStatus['ip_allowed'] && !empty($setupStatus['missing_tables']) && !isset($_GET['skip_setup'])) {
                 renderActionPage(
-                    '需要初始化管理员系统',
-                    '检测到管理员表缺失，请先完成初始化引导。',
+                    __('admin.need_init'),
+                    __('admin.need_init_desc'),
                     [
                         [
-                            'label' => '开始初始化',
+                            'label' => __('admin.start_init'),
                             'href' => url('setup_admin.php?from=admin_login'),
                             'primary' => true
                         ],
                         [
-                            'label' => '返回首页',
+                            'label' => __('nav.back_home'),
                             'href' => url('index.php')
                         ]
                     ]
@@ -59,16 +60,16 @@ try {
     // 如果已登录,提示进入管理后台
     if ($adminAuth->requireAuth(false)) {
         renderActionPage(
-            '已登录',
-            '您已登录管理员账户，可以继续访问后台。',
+            __('auth.already_logged_in'),
+            __('admin.already_logged_in_desc'),
             [
                 [
-                    'label' => '进入后台',
+                    'label' => __('admin.enter_admin'),
                     'href' => url('admin/index.php'),
                     'primary' => true
                 ],
                 [
-                    'label' => '返回首页',
+                    'label' => __('nav.back_home'),
                     'href' => url('index.php')
                 ]
             ]
@@ -81,16 +82,16 @@ try {
 
     // 判断错误类型并给出友好提示
     if (strpos($errorMsg, '初始化失败') !== false) {
-        $error = '⚠️ 管理员系统初始化失败';
+        $error = '⚠️ ' . __('error.init_failed');
         $errorDetail = htmlspecialchars($errorMsg);
     } elseif (strpos($errorMsg, '配置缺失') !== false) {
-        $error = '⚠️ 管理员配置缺失';
-        $errorDetail = '请检查 config.php 中的 admin 配置项是否正确设置';
+        $error = '⚠️ ' . __('error.config_missing');
+        $errorDetail = __('error.action_check_config');
     } elseif (strpos($errorMsg, '数据库连接失败') !== false) {
-        $error = '⚠️ 数据库连接失败';
-        $errorDetail = '请检查数据库文件是否存在且有正确的读写权限';
+        $error = '⚠️ ' . __('error.db_connection_failed');
+        $errorDetail = __('error.action_check_db');
     } else {
-        $error = '⚠️ 系统错误';
+        $error = '⚠️ ' . __('error.system');
         $errorDetail = htmlspecialchars($errorMsg);
     }
 }
@@ -106,16 +107,16 @@ if (!$initError && isset($_GET['quick_login']) && $_GET['quick_login'] === '1') 
 
             if ($quickLoginResult['success']) {
                 renderActionPage(
-                    '登录成功',
-                    '管理员快速登录已完成，请继续进入后台。',
+                    __('admin.login_success'),
+                    __('admin.quick_login_success'),
                     [
                         [
-                            'label' => '进入后台',
+                            'label' => __('admin.enter_admin'),
                             'href' => url('admin/index.php'),
                             'primary' => true
                         ],
                         [
-                            'label' => '返回首页',
+                            'label' => __('nav.back_home'),
                             'href' => url('index.php')
                         ]
                     ]
@@ -124,19 +125,19 @@ if (!$initError && isset($_GET['quick_login']) && $_GET['quick_login'] === '1') 
                 $error = $quickLoginResult['message'];
             }
         } catch (Exception $e) {
-            $error = '快速登录失败: ' . $e->getMessage();
+            $error = __('auth.quick_login_failed') . ': ' . $e->getMessage();
         }
     } else {
-        $error = '无效的快速登录链接';
+        $error = __('auth.quick_login_invalid');
     }
 }
 
 // 检查是否有过期或已登出的提示
 if (!$initError) {
     if (isset($_GET['expired'])) {
-        $error = '会话已过期,请重新登录';
+        $error = __('auth.session_expired');
     } elseif (isset($_GET['logout'])) {
-        $error = '已安全登出';
+        $error = __('auth.safe_logout');
     }
 }
 
@@ -150,16 +151,16 @@ if (!$initError && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($result['success']) {
             renderActionPage(
-                '登录成功',
-                '管理员登录已完成，请继续进入后台。',
+                __('admin.login_success'),
+                __('admin.login_success_desc'),
                 [
                     [
-                        'label' => '进入后台',
+                        'label' => __('admin.enter_admin'),
                         'href' => url('admin/index.php'),
                         'primary' => true
                     ],
                     [
-                        'label' => '返回首页',
+                        'label' => __('nav.back_home'),
                         'href' => url('index.php')
                     ]
                 ]
@@ -169,7 +170,7 @@ if (!$initError && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $lockoutTime = $result['lockout_time'] ?? 0;
         }
     } catch (Exception $e) {
-        $error = '登录失败: ' . $e->getMessage();
+        $error = __('auth.error.username_or_password') . ': ' . $e->getMessage();
     }
 }
 
@@ -198,11 +199,11 @@ if (!$initError && !$lockoutTime && $_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 ?>
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="<?php echo i18n()->getHtmlLang(); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>管理员登录 - 老司机的香蕉</title>
+    <title><?php _e('admin.login_title'); ?> - <?php _e('site.title'); ?></title>
     <link rel="stylesheet" href="<?php echo url('/style.css'); ?>">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -223,6 +224,7 @@ if (!$initError && !$lockoutTime && $_SERVER['REQUEST_METHOD'] !== 'POST') {
             border-radius: var(--border-radius);
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
             padding: 40px 35px;
+            position: relative;
         }
         .auth-header {
             text-align: center;
@@ -340,12 +342,16 @@ if (!$initError && !$lockoutTime && $_SERVER['REQUEST_METHOD'] !== 'POST') {
 <body>
     <div class="auth-container">
         <div class="auth-box">
+            <div class="language-switcher" style="position: absolute; top: 15px; right: 15px;">
+                <a href="?lang=zh-CN" class="<?php echo isZhCN() ? 'active' : ''; ?>" style="text-decoration: none; margin-right: 8px; color: #666; font-size: 0.9em;">CN</a>
+                <a href="?lang=en" class="<?php echo isEn() ? 'active' : ''; ?>" style="text-decoration: none; color: #666; font-size: 0.9em;">EN</a>
+            </div>
             <div class="auth-header">
                 <div class="admin-icon">
                     <i class="fas fa-user-shield"></i>
                 </div>
-                <h1>管理员登录</h1>
-                <p>请输入管理员密钥以继续</p>
+                <h1><?php _e('admin.login_title'); ?></h1>
+                <p><?php _e('admin.login_subtitle'); ?></p>
             </div>
 
             <?php if ($error): ?>
@@ -362,7 +368,7 @@ if (!$initError && !$lockoutTime && $_SERVER['REQUEST_METHOD'] !== 'POST') {
 
             <?php if ($lockoutTime > 0): ?>
                 <div class="alert alert-warning">
-                    <i class="fas fa-clock"></i> IP已被锁定,请 <span class="lockout-timer" id="lockoutTimer"><?php echo ceil($lockoutTime / 60); ?></span> 分钟后重试
+                    <i class="fas fa-clock"></i> <?php _e('admin.ip_locked', ['minutes' => ceil($lockoutTime / 60)]); ?>
                 </div>
                 <script>
                     let lockoutSeconds = <?php echo $lockoutTime; ?>;
@@ -383,7 +389,7 @@ if (!$initError && !$lockoutTime && $_SERVER['REQUEST_METHOD'] !== 'POST') {
             <form method="POST" action="" <?php echo $initError ? 'style="display:none;"' : ''; ?>>
                 <div class="form-group">
                     <label for="key">
-                        <i class="fas fa-key"></i> 管理员密钥
+                        <i class="fas fa-key"></i> <?php _e('admin.admin_key'); ?>
                     </label>
                     <input
                         type="password"
@@ -391,7 +397,7 @@ if (!$initError && !$lockoutTime && $_SERVER['REQUEST_METHOD'] !== 'POST') {
                         name="key"
                         required
                         autofocus
-                        placeholder="请输入管理员密钥"
+                        placeholder="<?php _e('admin.admin_key_placeholder'); ?>"
                         <?php echo $lockoutTime > 0 ? 'disabled' : ''; ?>
                     >
                 </div>
@@ -399,7 +405,7 @@ if (!$initError && !$lockoutTime && $_SERVER['REQUEST_METHOD'] !== 'POST') {
                 <?php if ($captcha->isLoginEnabled()): ?>
                 <div class="form-group">
                     <label for="captcha">
-                        <i class="fas fa-shield-alt"></i> 验证码
+                        <i class="fas fa-shield-alt"></i> <?php _e('form.captcha'); ?>
                     </label>
                     <div class="captcha-group">
                         <input
@@ -407,16 +413,16 @@ if (!$initError && !$lockoutTime && $_SERVER['REQUEST_METHOD'] !== 'POST') {
                             id="captcha"
                             name="captcha"
                             required
-                            placeholder="验证码"
+                            placeholder="<?php _e('form.captcha_placeholder'); ?>"
                             maxlength="4"
                             <?php echo $lockoutTime > 0 ? 'disabled' : ''; ?>
                         >
                         <img
                             src="../captcha_svg.php?t=<?php echo time(); ?>"
-                            alt="验证码"
+                            alt="<?php _e('form.captcha'); ?>"
                             id="captchaImg"
                             onclick="this.src='../captcha_svg.php?t=' + Date.now()"
-                            title="点击刷新验证码"
+                            title="<?php _e('form.captcha_refresh'); ?>"
                         >
                     </div>
                 </div>
@@ -427,13 +433,13 @@ if (!$initError && !$lockoutTime && $_SERVER['REQUEST_METHOD'] !== 'POST') {
                     class="btn-primary"
                     <?php echo $lockoutTime > 0 ? 'disabled' : ''; ?>
                 >
-                    <i class="fas fa-sign-in-alt"></i> 登录
+                    <i class="fas fa-sign-in-alt"></i> <?php _e('auth.login'); ?>
                 </button>
             </form>
 
             <div class="auth-footer">
                 <a href="<?php echo url('/index.php'); ?>">
-                    <i class="fas fa-arrow-left"></i> 返回首页
+                    <i class="fas fa-arrow-left"></i> <?php _e('nav.back_home'); ?>
                 </a>
             </div>
         </div>

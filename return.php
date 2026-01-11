@@ -8,6 +8,7 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/payment.php';
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/i18n/I18n.php';
 
 $auth = getAuth();
 $payment = getPayment();
@@ -32,26 +33,26 @@ if (!empty($params)) {
             // 检查订单状态
             if ((int)$order['status'] === 1) {
                 $success = true;
-                $message = '充值成功！';
+                $message = __('return.success_msg');
             } else {
                 // 订单可能还未被异步通知处理，等待一下再查询
                 sleep(1);
                 $order = $db->getRechargeOrderByOutTradeNo($outTradeNo);
                 if ((int)$order['status'] === 1) {
                     $success = true;
-                    $message = '充值成功！';
+                    $message = __('return.success_msg');
                 } else {
-                    $message = '支付处理中，请稍候刷新页面查看结果...';
+                    $message = __('return.pending_msg');
                 }
             }
         } else {
-            $message = '订单不存在';
+            $message = __('return.order_not_found');
         }
     } else {
-        $message = '支付验证失败';
+        $message = __('return.failed_msg');
     }
 } else {
-    $message = '无效的支付回调';
+    $message = __('return.invalid_callback');
 }
 
 // 获取当前用户（如果已登录）
@@ -59,14 +60,14 @@ $user = null;
 if ($auth->isLoggedIn()) {
     $user = $auth->refreshCurrentUser();
 }
-$isPending = (!$success && strpos($message, '处理中') !== false);
+$isPending = (!$success && strpos($message, __('return.pending_title')) !== false);
 ?>
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="<?php echo i18n()->getHtmlLang(); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>支付结果 - 老司机的香蕉</title>
+    <title><?php _e('return.title'); ?> - <?php _e('site.title'); ?></title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -187,21 +188,21 @@ $isPending = (!$success && strpos($message, '处理中') !== false);
                 <div class="result-icon success">
                     <i class="fas fa-check-circle"></i>
                 </div>
-                <h1 class="result-title">充值成功</h1>
+                <h1 class="result-title"><?php _e('return.success_title'); ?></h1>
                 <p class="result-message"><?php echo htmlspecialchars($message); ?></p>
 
                 <?php if ($order): ?>
                 <div class="order-info">
                     <div class="order-info-item">
-                        <span class="label">订单号</span>
+                        <span class="label"><?php _e('return.order_no'); ?></span>
                         <span class="value"><?php echo htmlspecialchars($order['out_trade_no']); ?></span>
                     </div>
                     <div class="order-info-item">
-                        <span class="label">充值金额</span>
-                        <span class="value amount">+<?php echo number_format((float)$order['amount'], 2); ?> 元</span>
+                        <span class="label"><?php _e('return.amount'); ?></span>
+                        <span class="value amount">+<?php echo number_format((float)$order['amount'], 2); ?> <?php _e('user.balance_unit'); ?></span>
                     </div>
                     <div class="order-info-item">
-                        <span class="label">支付时间</span>
+                        <span class="label"><?php _e('return.pay_time'); ?></span>
                         <span class="value"><?php echo $order['paid_at'] ?? $order['created_at']; ?></span>
                     </div>
                 </div>
@@ -209,37 +210,37 @@ $isPending = (!$success && strpos($message, '处理中') !== false);
 
                 <?php if ($user): ?>
                 <div class="balance-info">
-                    <h4>当前余额</h4>
-                    <div class="balance"><?php echo number_format((float)$user['balance'], 2); ?> 元</div>
+                    <h4><?php _e('recharge.current_balance'); ?></h4>
+                    <div class="balance"><?php echo number_format((float)$user['balance'], 2); ?> <?php _e('user.balance_unit'); ?></div>
                 </div>
                 <?php endif; ?>
 
-            <?php elseif (strpos($message, '处理中') !== false): ?>
+            <?php elseif (strpos($message, __('return.pending_title')) !== false): ?>
                 <div class="result-icon pending">
                     <i class="fas fa-clock"></i>
                 </div>
-                <h1 class="result-title">支付处理中</h1>
+                <h1 class="result-title"><?php _e('return.pending_title'); ?></h1>
                 <p class="result-message"><?php echo htmlspecialchars($message); ?></p>
 
             <?php else: ?>
                 <div class="result-icon error">
                     <i class="fas fa-times-circle"></i>
                 </div>
-                <h1 class="result-title">支付失败</h1>
+                <h1 class="result-title"><?php _e('return.failed_title'); ?></h1>
                 <p class="result-message"><?php echo htmlspecialchars($message); ?></p>
             <?php endif; ?>
 
             <div class="action-buttons">
                 <?php if ($isPending): ?>
                     <a href="<?php echo htmlspecialchars($_SERVER['REQUEST_URI'] ?? url('return.php')); ?>" class="btn-secondary-link">
-                        <i class="fas fa-sync-alt"></i> 刷新状态
+                        <i class="fas fa-sync-alt"></i> <?php _e('return.refresh_status'); ?>
                     </a>
                 <?php endif; ?>
                 <a href="<?php echo htmlspecialchars(url('index.php')); ?>" class="btn-primary-link">
-                    <i class="fas fa-home"></i> 返回首页
+                    <i class="fas fa-home"></i> <?php _e('nav.back_home'); ?>
                 </a>
                 <a href="<?php echo htmlspecialchars(url('recharge.php')); ?>" class="btn-secondary-link">
-                    <i class="fas fa-redo"></i> 继续充值
+                    <i class="fas fa-redo"></i> <?php _e('return.continue_recharge'); ?>
                 </a>
             </div>
         </div>

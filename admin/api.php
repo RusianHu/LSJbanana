@@ -8,6 +8,7 @@ header('Content-Type: application/json; charset=utf-8');
 require_once __DIR__ . '/../admin_auth.php';
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../auth.php';
+require_once __DIR__ . '/../i18n/I18n.php';
 
 $adminAuth = getAdminAuth();
 
@@ -59,17 +60,17 @@ try {
         case 'get_user_detail':
             $userId = (int)($_POST['user_id'] ?? 0);
             if ($userId <= 0) {
-                jsonResponse(false, '无效的用户ID');
+                jsonResponse(false, __('admin.users.invalid_id'));
             }
 
             $user = $db->getUserById($userId);
             if (!$user) {
-                jsonResponse(false, '用户不存在');
+                jsonResponse(false, __('error.user_not_found'));
             }
 
             $stats = $db->getUserRechargeStats($userId);
 
-            jsonResponse(true, '获取成功', [
+            jsonResponse(true, __('status.success'), [
                 'user' => $user,
                 'stats' => $stats
             ]);
@@ -91,7 +92,7 @@ try {
 
             $result = $db->getUserLoginLogs($userId, $perPage, $offset);
             
-            jsonResponse(true, '获取成功', [
+            jsonResponse(true, __('status.success'), [
                 'logs' => $result['logs'],
                 'total' => $result['total'],
                 'page' => $page,
@@ -112,7 +113,7 @@ try {
 
             $result = $db->getUserConsumptionLogsPaginated($userId, $perPage, $offset);
             
-            jsonResponse(true, '获取成功', [
+            jsonResponse(true, __('status.success'), [
                 'logs' => $result['logs'],
                 'total' => $result['total'],
                 'page' => $page,
@@ -133,7 +134,7 @@ try {
 
             $result = $db->getUserBalanceLogs($userId, $perPage, $offset);
             
-            jsonResponse(true, '获取成功', [
+            jsonResponse(true, __('status.success'), [
                 'logs' => $result['logs'],
                 'total' => $result['total'],
                 'page' => $page,
@@ -155,7 +156,7 @@ try {
 
             $result = $db->getUserRechargeOrdersPaginated($userId, $perPage, $offset, $includeAll);
             
-            jsonResponse(true, '获取成功', [
+            jsonResponse(true, __('status.success'), [
                 'orders' => $result['orders'],
                 'total' => $result['total'],
                 'page' => $page,
@@ -169,17 +170,17 @@ try {
             $email = trim($_POST['email'] ?? '');
 
             if ($userId <= 0) {
-                jsonResponse(false, '无效的用户ID');
+                jsonResponse(false, __('admin.users.invalid_id'));
             }
 
             if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                jsonResponse(false, '邮箱格式不正确');
+                jsonResponse(false, __('validation.email_invalid'));
             }
 
             // 检查邮箱是否已被使用
             $existingUser = $db->getUserByEmail($email);
             if ($existingUser && $existingUser['id'] != $userId) {
-                jsonResponse(false, '该邮箱已被其他用户使用');
+                jsonResponse(false, __('auth.error.email_exists'));
             }
 
             $result = $db->updateUserEmail($userId, $email);
@@ -191,21 +192,21 @@ try {
                     'new_value' => $email
                 ], getClientIp());
 
-                jsonResponse(true, '邮箱修改成功');
+                jsonResponse(true, __('admin.email_updated'));
             } else {
-                jsonResponse(false, '邮箱修改失败');
+                jsonResponse(false, __('error.unknown'));
             }
             break;
 
         case 'toggle_user_status':
             $userId = (int)($_POST['user_id'] ?? 0);
             if ($userId <= 0) {
-                jsonResponse(false, '无效的用户ID');
+                jsonResponse(false, __('admin.users.invalid_id'));
             }
 
             $user = $db->getUserById($userId);
             if (!$user) {
-                jsonResponse(false, '用户不存在');
+                jsonResponse(false, __('error.user_not_found'));
             }
 
             $result = $db->toggleUserStatus($userId);
@@ -220,23 +221,23 @@ try {
                     'new_status' => $newStatus
                 ], getClientIp());
 
-                $message = $newStatus == 1 ? '用户已启用' : '用户已禁用';
+                $message = $newStatus == 1 ? __('admin.user_enabled') : __('admin.user_disabled');
                 jsonResponse(true, $message);
             } else {
-                jsonResponse(false, '状态切换失败');
+                jsonResponse(false, __('error.unknown'));
             }
             break;
 
         case 'search_users':
             $keyword = trim($_POST['keyword'] ?? '');
             if (empty($keyword)) {
-                jsonResponse(false, '请输入搜索关键词');
+                jsonResponse(false, __('form.search') . '...');
             }
 
             // 尝试搜索用户 (ID、用户名、邮箱)
             $users = $db->getAllUsers(10, 0, $keyword, null);
 
-            jsonResponse(true, '搜索成功', ['users' => $users]);
+            jsonResponse(true, __('status.success'), ['users' => $users]);
             break;
 
         // ============================================================
@@ -251,25 +252,25 @@ try {
             $userRemark = trim($_POST['user_remark'] ?? '');
 
             if ($userId <= 0) {
-                jsonResponse(false, '无效的用户ID');
+                jsonResponse(false, __('admin.users.invalid_id'));
             }
 
             if ($amount <= 0) {
-                jsonResponse(false, '充值金额必须大于0');
+                jsonResponse(false, __('validation.amount_min', ['min' => 0.01]));
             }
 
             if (empty($remark)) {
-                jsonResponse(false, '请填写充值备注');
+                jsonResponse(false, __('admin.balance.remark') . ' ' . __('validation.required'));
             }
 
             // 如果选择显示给用户但没有填写用户可见说明，使用默认值
             if ($visibleToUser && empty($userRemark)) {
-                $userRemark = '系统调整';
+                $userRemark = __('recharge.source_manual');
             }
 
             $user = $db->getUserById($userId);
             if (!$user) {
-                jsonResponse(false, '用户不存在');
+                jsonResponse(false, __('error.user_not_found'));
             }
 
             // 更新用户余额
@@ -306,11 +307,11 @@ try {
                     'balance_after' => $newBalance
                 ], getClientIp());
 
-                jsonResponse(true, '充值成功', [
+                jsonResponse(true, __('admin.balance_added'), [
                     'new_balance' => $newBalance
                 ]);
             } else {
-                jsonResponse(false, '充值失败');
+                jsonResponse(false, __('error.unknown'));
             }
             break;
 
@@ -320,20 +321,20 @@ try {
             $remark = trim($_POST['remark'] ?? '');
 
             if ($userId <= 0) {
-                jsonResponse(false, '无效的用户ID');
+                jsonResponse(false, __('admin.users.invalid_id'));
             }
 
             if ($amount <= 0) {
-                jsonResponse(false, '扣款金额必须大于0');
+                jsonResponse(false, __('validation.amount_min', ['min' => 0.01]));
             }
 
             if (empty($remark)) {
-                jsonResponse(false, '请填写扣款原因');
+                jsonResponse(false, __('admin.balance.remark') . ' ' . __('validation.required'));
             }
 
             $user = $db->getUserById($userId);
             if (!$user) {
-                jsonResponse(false, '用户不存在');
+                jsonResponse(false, __('error.user_not_found'));
             }
 
             // 更新用户余额(允许为负)
@@ -353,7 +354,7 @@ try {
                         'amount' => -$amount,
                         'before' => $user['balance'],
                         'after' => $newBalance,
-                        'remark' => '管理员人工扣款: ' . $remark,
+                        'remark' => __('admin.balance_deducted') . ': ' . $remark,
                         'created_at' => date('Y-m-d H:i:s')
                     ]
                 );
@@ -366,11 +367,11 @@ try {
                     'balance_after' => $newBalance
                 ], getClientIp());
 
-                jsonResponse(true, '扣款成功', [
+                jsonResponse(true, __('admin.balance_deducted'), [
                     'new_balance' => $newBalance
                 ]);
             } else {
-                jsonResponse(false, '扣款失败');
+                jsonResponse(false, __('error.unknown'));
             }
             break;
 
@@ -383,11 +384,11 @@ try {
             $newPassword = trim($_POST['new_password'] ?? '');
 
             if ($userId <= 0) {
-                jsonResponse(false, '无效的用户ID');
+                jsonResponse(false, __('admin.users.invalid_id'));
             }
 
             if (strlen($newPassword) < 6) {
-                jsonResponse(false, '密码长度不能少于6位');
+                jsonResponse(false, __('validation.password_min_length', ['min' => 6]));
             }
 
             $result = $auth->resetPasswordByAdmin($userId, $newPassword);
@@ -398,9 +399,9 @@ try {
                     'method' => 'admin_reset'
                 ], getClientIp());
 
-                jsonResponse(true, $result['message']);
+                jsonResponse(true, __('admin.password_reset'));
             } else {
-                jsonResponse(false, $result['message']);
+                jsonResponse(false, __('password.error.reset_failed'));
             }
             break;
 
@@ -410,7 +411,7 @@ try {
 
             $tempPassword = $auth->generateTempPassword($length);
 
-            jsonResponse(true, '临时密码生成成功', [
+            jsonResponse(true, __('status.success'), [
                 'password' => $tempPassword
             ]);
             break;
@@ -421,7 +422,7 @@ try {
 
         case 'get_statistics':
             $stats = $db->getStatistics();
-            jsonResponse(true, '获取成功', $stats);
+            jsonResponse(true, __('status.success'), $stats);
             break;
 
         case 'get_orders':
@@ -459,7 +460,7 @@ try {
             $totalResult = $db->query($countQuery, $countParams);
             $total = $totalResult[0]['total'] ?? 0;
 
-            jsonResponse(true, '获取成功', [
+            jsonResponse(true, __('status.success'), [
                 'orders' => $orders,
                 'total' => $total,
                 'total_pages' => ceil($total / $perPage)
@@ -477,16 +478,16 @@ try {
             if ($type === 'admin') {
                 // 管理操作日志
                 $logs = $db->getAdminOperationLogs($perPage, $offset, $filters);
-                jsonResponse(true, '获取成功', $logs);
+                jsonResponse(true, __('status.success'), $logs);
             } elseif ($type === 'login') {
                 // 登录日志
                 $logs = $db->query(
                     "SELECT * FROM admin_login_attempts ORDER BY attempt_time DESC LIMIT :limit OFFSET :offset",
                     ['limit' => $perPage, 'offset' => $offset]
                 );
-                jsonResponse(true, '获取成功', ['logs' => $logs]);
+                jsonResponse(true, __('status.success'), ['logs' => $logs]);
             } else {
-                jsonResponse(false, '无效的日志类型');
+                jsonResponse(false, __('error.unknown'));
             }
             break;
 

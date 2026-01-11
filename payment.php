@@ -15,6 +15,7 @@ class Payment {
     private string $key;
 
     public function __construct(?array $config = null) {
+        require_once __DIR__ . '/i18n/I18n.php'; // 确保 I18n 已加载
         if ($config === null) {
             $fullConfig = require __DIR__ . '/config.php';
             $config = $fullConfig['payment'] ?? [];
@@ -136,7 +137,7 @@ class Payment {
         ?string $param = null
     ): array {
         if (!$this->isEnabled()) {
-            return ['success' => false, 'message' => '支付功能未启用'];
+            return ['success' => false, 'message' => __('payment.error.disabled')];
         }
 
         $params = [
@@ -194,7 +195,7 @@ class Payment {
         ?string $param = null
     ): array {
         if (!$this->isEnabled()) {
-            return ['success' => false, 'message' => '支付功能未启用'];
+            return ['success' => false, 'message' => __('payment.error.disabled')];
         }
 
         $params = [
@@ -222,16 +223,16 @@ class Payment {
         $response = $this->httpPost($apiUrl, $params);
 
         if ($response === false) {
-            return ['success' => false, 'message' => '支付请求失败'];
+            return ['success' => false, 'message' => __('payment.error.request_failed')];
         }
 
         $result = json_decode($response, true);
         if (json_last_error() !== JSON_ERROR_NONE) {
-            return ['success' => false, 'message' => '支付响应解析失败'];
+            return ['success' => false, 'message' => __('payment.error.response_parse_failed')];
         }
 
         if (($result['code'] ?? 0) !== 1) {
-            return ['success' => false, 'message' => $result['msg'] ?? '支付创建失败'];
+            return ['success' => false, 'message' => $result['msg'] ?? __('payment.error.create_failed_default')];
         }
 
         return [
@@ -252,13 +253,13 @@ class Payment {
     public function handleNotify(array $params): array {
         // 验证签名
         if (!$this->verifySign($params)) {
-            return ['success' => false, 'message' => '签名验证失败'];
+            return ['success' => false, 'message' => __('payment.error.sign_verify_failed')];
         }
 
         // 检查交易状态
         $tradeStatus = $params['trade_status'] ?? '';
         if ($tradeStatus !== 'TRADE_SUCCESS') {
-            return ['success' => false, 'message' => '交易未成功'];
+            return ['success' => false, 'message' => __('payment.error.trade_not_success')];
         }
 
         return [
@@ -278,7 +279,7 @@ class Payment {
      */
     public function queryOrder(string $outTradeNo = '', string $tradeNo = ''): array {
         if (!$this->isEnabled()) {
-            return ['success' => false, 'message' => '支付功能未启用'];
+            return ['success' => false, 'message' => __('payment.error.disabled')];
         }
 
         $apiUrl = $this->gatewayUrl . '/api.php';
@@ -293,21 +294,21 @@ class Payment {
         } elseif (!empty($outTradeNo)) {
             $params['out_trade_no'] = $outTradeNo;
         } else {
-            return ['success' => false, 'message' => '订单号不能为空'];
+            return ['success' => false, 'message' => __('payment.error.order_no_required')];
         }
 
         $response = $this->httpGet($apiUrl . '?' . http_build_query($params));
         if ($response === false) {
-            return ['success' => false, 'message' => '查询请求失败'];
+            return ['success' => false, 'message' => __('payment.error.query_request_failed')];
         }
 
         $result = json_decode($response, true);
         if (json_last_error() !== JSON_ERROR_NONE) {
-            return ['success' => false, 'message' => '查询响应解析失败'];
+            return ['success' => false, 'message' => __('payment.error.query_parse_failed')];
         }
 
         if (($result['code'] ?? 0) !== 1) {
-            return ['success' => false, 'message' => $result['msg'] ?? '查询失败'];
+            return ['success' => false, 'message' => $result['msg'] ?? __('payment.error.query_failed_default')];
         }
 
         return [
@@ -321,7 +322,7 @@ class Payment {
      */
     public function queryMerchant(): array {
         if (!$this->isEnabled()) {
-            return ['success' => false, 'message' => '支付功能未启用'];
+            return ['success' => false, 'message' => __('payment.error.disabled')];
         }
 
         $apiUrl = $this->gatewayUrl . '/api.php';
@@ -333,16 +334,16 @@ class Payment {
 
         $response = $this->httpGet($apiUrl . '?' . http_build_query($params));
         if ($response === false) {
-            return ['success' => false, 'message' => '查询请求失败'];
+            return ['success' => false, 'message' => __('payment.error.query_request_failed')];
         }
 
         $result = json_decode($response, true);
         if (json_last_error() !== JSON_ERROR_NONE) {
-            return ['success' => false, 'message' => '查询响应解析失败'];
+            return ['success' => false, 'message' => __('payment.error.query_parse_failed')];
         }
 
         if (($result['code'] ?? 0) !== 1) {
-            return ['success' => false, 'message' => $result['msg'] ?? '查询失败'];
+            return ['success' => false, 'message' => $result['msg'] ?? __('payment.error.query_failed_default')];
         }
 
         return [

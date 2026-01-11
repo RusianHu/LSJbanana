@@ -8,6 +8,7 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/security_utils.php';
 require_once __DIR__ . '/captcha_utils.php';
+require_once __DIR__ . '/i18n/I18n.php';
 
 class Auth {
     private Database $db;
@@ -62,16 +63,16 @@ class Auth {
     public function register(string $username, string $email, string $password, ?string $captcha = null): array {
         // 验证是否开放注册
         if (!($this->config['enable_registration'] ?? true)) {
-            return ['success' => false, 'message' => '当前不开放注册'];
+            return ['success' => false, 'message' => __('auth.error.registration_disabled')];
         }
 
         // 验证码验证（如果启用）
         if ($this->captcha->isRegisterEnabled()) {
             if (empty($captcha)) {
-                return ['success' => false, 'message' => '请输入验证码'];
+                return ['success' => false, 'message' => __('auth.error.captcha_required')];
             }
             if (!$this->captcha->verify($captcha)) {
-                return ['success' => false, 'message' => '验证码错误或已过期'];
+                return ['success' => false, 'message' => __('auth.error.captcha_invalid')];
             }
         }
 
@@ -83,7 +84,7 @@ class Auth {
 
         // 验证邮箱
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            return ['success' => false, 'message' => '邮箱格式不正确'];
+            return ['success' => false, 'message' => __('validation.email_invalid')];
         }
 
         // 验证密码
@@ -94,12 +95,12 @@ class Auth {
 
         // 检查用户名是否已存在
         if ($this->db->usernameExists($username)) {
-            return ['success' => false, 'message' => '用户名已被使用'];
+            return ['success' => false, 'message' => __('auth.error.username_exists')];
         }
 
         // 检查邮箱是否已存在
         if ($this->db->emailExists($email)) {
-            return ['success' => false, 'message' => '邮箱已被注册'];
+            return ['success' => false, 'message' => __('auth.error.email_exists')];
         }
 
         // 创建用户
@@ -107,7 +108,7 @@ class Auth {
         $userId = $this->db->createUser($username, $email, $passwordHash);
 
         if ($userId === null) {
-            return ['success' => false, 'message' => '注册失败，请稍后重试'];
+            return ['success' => false, 'message' => __('auth.error.register_failed')];
         }
 
         // 获取用户信息
@@ -115,7 +116,7 @@ class Auth {
 
         return [
             'success' => true,
-            'message' => '注册成功',
+            'message' => __('auth.register_success'),
             'user' => $this->sanitizeUser($user),
         ];
     }
@@ -127,10 +128,10 @@ class Auth {
         // 验证码验证（如果启用）
         if ($this->captcha->isLoginEnabled()) {
             if (empty($captcha)) {
-                return ['success' => false, 'message' => '请输入验证码'];
+                return ['success' => false, 'message' => __('auth.error.captcha_required')];
             }
             if (!$this->captcha->verify($captcha)) {
-                return ['success' => false, 'message' => '验证码错误或已过期'];
+                return ['success' => false, 'message' => __('auth.error.captcha_invalid')];
             }
         }
 
@@ -143,19 +144,19 @@ class Auth {
         }
 
         if ($user === null) {
-            return ['success' => false, 'message' => '用户名或密码错误'];
+            return ['success' => false, 'message' => __('auth.error.username_or_password')];
         }
 
         // 检查用户状态
         if (($user['status'] ?? 0) !== 1) {
-            return ['success' => false, 'message' => '账号已被禁用'];
+            return ['success' => false, 'message' => __('auth.error.account_disabled')];
         }
 
         // 验证密码
         if (!password_verify($password, $user['password_hash'])) {
             // 记录失败的登录尝试
             $this->db->logLogin($user['id'], $this->getClientIp(), $_SERVER['HTTP_USER_AGENT'] ?? null, 'password', 0);
-            return ['success' => false, 'message' => '用户名或密码错误'];
+            return ['success' => false, 'message' => __('auth.error.username_or_password')];
         }
 
         // 登录成功
@@ -181,7 +182,7 @@ class Auth {
 
         return [
             'success' => true,
-            'message' => '登录成功',
+            'message' => __('auth.login_success'),
             'user' => $this->sanitizeUser($user),
         ];
     }
@@ -377,16 +378,16 @@ class Auth {
         $maxLength = $this->config['username_max_length'] ?? 20;
 
         if (mb_strlen($username) < $minLength) {
-            return ['valid' => false, 'message' => "用户名至少需要 {$minLength} 个字符"];
+            return ['valid' => false, 'message' => __('validation.username_min_length', ['min' => $minLength])];
         }
 
         if (mb_strlen($username) > $maxLength) {
-            return ['valid' => false, 'message' => "用户名最多 {$maxLength} 个字符"];
+            return ['valid' => false, 'message' => __('validation.username_max_length', ['max' => $maxLength])];
         }
 
         // 只允许字母、数字、下划线和中文
         if (!preg_match('/^[\p{L}\p{N}_]+$/u', $username)) {
-            return ['valid' => false, 'message' => '用户名只能包含字母、数字、下划线和中文'];
+            return ['valid' => false, 'message' => __('validation.username_format')];
         }
 
         return ['valid' => true];
@@ -399,7 +400,7 @@ class Auth {
         $minLength = $this->config['password_min_length'] ?? 6;
 
         if (strlen($password) < $minLength) {
-            return ['valid' => false, 'message' => "密码至少需要 {$minLength} 个字符"];
+            return ['valid' => false, 'message' => __('validation.password_min_length', ['min' => $minLength])];
         }
 
         return ['valid' => true];
@@ -491,16 +492,16 @@ class Auth {
             $redirectTarget = $this->buildRelativeRedirect($_SERVER['REQUEST_URI'] ?? '', 'index.php');
             $loginUrl = 'login.php?redirect=' . urlencode($redirectTarget);
             renderActionPage(
-                '需要登录',
-                '请先登录后继续访问该页面。',
+                __('auth.require_login'),
+                __('auth.require_login_desc'),
                 [
                     [
-                        'label' => '立即登录',
+                        'label' => __('auth.login_now'),
                         'href' => url($loginUrl),
                         'primary' => true
                     ],
                     [
-                        'label' => '返回首页',
+                        'label' => __('nav.back_home'),
                         'href' => url('index.php')
                     ]
                 ],
@@ -521,7 +522,7 @@ class Auth {
 
         header('Content-Type: application/json; charset=utf-8');
         http_response_code(401);
-        echo json_encode(['success' => false, 'message' => '请先登录', 'code' => 'UNAUTHORIZED']);
+        echo json_encode(['success' => false, 'message' => __('api.unauthorized'), 'code' => 'UNAUTHORIZED']);
         exit;
     }
 
@@ -538,12 +539,12 @@ class Auth {
     public function deductBalance(float $amount, string $action, int $imageCount = 1, ?string $modelName = null, ?string $remark = null): array {
         $user = $this->getCurrentUser();
         if ($user === null) {
-            return ['success' => false, 'message' => '用户未登录'];
+            return ['success' => false, 'message' => __('error.user_not_found')];
         }
 
         $currentBalance = (float) ($user['balance'] ?? 0);
         if ($currentBalance < $amount) {
-            return ['success' => false, 'message' => '余额不足', 'balance' => $currentBalance, 'required' => $amount];
+            return ['success' => false, 'message' => __('api.insufficient_balance'), 'balance' => $currentBalance, 'required' => $amount];
         }
 
         $newBalance = $currentBalance - $amount;
@@ -570,7 +571,7 @@ class Auth {
 
             return [
                 'success' => true,
-                'message' => '扣费成功',
+                'message' => __('success.operation'),
                 'balance_before' => $currentBalance,
                 'balance_after' => $newBalance,
                 'amount' => $amount,
@@ -601,12 +602,12 @@ class Auth {
         // 获取用户信息
         $user = $this->db->getUserById($userId);
         if (!$user) {
-            return ['success' => false, 'message' => '用户不存在'];
+            return ['success' => false, 'message' => __('error.user_not_found')];
         }
 
         // 验证旧密码
         if (!password_verify($oldPassword, $user['password_hash'])) {
-            return ['success' => false, 'message' => '旧密码错误'];
+            return ['success' => false, 'message' => __('validation.old_password_wrong')];
         }
 
         // 验证新密码
@@ -623,10 +624,10 @@ class Auth {
             // 清除所有会话(强制重新登录)
             $this->db->deleteUserSessions($userId);
 
-            return ['success' => true, 'message' => '密码修改成功,请重新登录'];
+            return ['success' => true, 'message' => __('password.changed_success_msg')];
         }
 
-        return ['success' => false, 'message' => '密码修改失败,请稍后重试'];
+        return ['success' => false, 'message' => __('password.error.change_failed')];
     }
 
     /**
@@ -914,12 +915,12 @@ class Auth {
         }
 
         if ($user === null) {
-            return ['success' => false, 'message' => '获取测试用户失败'];
+            return ['success' => false, 'message' => __('error.user_not_found')];
         }
 
         // 检查用户状态
         if (($user['status'] ?? 0) !== 1) {
-            return ['success' => false, 'message' => '测试用户已被禁用'];
+            return ['success' => false, 'message' => __('auth.error.account_disabled')];
         }
 
         $ip = $this->getClientIp();
@@ -943,7 +944,7 @@ class Auth {
 
         return [
             'success' => true,
-            'message' => '快速登录成功',
+            'message' => __('auth.quick_login_success'),
             'user' => $this->sanitizeUser($user),
         ];
     }

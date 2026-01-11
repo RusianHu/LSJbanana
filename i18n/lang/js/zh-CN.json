@@ -1,0 +1,144 @@
+{
+  "site": {
+    "title": "老司机的香蕉",
+    "subtitle": "LSJbanana"
+  },
+  "index": {
+    "tab_generate": "文生图 (Generate)",
+    "tab_edit": "图生图/编辑 (Edit)",
+    "prompt_placeholder": "描述你想要生成的图片...",
+    "edit_prompt_placeholder": "描述如何修改这张图片，或者描述新图片...",
+    "upload_hint": "点击或拖拽上传图片",
+    "max_images_error": "最多支持 {max} 张参考图片",
+    "no_image_error": "请先选择至少一张参考图片（可多次从不同文件夹添加）。",
+    "optimize_processing": "优化中，请稍候...",
+    "optimize_done": "优化完成，已填入编辑框。",
+    "optimize_failed": "优化失败：{message}",
+    "optimize_no_result": "未获取到优化结果",
+    "generate_failed": "发生错误: {message}",
+    "elapsed_time": "已耗时: {time} s",
+    "generated_time": "生成耗时: {time} 秒",
+    "save_notice_title": "请及时保存图片",
+    "save_notice_desc": "生成的图片仅临时存储在服务器上，不会永久保留。建议立即下载保存到本地。",
+    "download_image": "下载图片",
+    "search_sources": "搜索来源信息"
+  },
+  "result": {
+    "thinking_process": "思考过程",
+    "thinking_time": "思考耗时 {seconds} 秒",
+    "thinking_expand": "点击展开",
+    "thinking_collapse": "点击收起",
+    "ai_thinking": "AI 思考过程",
+    "stage": "阶段"
+  },
+  "resolution": {
+    "loading": "加载中",
+    "unknown": "未知",
+    "load_failed": "加载失败",
+    "2k": "2K 高清",
+    "1k": "1K 标清",
+    "sd": "标准分辨率"
+  },
+  "voice": {
+    "not_supported": "当前浏览器不支持语音录入功能",
+    "web_speech": "语音输入 (Web Speech)",
+    "gemini": "语音输入 (Gemini API)",
+    "stop_web_speech": "点击停止识别 (Web Speech)",
+    "stop_gemini": "点击停止录音 (Gemini API)",
+    "converting": "正在转换 (Gemini API)...",
+    "mic_denied": "麦克风权限被拒绝",
+    "mic_not_found": "未检测到麦克风设备",
+    "mic_error": "无法访问麦克风",
+    "mic_permission_hint": "请在浏览器设置中允许访问麦克风",
+    "network_error": "网络错误，切换到离线模式",
+    "recognition_error": "语音识别出错",
+    "start_failed": "无法启动语音识别",
+    "convert_failed": "语音转换失败",
+    "no_speech": "未能识别到语音内容，请重试",
+    "network_hint": "请检查网络连接后重试"
+  },
+  "lightbox": {
+    "close": "关闭 (Esc)",
+    "zoom_in": "放大 (+)",
+    "zoom_out": "缩小 (-)",
+    "fit": "适应窗口 (F)",
+    "actual": "原始大小 (1)",
+    "download": "下载图片 (D)",
+    "help": "快捷键帮助 (?)",
+    "shortcuts": "关闭 | 缩放 | 原始大小 | 适应窗口 | 下载 | 鼠标滚轮缩放 | 拖拽移动",
+    "image_info": "{width} x {height} 像素"
+  },
+  "auth": {
+    "login_required": "请先登录",
+    "login_required_desc": "您需要登录账号才能使用图片生成功能",
+    "login": "登录",
+    "register": "注册"
+  },
+  "balance": {
+    "insufficient": "余额不足",
+    "current": "当前余额",
+    "required": "本次需要",
+    "recharge": "立即充值",
+    "updated": "余额已更新"
+  },
+  "error": {
+    "unknown": "未知错误",
+    "http": "HTTP 错误",
+    "parse_failed": "服务器响应格式异常",
+    "request_failed": "请求失败"
+  },
+  "confirm": {
+    "action": "确定要执行此操作吗？",
+    "delete": "确定要删除吗？此操作不可恢复。",
+    "disable_user": "确定要禁用此用户吗？",
+    "enable_user": "确定要启用此用户吗？"
+  },
+  "toast": {
+    "success": "操作成功",
+    "error": "操作失败",
+    "copied": "已复制",
+    "copy_failed": "复制失败"
+  },
+  "form": {
+    "loading": "加载中...",
+    "processing": "处理中...",
+    "submitting": "提交中..."
+  },
+  "admin": {
+    "email_updated": "邮箱修改成功",
+    "balance_added": "充值成功",
+    "balance_deducted": "扣款成功",
+    "password_reset": "密码重置成功",
+    "user_disabled": "用户已禁用",
+    "user_enabled": "用户已启用",
+    "loading": "加载中...",
+    "load_failed": "加载失败",
+    "no_data": "暂无数据",
+    "page_info": "第 {current} / {total} 页 (共 {count} 条)",
+    "login_type": {
+      "password": "密码",
+      "token": "令牌",
+      "quick_login": "快速登录"
+    },
+    "action_type": {
+      "generate": "生成",
+      "edit": "编辑"
+    },
+    "balance_type": {
+      "recharge": "充值",
+      "deduct": "扣款"
+    },
+    "order_status": {
+      "0": "待支付",
+      "1": "已支付",
+      "2": "已取消",
+      "3": "已退款"
+    },
+    "pay_type": {
+      "alipay": "支付宝",
+      "wxpay": "微信支付",
+      "qqpay": "QQ支付"
+    },
+    "files": "{count} 个文件"
+  }
+}

@@ -11,6 +11,8 @@
  * 3. API Key 通过 x-goog-api-key header 传递
  */
 
+require_once __DIR__ . '/i18n/I18n.php';
+
 class GeminiProxyAdapterException extends Exception {
     private int $httpCode;
 
@@ -138,7 +140,7 @@ class GeminiProxyAdapter {
         curl_close($ch);
 
         if ($error) {
-            throw new GeminiProxyAdapterException("请求代理站失败: $error", 500);
+            throw new GeminiProxyAdapterException(__('adapter.gemini.error.request_failed', ['error' => $error]), 500);
         }
 
         if ($httpCode !== 200) {
@@ -175,17 +177,17 @@ class GeminiProxyAdapter {
         curl_close($ch);
 
         if ($error) {
-            throw new GeminiProxyAdapterException("请求代理站失败: $error", 500);
+            throw new GeminiProxyAdapterException(__('adapter.gemini.error.request_failed', ['error' => $error]), 500);
         }
 
         $data = json_decode($response, true);
         if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new GeminiProxyAdapterException("代理站返回解析失败: " . json_last_error_msg(), 500);
+            throw new GeminiProxyAdapterException(__('adapter.gemini.error.parse_failed', ['error' => json_last_error_msg()]), 500);
         }
 
         if ($httpCode !== 200) {
-            $errMsg = $data['error']['message'] ?? '代理站接口返回异常';
-            throw new GeminiProxyAdapterException("代理站请求失败 ($httpCode): $errMsg", $httpCode);
+            $errMsg = $data['error']['message'] ?? __('adapter.gemini.error.api_error');
+            throw new GeminiProxyAdapterException(__('adapter.gemini.error.request_failed_status', ['code' => $httpCode, 'message' => $errMsg]), $httpCode);
         }
 
         return $data;
@@ -204,7 +206,7 @@ class GeminiProxyAdapter {
                 $data = json_decode($json, true);
                 if (isset($data['error']['message'])) {
                     throw new GeminiProxyAdapterException(
-                        "代理站请求失败 ($httpCode): " . $data['error']['message'],
+                        __('adapter.gemini.error.request_failed_status', ['code' => $httpCode, 'message' => $data['error']['message']]),
                         $httpCode
                     );
                 }
@@ -215,12 +217,12 @@ class GeminiProxyAdapter {
         $data = json_decode($response, true);
         if (json_last_error() === JSON_ERROR_NONE && isset($data['error']['message'])) {
             throw new GeminiProxyAdapterException(
-                "代理站请求失败 ($httpCode): " . $data['error']['message'],
+                __('adapter.gemini.error.request_failed_status', ['code' => $httpCode, 'message' => $data['error']['message']]),
                 $httpCode
             );
         }
 
-        throw new GeminiProxyAdapterException("代理站请求失败 ($httpCode)", $httpCode);
+        throw new GeminiProxyAdapterException(__('adapter.gemini.error.request_failed_code', ['code' => $httpCode]), $httpCode);
     }
 
     /**
@@ -265,7 +267,7 @@ class GeminiProxyAdapter {
             if (json_last_error() !== JSON_ERROR_NONE) {
                 // 记录解析失败但继续处理
                 if ($this->debug) {
-                    error_log("SSE JSON 解析失败: " . json_last_error_msg() . " - 内容: " . substr($json, 0, 200));
+                    error_log(__('adapter.gemini.error.sse_parse_failed', ['error' => json_last_error_msg(), 'content' => substr($json, 0, 200)]));
                 }
                 continue;
             }

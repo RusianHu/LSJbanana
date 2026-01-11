@@ -5,6 +5,7 @@
 
 require_once __DIR__ . '/admin_setup_service.php';
 require_once __DIR__ . '/security_utils.php';
+require_once __DIR__ . '/i18n/I18n.php';
 
 $fatalError = null;
 $initResult = null;
@@ -18,9 +19,9 @@ try {
     $requiresKey = $setupService->requiresAdminKey();
 
     if (!$status['enabled']) {
-        $fatalError = '初始化引导未启用，请在 config.php 中启用 admin_setup 配置';
+        $fatalError = __('setup_admin.error_disabled');
     } elseif (!$status['ip_allowed']) {
-        $fatalError = '当前IP不允许访问初始化引导页面';
+        $fatalError = __('setup_admin.error_ip');
     }
 } catch (Throwable $e) {
     $fatalError = $e->getMessage();
@@ -32,10 +33,10 @@ if (!$fatalError && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $force = isset($_POST['force']) && $_POST['force'] === '1';
 
     if (!$setupService->validateCsrfToken($csrfToken)) {
-        $errors[] = '请求已过期，请刷新页面后重试';
+        $errors[] = __('setup_admin.error_expired');
     }
     if ($requiresKey && $adminKey === '') {
-        $errors[] = '请填写管理员密钥';
+        $errors[] = __('setup_admin.error_key_required');
     }
 
     if (empty($errors)) {
@@ -47,11 +48,11 @@ if (!$fatalError && $_SERVER['REQUEST_METHOD'] === 'POST') {
 $csrfToken = (!$fatalError && isset($setupService)) ? $setupService->createCsrfToken() : '';
 ?>
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="<?php echo i18n()->getHtmlLang(); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>管理员初始化 - 老司机的香蕉</title>
+    <title><?php _e('setup_admin.title'); ?> - <?php _e('site.title'); ?></title>
     <link rel="stylesheet" href="style.css">
     <style>
         body {
@@ -174,8 +175,8 @@ $csrfToken = (!$fatalError && isset($setupService)) ? $setupService->createCsrfT
 <body>
     <div class="setup-card">
         <div class="setup-header">
-            <h1>管理员系统初始化</h1>
-            <p>本页面用于初始化管理员相关数据表。请在受信任环境下操作。</p>
+            <h1><?php _e('setup_admin.title'); ?></h1>
+            <p><?php _e('setup_admin.desc'); ?></p>
         </div>
 
         <?php if ($fatalError): ?>
@@ -185,15 +186,15 @@ $csrfToken = (!$fatalError && isset($setupService)) ? $setupService->createCsrfT
         <?php else: ?>
             <div class="status-grid">
                 <div class="status-item">
-                    <strong>管理员表状态</strong>
-                    <?php echo empty($status['missing_tables']) ? '已完整' : '缺失 ' . count($status['missing_tables']) . ' 张表'; ?>
+                    <strong><?php _e('setup_admin.status_tables'); ?></strong>
+                    <?php echo empty($status['missing_tables']) ? __('setup_admin.status_complete') : __('setup_admin.status_missing', ['count' => count($status['missing_tables'])]); ?>
                 </div>
                 <div class="status-item">
-                    <strong>数据库可写</strong>
-                    <?php echo $status['db_writable'] ? '可写' : '不可写'; ?>
+                    <strong><?php _e('setup_admin.status_writable'); ?></strong>
+                    <?php echo $status['db_writable'] ? __('setup_admin.writable_yes') : __('setup_admin.writable_no'); ?>
                 </div>
                 <div class="status-item">
-                    <strong>访问IP</strong>
+                    <strong><?php _e('setup_admin.visit_ip'); ?></strong>
                     <?php echo htmlspecialchars($_SERVER['REMOTE_ADDR'] ?? 'unknown'); ?>
                 </div>
             </div>
@@ -206,13 +207,13 @@ $csrfToken = (!$fatalError && isset($setupService)) ? $setupService->createCsrfT
 
             <?php if ($initResult): ?>
                 <div class="alert-box <?php echo $initResult['success'] ? 'alert-success' : 'alert-error'; ?>">
-                    <?php echo htmlspecialchars($initResult['message'] ?? '初始化完成'); ?>
+                    <?php echo htmlspecialchars($initResult['message'] ?? __('setup_admin.init_complete')); ?>
                 </div>
             <?php endif; ?>
 
             <?php if (!empty($status['missing_tables'])): ?>
                 <div class="note" style="margin-bottom: 12px;">
-                    将创建的表：<?php echo htmlspecialchars(implode('、', $status['missing_tables'])); ?>
+                    <?php _e('setup_admin.tables_to_create', ['tables' => htmlspecialchars(implode(', ', $status['missing_tables']))]); ?>
                 </div>
             <?php endif; ?>
 
@@ -220,27 +221,27 @@ $csrfToken = (!$fatalError && isset($setupService)) ? $setupService->createCsrfT
                 <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
                 <?php if ($requiresKey): ?>
                 <div class="form-group">
-                    <label for="admin_key">管理员密钥</label>
-                    <input type="password" id="admin_key" name="admin_key" placeholder="请输入管理员密钥" autocomplete="off" required>
+                    <label for="admin_key"><?php _e('setup_admin.admin_key'); ?></label>
+                    <input type="password" id="admin_key" name="admin_key" placeholder="<?php _e('setup_admin.admin_key_placeholder'); ?>" autocomplete="off" required>
                 </div>
                 <?php endif; ?>
                 <div class="form-group">
                     <label>
                         <input type="checkbox" name="force" value="1">
-                        强制重新初始化索引（表已存在时仍会执行索引创建）
+                        <?php _e('setup_admin.force_reindex'); ?>
                     </label>
                 </div>
                 <div class="form-actions">
                     <button class="btn-init" type="submit" <?php echo !$status['db_writable'] ? 'disabled' : ''; ?>>
-                        开始初始化
+                        <?php _e('setup_admin.btn_start'); ?>
                     </button>
-                    <div class="note">初始化完成后可前往管理后台登录。</div>
+                    <div class="note"><?php _e('setup_admin.note_after'); ?></div>
                 </div>
             </form>
 
             <div class="links">
-                <a href="<?php echo url('/admin/login.php'); ?>">返回管理员登录</a> |
-                <a href="<?php echo url('/index.php'); ?>">返回首页</a>
+                <a href="<?php echo url('/admin/login.php'); ?>"><?php _e('setup_admin.back_login'); ?></a> |
+                <a href="<?php echo url('/index.php'); ?>"><?php _e('nav.back_home'); ?></a>
             </div>
         <?php endif; ?>
     </div>

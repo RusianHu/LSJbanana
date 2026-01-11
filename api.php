@@ -17,6 +17,7 @@ require_once __DIR__ . '/openai_adapter.php';
 require_once __DIR__ . '/gemini_proxy_adapter.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/i18n/I18n.php';
 
 // 引入配置
 $config = require 'config.php';
@@ -135,19 +136,19 @@ function callGeminiApiSafe($modelName, array $payload, $timeout = 120, $connectT
     curl_close($ch);
 
     if ($curlError) {
-        throw new GeminiApiException("请求 Gemini 失败: " . $curlError, 500);
+        throw new GeminiApiException(__('api.gemini_request_failed_detail', ['error' => $curlError]), 500);
     }
 
     $responseData = json_decode($response, true);
     if (json_last_error() !== JSON_ERROR_NONE) {
-        throw new GeminiApiException('Gemini 返回解析失败: ' . json_last_error_msg(), 500);
+        throw new GeminiApiException(__('api.gemini_parse_failed_detail', ['error' => json_last_error_msg()]), 500);
     }
 
     if ($httpCode !== 200) {
         $errorMessage = is_array($responseData) && isset($responseData['error']['message'])
             ? $responseData['error']['message']
-            : 'Gemini 接口返回异常';
-        throw new GeminiApiException("Gemini 请求失败 ({$httpCode}): " . $errorMessage, $httpCode);
+            : __('api.gemini_request_failed');
+        throw new GeminiApiException(__("api.gemini_request_failed") . " ({$httpCode}): " . $errorMessage, $httpCode);
     }
 
     return $responseData;
@@ -343,17 +344,17 @@ function getClosestAspectRatio($width, $height) {
 
 // 检查请求方法
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    sendError('只支持 POST 请求', 405);
+    sendError(__('api.only_post'), 405);
 }
 
 try {
     $action = strtolower(SecurityUtils::sanitizeTextInput($_POST['action'] ?? '', 32));
 } catch (\Throwable $e) {
-    sendError('无效的操作类型', 400);
+    sendError(__('api.invalid_action'), 400);
 }
 
 if (!in_array($action, ['generate', 'edit', 'optimize_prompt', 'transcribe', 'get_user_status'], true)) {
-    sendError('未知的操作类型', 400);
+    sendError(__('api.unknown_action'), 400);
 }
 
 /**
@@ -371,12 +372,12 @@ function validateUserAuthAndStatus(Auth $auth, bool $requireBalance = false, flo
         http_response_code(401);
         echo json_encode([
             'success' => false,
-            'message' => '请先登录后再使用此功能',
+            'message' => __('api.unauthorized_use'),
             'code' => 'UNAUTHORIZED',
             'action' => [
                 'type' => 'redirect',
                 'url' => 'login.php',
-                'label' => '立即登录'
+                'label' => __('auth.login_now')
             ]
         ]);
         exit;
@@ -390,12 +391,12 @@ function validateUserAuthAndStatus(Auth $auth, bool $requireBalance = false, flo
         http_response_code(403);
         echo json_encode([
             'success' => false,
-            'message' => '您的账号已被禁用，请联系管理员',
+            'message' => __('api.account_disabled'),
             'code' => 'ACCOUNT_DISABLED',
             'action' => [
                 'type' => 'redirect',
                 'url' => 'login.php',
-                'label' => '重新登录'
+                'label' => __('auth.login')
             ]
         ]);
         exit;
@@ -408,14 +409,14 @@ function validateUserAuthAndStatus(Auth $auth, bool $requireBalance = false, flo
             http_response_code(402);
             echo json_encode([
                 'success' => false,
-                'message' => '余额不足，请先充值',
+                'message' => __('api.insufficient_balance'),
                 'code' => 'INSUFFICIENT_BALANCE',
                 'balance' => $currentBalance,
                 'required' => $requiredAmount,
                 'action' => [
                     'type' => 'redirect',
                     'url' => 'recharge.php',
-                    'label' => '立即充值'
+                    'label' => __('balance.recharge')
                 ]
             ]);
             exit;
@@ -481,7 +482,7 @@ if ($action === 'transcribe') {
     $result = $sttService->transcribe($audioValidation['data'], $audioValidation['mime_type']);
 
     if (!$result['success']) {
-        sendError($result['error'] ?? '语音转文字失败', 500);
+        sendError($result['error'] ?? __('api.transcribe_failed'), 500);
     }
 
     echo json_encode([
@@ -495,7 +496,7 @@ if ($action === 'transcribe') {
 // 对于其他操作，需要 prompt
 $prompt = SecurityUtils::sanitizeTextInput($_POST['prompt'] ?? '', 4000);
 if ($prompt === '') {
-    sendError('提示词不能为空', 400);
+    sendError(__('api.prompt_required'), 400);
 }
 
 // 提示词优化分支（返回优化结果和思考内容）
@@ -585,7 +586,7 @@ if ($action === 'generate') {
 } elseif ($action === 'edit') {
     // 图生图/编辑：直接使用原始提示词，不添加前缀
     if (!isset($_FILES['image'])) {
-        sendError('请上传至少一张图片', 400);
+        sendError(__('api.image_required'), 400);
     }
 
     $parts = [];
@@ -608,7 +609,7 @@ if ($action === 'generate') {
 
     $fileCount = count($files['name']);
     if ($fileCount > 14) {
-        sendError('最多支持 14 张参考图片', 400);
+        sendError(__('api.image_max_count', ['max' => 14]), 400);
     }
 
     $allowedMimeTypes = ['image/png', 'image/jpeg', 'image/webp'];
@@ -659,14 +660,14 @@ if ($action === 'generate') {
     }
 
     if ($validImageCount === 0) {
-        sendError('未能处理任何有效的图片文件', 400);
+        sendError(__('api.image_invalid'), 400);
     }
 
     $requestData['contents'][] = [
         'parts' => $parts
     ];
 } else {
-    sendError('未知的操作类型', 400);
+    sendError(__('api.unknown_action'), 400);
 }
 
 // === 预扣费机制：在调用 API 前使用原子操作扣除余额 ===
@@ -682,19 +683,19 @@ if (!$preDeductResult['success']) {
         http_response_code(402);
         echo json_encode([
             'success' => false,
-            'message' => '余额不足，可能已被其他请求消耗，请刷新页面重试',
+            'message' => __('api.balance_low'),
             'code' => 'INSUFFICIENT_BALANCE',
             'balance' => $preDeductResult['balance_before'] ?? 0,
             'required' => $pricePerTask,
             'action' => [
                 'type' => 'redirect',
                 'url' => 'recharge.php',
-                'label' => '立即充值'
+                'label' => __('balance.recharge')
             ]
         ]);
         exit;
     }
-    sendError('扣费失败：' . $errorCode, 500, $errorCode);
+    sendError(__('api.deduct_failed') . ': ' . $errorCode, 500, $errorCode);
 }
 
 // 记录预扣费信息，用于后续日志
@@ -713,7 +714,7 @@ try {
 }
 
 if (!isset($responseData['candidates'][0])) {
-    sendError('API 未返回任何候选结果', 502);
+    sendError(__('api.no_result'), 502);
 }
 $resultImages = [];
 $resultText = '';
@@ -802,7 +803,7 @@ if (!empty($resultImages)) {
     $billingResult = [
         'success' => false,
         'amount' => 0,
-        'message' => '未生成图片，已退还预扣费用',
+        'message' => __('api.refund_success'),
         'refunded' => $refundSuccess,
     ];
 }

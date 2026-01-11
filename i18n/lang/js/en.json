@@ -1,0 +1,144 @@
+{
+  "site": {
+    "title": "LSJbanana",
+    "subtitle": "LSJbanana"
+  },
+  "index": {
+    "tab_generate": "Text to Image (Generate)",
+    "tab_edit": "Image to Image (Edit)",
+    "prompt_placeholder": "Describe the image you want to generate...",
+    "edit_prompt_placeholder": "Describe how to modify this image, or describe a new image...",
+    "upload_hint": "Click or drag to upload images",
+    "max_images_error": "Maximum {max} reference images allowed",
+    "no_image_error": "Please select at least one reference image first (you can add from multiple folders).",
+    "optimize_processing": "Optimizing, please wait...",
+    "optimize_done": "Optimization complete, filled in the text box.",
+    "optimize_failed": "Optimization failed: {message}",
+    "optimize_no_result": "No optimization result received",
+    "generate_failed": "Error occurred: {message}",
+    "elapsed_time": "Elapsed: {time} s",
+    "generated_time": "Generation time: {time} seconds",
+    "save_notice_title": "Please save images promptly",
+    "save_notice_desc": "Generated images are temporarily stored on the server and will not be kept permanently. Please download and save locally immediately.",
+    "download_image": "Download Image",
+    "search_sources": "Search Sources"
+  },
+  "result": {
+    "thinking_process": "Thinking Process",
+    "thinking_time": "Thinking time: {seconds} seconds",
+    "thinking_expand": "Click to expand",
+    "thinking_collapse": "Click to collapse",
+    "ai_thinking": "AI Thinking Process",
+    "stage": "Stage"
+  },
+  "resolution": {
+    "loading": "Loading",
+    "unknown": "Unknown",
+    "load_failed": "Load failed",
+    "2k": "2K HD",
+    "1k": "1K SD",
+    "sd": "Standard"
+  },
+  "voice": {
+    "not_supported": "Voice input is not supported in this browser",
+    "web_speech": "Voice Input (Web Speech)",
+    "gemini": "Voice Input (Gemini API)",
+    "stop_web_speech": "Click to stop recognition (Web Speech)",
+    "stop_gemini": "Click to stop recording (Gemini API)",
+    "converting": "Converting (Gemini API)...",
+    "mic_denied": "Microphone permission denied",
+    "mic_not_found": "No microphone device found",
+    "mic_error": "Cannot access microphone",
+    "mic_permission_hint": "Please allow microphone access in browser settings",
+    "network_error": "Network error, switching to offline mode",
+    "recognition_error": "Speech recognition error",
+    "start_failed": "Cannot start speech recognition",
+    "convert_failed": "Speech conversion failed",
+    "no_speech": "No speech recognized, please try again",
+    "network_hint": "Please check network connection and try again"
+  },
+  "lightbox": {
+    "close": "Close (Esc)",
+    "zoom_in": "Zoom In (+)",
+    "zoom_out": "Zoom Out (-)",
+    "fit": "Fit to Window (F)",
+    "actual": "Actual Size (1)",
+    "download": "Download Image (D)",
+    "help": "Keyboard Shortcuts (?)",
+    "shortcuts": "Close | Zoom | Actual Size | Fit | Download | Mouse Wheel Zoom | Drag to Pan",
+    "image_info": "{width} x {height} pixels"
+  },
+  "auth": {
+    "login_required": "Login Required",
+    "login_required_desc": "You need to login to use the image generation feature",
+    "login": "Login",
+    "register": "Register"
+  },
+  "balance": {
+    "insufficient": "Insufficient Balance",
+    "current": "Current balance",
+    "required": "Required",
+    "recharge": "Recharge Now",
+    "updated": "Balance updated"
+  },
+  "error": {
+    "unknown": "Unknown error",
+    "http": "HTTP Error",
+    "parse_failed": "Server response format error",
+    "request_failed": "Request failed"
+  },
+  "confirm": {
+    "action": "Are you sure you want to perform this action?",
+    "delete": "Are you sure you want to delete? This action cannot be undone.",
+    "disable_user": "Are you sure you want to disable this user?",
+    "enable_user": "Are you sure you want to enable this user?"
+  },
+  "toast": {
+    "success": "Operation successful",
+    "error": "Operation failed",
+    "copied": "Copied",
+    "copy_failed": "Copy failed"
+  },
+  "form": {
+    "loading": "Loading...",
+    "processing": "Processing...",
+    "submitting": "Submitting..."
+  },
+  "admin": {
+    "email_updated": "Email updated successfully",
+    "balance_added": "Balance added successfully",
+    "balance_deducted": "Balance deducted successfully",
+    "password_reset": "Password reset successfully",
+    "user_disabled": "User disabled",
+    "user_enabled": "User enabled",
+    "loading": "Loading...",
+    "load_failed": "Failed to load",
+    "no_data": "No data",
+    "page_info": "Page {current} / {total} (Total {count} items)",
+    "login_type": {
+      "password": "Password",
+      "token": "Token",
+      "quick_login": "Quick Login"
+    },
+    "action_type": {
+      "generate": "Generate",
+      "edit": "Edit"
+    },
+    "balance_type": {
+      "recharge": "Recharge",
+      "deduct": "Deduction"
+    },
+    "order_status": {
+      "0": "Pending",
+      "1": "Paid",
+      "2": "Cancelled",
+      "3": "Refunded"
+    },
+    "pay_type": {
+      "alipay": "Alipay",
+      "wxpay": "WeChat Pay",
+      "qqpay": "QQ Pay"
+    },
+    "files": "{count} files"
+  }
+}

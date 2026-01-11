@@ -36,6 +36,8 @@
  * $token = SecurityUtils::generateSecureToken(64); // 生成一个64字符长度的令牌
  */
 
+require_once __DIR__ . '/i18n/I18n.php';
+
 class SecurityUtils {
     /**
      * 安全地转义命令行参数
@@ -168,7 +170,7 @@ class SecurityUtils {
      */
     public static function generateSecureToken($length = 32) {
         if ($length <= 0 || $length % 2 !== 0) {
-            throw new \InvalidArgumentException('令牌长度必须为正偶数。');
+            throw new \InvalidArgumentException(__('error.invalid_token_length'));
         }
         $bytesNeeded = $length / 2;
 
@@ -188,7 +190,7 @@ class SecurityUtils {
         }
         
         // 如果以上方法都失败，则抛出异常
-        throw new \Exception('无法生成加密安全令牌。请确保random_bytes或OpenSSL可用且配置正确。');
+        throw new \Exception(__('error.secure_token_failed'));
     }
 
     /**
@@ -253,16 +255,16 @@ class SecurityUtils {
      */
     public static function validateUploadedImage(array $file, array $allowedMimeTypes = ['image/png', 'image/jpeg', 'image/webp'], $maxSizeBytes = 8388608) {
         if (!isset($file['error']) || $file['error'] !== UPLOAD_ERR_OK) {
-            throw new \RuntimeException('上传失败或文件损坏。');
+            throw new \RuntimeException(__('error.upload_failed'));
         }
 
         if (!isset($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
-            throw new \RuntimeException('检测到无效的上传来源。');
+            throw new \RuntimeException(__('error.invalid_upload_source'));
         }
 
         $size = isset($file['size']) ? (int)$file['size'] : 0;
         if ($size <= 0 || $size > $maxSizeBytes) {
-            throw new \RuntimeException('图片大小不符合要求。');
+            throw new \RuntimeException(__('error.file_too_large'));
         }
 
         $mimeType = $file['type'] ?? '';
@@ -278,7 +280,7 @@ class SecurityUtils {
         }
 
         if ($mimeType === '' || !in_array($mimeType, $allowedMimeTypes, true)) {
-            throw new \RuntimeException('不支持的图片格式。');
+            throw new \RuntimeException(__('error.unsupported_image_format'));
         }
 
         return [
@@ -396,11 +398,12 @@ function renderActionPage(string $title, string $message, array $actions = [], i
     $titleSafe = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
     $messageSafe = nl2br(htmlspecialchars($message, ENT_QUOTES, 'UTF-8'));
     $styleHref = htmlspecialchars(url('/style.css'), ENT_QUOTES, 'UTF-8');
+    $lang = i18n()->getHtmlLang();
 
     if (empty($actions)) {
         $actions = [
             [
-                'label' => '返回首页',
+                'label' => __('nav.back_home'),
                 'href' => url('index.php'),
                 'primary' => true
             ]
@@ -409,7 +412,7 @@ function renderActionPage(string $title, string $message, array $actions = [], i
 
     $actionsHtml = '';
     foreach ($actions as $action) {
-        $label = htmlspecialchars($action['label'] ?? '继续', ENT_QUOTES, 'UTF-8');
+        $label = htmlspecialchars($action['label'] ?? __('auth.continue'), ENT_QUOTES, 'UTF-8');
         $href = htmlspecialchars($action['href'] ?? '#', ENT_QUOTES, 'UTF-8');
         $primary = !empty($action['primary']);
         $newTab = !empty($action['new_tab']);
@@ -420,7 +423,7 @@ function renderActionPage(string $title, string $message, array $actions = [], i
 
     echo <<<HTML
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="{$lang}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">

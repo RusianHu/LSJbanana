@@ -10,6 +10,8 @@
  * $response = $adapter->generateContent($modelName, $payload);
  */
 
+require_once __DIR__ . '/i18n/I18n.php';
+
 class OpenAIAdapterException extends Exception {
     private int $httpCode;
 
@@ -233,17 +235,17 @@ class GeminiOpenAIAdapter {
         curl_close($ch);
 
         if ($error) {
-            throw new OpenAIAdapterException("请求中转站失败: $error", 500);
+            throw new OpenAIAdapterException(__('adapter.openai.error.request_failed', ['error' => $error]), 500);
         }
 
         $data = json_decode($response, true);
         if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new OpenAIAdapterException('中转站返回解析失败: ' . json_last_error_msg(), 500);
+            throw new OpenAIAdapterException(__('adapter.openai.error.parse_failed', ['error' => json_last_error_msg()]), 500);
         }
 
         if ($httpCode !== 200) {
-            $errMsg = $data['error']['message'] ?? '中转站接口返回异常';
-            throw new OpenAIAdapterException("中转站请求失败 ($httpCode): $errMsg", $httpCode);
+            $errMsg = $data['error']['message'] ?? __('adapter.openai.error.api_error');
+            throw new OpenAIAdapterException(__('adapter.openai.error.request_failed_status', ['code' => $httpCode, 'message' => $errMsg]), $httpCode);
         }
 
         return $data;

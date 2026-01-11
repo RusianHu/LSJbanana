@@ -5,6 +5,7 @@
 
 require_once __DIR__ . '/../admin_auth.php';
 require_once __DIR__ . '/../security_utils.php';
+require_once __DIR__ . '/../i18n/I18n.php';
 
 $adminAuth = getAdminAuth();
 
@@ -41,11 +42,11 @@ function formatTime($datetime): string {
 }
 ?>
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="<?php echo i18n()->getHtmlLang(); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>用户管理 - 管理后台</title>
+    <title><?php _e('admin.users.title'); ?> - <?php _e('admin.title'); ?></title>
     <link rel="stylesheet" href="<?php echo url('/admin/style.css'); ?>">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -56,11 +57,11 @@ function formatTime($datetime): string {
         <div class="admin-header">
             <h1>
                 <i class="fas fa-users"></i>
-                用户管理
+                <?php _e('admin.users.title'); ?>
             </h1>
             <div class="admin-user-info">
                 <i class="fas fa-user-shield"></i>
-                <span>管理员</span>
+                <span><?php _e('admin.administrator'); ?></span>
             </div>
         </div>
 
@@ -73,20 +74,20 @@ function formatTime($datetime): string {
                             <input
                                 type="text"
                                 name="search"
-                                placeholder="搜索用户名/邮箱/ID..."
+                                placeholder="<?php _e('admin.users.search_placeholder'); ?>"
                                 value="<?php echo htmlspecialchars($search ?? ''); ?>"
                             >
                             <select name="status">
-                                <option value="">全部状态</option>
-                                <option value="1" <?php echo $status === 1 ? 'selected' : ''; ?>>正常</option>
-                                <option value="0" <?php echo $status === 0 ? 'selected' : ''; ?>>禁用</option>
+                                <option value=""><?php _e('admin.users.all_status'); ?></option>
+                                <option value="1" <?php echo $status === 1 ? 'selected' : ''; ?>><?php _e('user.status_active'); ?></option>
+                                <option value="0" <?php echo $status === 0 ? 'selected' : ''; ?>><?php _e('user.status_disabled'); ?></option>
                             </select>
                             <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-search"></i> 搜索
+                                <i class="fas fa-search"></i> <?php _e('form.search'); ?>
                             </button>
                             <?php if ($search || $status !== null): ?>
                                 <a href="users.php" class="btn btn-secondary">
-                                    <i class="fas fa-times"></i> 清除
+                                    <i class="fas fa-times"></i> <?php _e('form.clear'); ?>
                                 </a>
                             <?php endif; ?>
                         </div>
@@ -99,19 +100,19 @@ function formatTime($datetime): string {
                 <table>
                     <thead>
                         <tr>
-                            <th>ID</th>
-                            <th>用户名</th>
-                            <th>邮箱</th>
-                            <th>余额</th>
-                            <th>状态</th>
-                            <th>注册时间</th>
-                            <th>操作</th>
+                            <th><?php _e('admin.table.id'); ?></th>
+                            <th><?php _e('admin.table.username'); ?></th>
+                            <th><?php _e('admin.table.email'); ?></th>
+                            <th><?php _e('admin.table.balance'); ?></th>
+                            <th><?php _e('admin.table.status'); ?></th>
+                            <th><?php _e('admin.table.created_at'); ?></th>
+                            <th><?php _e('admin.table.actions'); ?></th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if (empty($users)): ?>
                             <tr>
-                                <td colspan="7" class="text-center text-muted">暂无用户数据</td>
+                                <td colspan="7" class="text-center text-muted"><?php _e('admin.users.no_users'); ?></td>
                             </tr>
                         <?php else: ?>
                             <?php foreach ($users as $user): ?>
@@ -122,9 +123,9 @@ function formatTime($datetime): string {
                                     <td>¥<?php echo formatAmount($user['balance']); ?></td>
                                     <td>
                                         <?php if ($user['status'] == 1): ?>
-                                            <span class="badge badge-success">正常</span>
+                                            <span class="badge badge-success"><?php _e('user.status_active'); ?></span>
                                         <?php else: ?>
-                                            <span class="badge badge-danger">禁用</span>
+                                            <span class="badge badge-danger"><?php _e('user.status_disabled'); ?></span>
                                         <?php endif; ?>
                                     </td>
                                     <td><?php echo formatTime($user['created_at']); ?></td>
@@ -133,14 +134,14 @@ function formatTime($datetime): string {
                                             <button
                                                 class="btn-action view"
                                                 onclick="viewUser(<?php echo $user['id']; ?>)"
-                                                title="查看详情"
+                                                title="<?php _e('admin.users.view_detail'); ?>"
                                             >
                                                 <i class="fas fa-eye"></i>
                                             </button>
                                             <button
                                                 class="btn-action <?php echo $user['status'] == 1 ? 'disable' : 'enable'; ?>"
                                                 onclick="toggleUserStatus(<?php echo $user['id']; ?>)"
-                                                title="<?php echo $user['status'] == 1 ? '禁用' : '启用'; ?>"
+                                                title="<?php echo $user['status'] == 1 ? __('action.disable') : __('action.enable'); ?>"
                                             >
                                                 <i class="fas fa-<?php echo $user['status'] == 1 ? 'ban' : 'check'; ?>"></i>
                                             </button>
@@ -198,7 +199,7 @@ function formatTime($datetime): string {
                     // 下一页
                     if ($page < $totalPages): ?>
                         <a href="<?php echo $baseUrl; ?>page=<?php echo $page + 1; ?>" class="page-link">
-                            下一页 <i class="fas fa-chevron-right"></i>
+                            <?php _e('admin.pagination.next'); ?> <i class="fas fa-chevron-right"></i>
                         </a>
                     <?php endif; ?>
                 </div>
@@ -210,26 +211,26 @@ function formatTime($datetime): string {
     <div id="userDetailModal" class="modal">
         <div class="modal-content modal-lg">
             <div class="modal-header">
-                <h3><i class="fas fa-user"></i> 用户详情 - <span id="userDetailTitle"></span></h3>
+                <h3><i class="fas fa-user"></i> <?php _e('admin.users.user_detail'); ?> - <span id="userDetailTitle"></span></h3>
                 <span class="close" onclick="hideModal('userDetailModal')">&times;</span>
             </div>
             <div class="modal-body">
                 <!-- 标签页导航 -->
                 <div class="tabs-nav" id="userDetailTabs">
                     <button class="tab-btn active" data-tab="basic" onclick="switchTab('basic')">
-                        <i class="fas fa-info-circle"></i> 基本信息
+                        <i class="fas fa-info-circle"></i> <?php _e('admin.users.basic_info'); ?>
                     </button>
                     <button class="tab-btn" data-tab="login" onclick="switchTab('login')">
-                        <i class="fas fa-sign-in-alt"></i> 登录历史
+                        <i class="fas fa-sign-in-alt"></i> <?php _e('admin.users.login_history'); ?>
                     </button>
                     <button class="tab-btn" data-tab="consumption" onclick="switchTab('consumption')">
-                        <i class="fas fa-shopping-cart"></i> 消费明细
+                        <i class="fas fa-shopping-cart"></i> <?php _e('admin.users.consumption_detail'); ?>
                     </button>
                     <button class="tab-btn" data-tab="balance" onclick="switchTab('balance')">
-                        <i class="fas fa-wallet"></i> 余额变动
+                        <i class="fas fa-wallet"></i> <?php _e('admin.users.balance_history'); ?>
                     </button>
                     <button class="tab-btn" data-tab="orders" onclick="switchTab('orders')">
-                        <i class="fas fa-receipt"></i> 充值订单
+                        <i class="fas fa-receipt"></i> <?php _e('admin.users.recharge_orders'); ?>
                     </button>
                 </div>
                 
@@ -238,7 +239,7 @@ function formatTime($datetime): string {
                     <!-- 基本信息标签页 -->
                     <div class="tab-pane active" id="tab-basic">
                         <div id="userBasicContent">
-                            <div class="text-center"><i class="fas fa-spinner fa-spin"></i> 加载中...</div>
+                            <div class="text-center"><i class="fas fa-spinner fa-spin"></i> <?php _e('form.loading'); ?></div>
                         </div>
                     </div>
                     
@@ -278,18 +279,18 @@ function formatTime($datetime): string {
     <div id="editEmailModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3><i class="fas fa-envelope"></i> 修改邮箱</h3>
+                <h3><i class="fas fa-envelope"></i> <?php _e('admin.modal.edit_email'); ?></h3>
                 <span class="close" onclick="hideModal('editEmailModal')">&times;</span>
             </div>
             <div class="modal-body">
                 <form id="editEmailForm">
                     <input type="hidden" id="editUserId" name="user_id">
                     <div class="form-group">
-                        <label for="newEmail">新邮箱地址</label>
+                        <label for="newEmail"><?php _e('admin.modal.new_email'); ?></label>
                         <input type="email" id="newEmail" name="email" class="form-control" required>
                     </div>
                     <button type="submit" class="btn btn-primary btn-block">
-                        <i class="fas fa-save"></i> 保存
+                        <i class="fas fa-save"></i> <?php _e('form.save'); ?>
                     </button>
                 </form>
             </div>
@@ -300,7 +301,7 @@ function formatTime($datetime): string {
     <div id="balanceModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 id="balanceModalTitle"><i class="fas fa-wallet"></i> 余额操作</h3>
+                <h3 id="balanceModalTitle"><i class="fas fa-wallet"></i> <?php _e('admin.balance.title'); ?></h3>
                 <span class="close" onclick="hideModal('balanceModal')">&times;</span>
             </div>
             <div class="modal-body">
@@ -308,15 +309,15 @@ function formatTime($datetime): string {
                     <input type="hidden" id="balanceUserId" name="user_id">
                     <input type="hidden" id="balanceAction" name="action">
                     <div class="form-group">
-                        <label for="balanceAmount">金额 (RMB)</label>
+                        <label for="balanceAmount"><?php _e('admin.balance.amount'); ?></label>
                         <input type="number" id="balanceAmount" name="amount" class="form-control" step="0.01" min="0.01" required>
                     </div>
                     <div class="form-group">
-                        <label for="balanceRemark">备注</label>
+                        <label for="balanceRemark"><?php _e('admin.balance.remark'); ?></label>
                         <textarea id="balanceRemark" name="remark" class="form-control" rows="3" required></textarea>
                     </div>
                     <button type="submit" class="btn btn-primary btn-block">
-                        <i class="fas fa-check"></i> 确认
+                        <i class="fas fa-check"></i> <?php _e('form.confirm'); ?>
                     </button>
                 </form>
             </div>
@@ -327,23 +328,23 @@ function formatTime($datetime): string {
     <div id="resetPasswordModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3><i class="fas fa-key"></i> 重置密码</h3>
+                <h3><i class="fas fa-key"></i> <?php _e('admin.modal.reset_password'); ?></h3>
                 <span class="close" onclick="hideModal('resetPasswordModal')">&times;</span>
             </div>
             <div class="modal-body">
                 <form id="resetPasswordForm">
                     <input type="hidden" id="resetUserId" name="user_id">
                     <div class="form-group">
-                        <label for="newPassword">新密码</label>
+                        <label for="newPassword"><?php _e('admin.modal.new_password'); ?></label>
                         <input type="text" id="newPassword" name="password" class="form-control" required>
                     </div>
                     <div class="form-group">
                         <button type="button" class="btn btn-secondary btn-block" onclick="generatePassword()">
-                            <i class="fas fa-random"></i> 生成随机密码
+                            <i class="fas fa-random"></i> <?php _e('admin.modal.gen_random'); ?>
                         </button>
                     </div>
                     <button type="submit" class="btn btn-primary btn-block">
-                        <i class="fas fa-check"></i> 重置密码
+                        <i class="fas fa-check"></i> <?php _e('admin.modal.reset_password'); ?>
                     </button>
                 </form>
             </div>

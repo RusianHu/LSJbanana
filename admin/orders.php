@@ -5,6 +5,7 @@
 
 require_once __DIR__ . '/../admin_auth.php';
 require_once __DIR__ . '/../security_utils.php';
+require_once __DIR__ . '/../i18n/I18n.php';
 
 $adminAuth = getAdminAuth();
 
@@ -91,36 +92,36 @@ function formatTime(?string $datetime): string {
 function statusBadge(int $status, ?string $expiresAt = null): array {
     switch ($status) {
         case 1:
-            return ['success', '已支付'];
+            return ['success', __('admin.order_status.1')];
         case 2:
-            return ['danger', '已取消'];
+            return ['danger', __('admin.order_status.2')];
         case 3:
-            return ['info', '已退款'];
+            return ['info', __('admin.order_status.3')];
         case 0:
         default:
             // 检查是否过期
             if ($expiresAt && strtotime($expiresAt) < time()) {
-                return ['expired', '已过期'];
+                return ['expired', __('admin.order_status.expired')];
             }
-            return ['warning', '待支付'];
+            return ['warning', __('admin.order_status.0')];
     }
 }
 
 function payTypeLabel(?string $payType): string {
     $map = [
-        'alipay' => '支付宝',
-        'wxpay' => '微信支付',
-        'qqpay' => 'QQ钱包',
+        'alipay' => __('recharge.pay_alipay'),
+        'wxpay' => __('recharge.pay_wechat'),
+        'qqpay' => __('recharge.pay_qq'),
     ];
-    return $map[$payType] ?? ($payType ?: '收银台');
+    return $map[$payType] ?? ($payType ?: __('recharge.pay_cashier'));
 }
 ?>
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="<?php echo i18n()->getHtmlLang(); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>订单管理 - 管理后台</title>
+    <title><?php _e('admin.orders.title'); ?> - <?php _e('admin.title'); ?></title>
     <link rel="stylesheet" href="<?php echo url('/admin/style.css'); ?>">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -131,11 +132,11 @@ function payTypeLabel(?string $payType): string {
         <div class="admin-header">
             <h1>
                 <i class="fas fa-receipt"></i>
-                订单管理
+                <?php _e('admin.orders.title'); ?>
             </h1>
             <div class="admin-user-info">
                 <i class="fas fa-user-shield"></i>
-                <span>管理员</span>
+                <span><?php _e('admin.administrator'); ?></span>
             </div>
         </div>
 
@@ -147,35 +148,35 @@ function payTypeLabel(?string $payType): string {
                             <input
                                 type="text"
                                 name="search"
-                                placeholder="搜索商户单号/平台单号/用户ID..."
+                                placeholder="<?php _e('admin.orders.search_placeholder'); ?>"
                                 value="<?php echo htmlspecialchars($search); ?>"
                             >
                             <select name="status">
-                                <option value="">全部状态</option>
-                                <option value="0" <?php echo $status === '0' ? 'selected' : ''; ?>>待支付</option>
-                                <option value="expired" <?php echo $status === 'expired' ? 'selected' : ''; ?>>已过期 (<?php echo $expiredCount; ?>)</option>
-                                <option value="1" <?php echo $status === '1' ? 'selected' : ''; ?>>已支付</option>
-                                <option value="2" <?php echo $status === '2' ? 'selected' : ''; ?>>已取消</option>
-                                <option value="3" <?php echo $status === '3' ? 'selected' : ''; ?>>已退款</option>
+                                <option value=""><?php _e('admin.users.all_status'); ?></option>
+                                <option value="0" <?php echo $status === '0' ? 'selected' : ''; ?>><?php _e('admin.order_status.0'); ?></option>
+                                <option value="expired" <?php echo $status === 'expired' ? 'selected' : ''; ?>><?php _e('admin.order_status.expired'); ?> (<?php echo $expiredCount; ?>)</option>
+                                <option value="1" <?php echo $status === '1' ? 'selected' : ''; ?>><?php _e('admin.order_status.1'); ?></option>
+                                <option value="2" <?php echo $status === '2' ? 'selected' : ''; ?>><?php _e('admin.order_status.2'); ?></option>
+                                <option value="3" <?php echo $status === '3' ? 'selected' : ''; ?>><?php _e('admin.order_status.3'); ?></option>
                             </select>
                             <select name="pay_type">
-                                <option value="">全部支付方式</option>
-                                <option value="alipay" <?php echo $payType === 'alipay' ? 'selected' : ''; ?>>支付宝</option>
-                                <option value="wxpay" <?php echo $payType === 'wxpay' ? 'selected' : ''; ?>>微信支付</option>
-                                <option value="qqpay" <?php echo $payType === 'qqpay' ? 'selected' : ''; ?>>QQ钱包</option>
+                                <option value=""><?php _e('admin.orders.all_pay_types'); ?></option>
+                                <option value="alipay" <?php echo $payType === 'alipay' ? 'selected' : ''; ?>><?php _e('recharge.pay_alipay'); ?></option>
+                                <option value="wxpay" <?php echo $payType === 'wxpay' ? 'selected' : ''; ?>><?php _e('recharge.pay_wechat'); ?></option>
+                                <option value="qqpay" <?php echo $payType === 'qqpay' ? 'selected' : ''; ?>><?php _e('recharge.pay_qq'); ?></option>
                             </select>
                             <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-search"></i> 搜索
+                                <i class="fas fa-search"></i> <?php _e('form.search'); ?>
                             </button>
                             <?php if ($search !== '' || $status !== '' || $payType !== ''): ?>
                                 <a href="orders.php" class="btn btn-secondary">
-                                    <i class="fas fa-times"></i> 清除
+                                    <i class="fas fa-times"></i> <?php _e('form.clear'); ?>
                                 </a>
                             <?php endif; ?>
                         </div>
                     </form>
                     <div class="text-muted" style="margin-top: 8px;">
-                        订单状态以支付回调为准，回调成功后才会标记为已支付并入账。
+                        <?php _e('admin.orders.status_hint'); ?>
                     </div>
                     
                     <?php if ($ordersWithoutExpires > 0): ?>
@@ -183,11 +184,11 @@ function payTypeLabel(?string $payType): string {
                         <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
                             <div>
                                 <i class="fas fa-info-circle" style="color: #0c5460;"></i>
-                                <strong style="color: #0c5460;">有 <?php echo $ordersWithoutExpires; ?> 个旧待支付订单没有过期时间</strong>
-                                <span class="text-muted" style="margin-left: 10px;">这些是迁移前创建的订单，需要回填过期时间</span>
+                                <strong style="color: #0c5460;"><?php _e('admin.orders.no_expire_count', ['count' => $ordersWithoutExpires]); ?></strong>
+                                <span class="text-muted" style="margin-left: 10px;"><?php _e('admin.orders.backfill_hint'); ?></span>
                             </div>
                             <button type="button" class="btn btn-info btn-sm" id="backfillBtn">
-                                <i class="fas fa-clock"></i> 回填过期时间（5分钟）
+                                <i class="fas fa-clock"></i> <?php _e('admin.orders.backfill_btn'); ?>
                             </button>
                         </div>
                     </div>
@@ -198,15 +199,15 @@ function payTypeLabel(?string $payType): string {
                         <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
                             <div>
                                 <i class="fas fa-exclamation-triangle" style="color: #856404;"></i>
-                                <strong style="color: #856404;">有 <?php echo $expiredCount; ?> 个过期的待支付订单</strong>
-                                <span class="text-muted" style="margin-left: 10px;">过期订单不会被支付，建议定期清理</span>
+                                <strong style="color: #856404;"><?php _e('admin.orders.expired_count', ['count' => $expiredCount]); ?></strong>
+                                <span class="text-muted" style="margin-left: 10px;"><?php _e('admin.orders.expired_hint'); ?></span>
                             </div>
                             <div style="display: flex; gap: 10px;">
                                 <a href="?status=expired" class="btn btn-secondary btn-sm">
-                                    <i class="fas fa-eye"></i> 查看过期订单
+                                    <i class="fas fa-eye"></i> <?php _e('admin.orders.view_expired'); ?>
                                 </a>
                                 <button type="button" class="btn btn-warning btn-sm" id="cancelExpiredBtn">
-                                    <i class="fas fa-trash-alt"></i> 批量取消过期订单
+                                    <i class="fas fa-trash-alt"></i> <?php _e('admin.orders.cancel_expired'); ?>
                                 </button>
                             </div>
                         </div>
@@ -219,20 +220,20 @@ function payTypeLabel(?string $payType): string {
                 <table>
                     <thead>
                         <tr>
-                            <th>商户订单号</th>
-                            <th>平台订单号</th>
-                            <th>用户</th>
-                            <th>金额</th>
-                            <th>支付方式</th>
-                            <th>状态</th>
-                            <th>创建时间</th>
-                            <th>支付时间</th>
+                            <th><?php _e('admin.table.order_no'); ?></th>
+                            <th><?php _e('admin.table.platform_no'); ?></th>
+                            <th><?php _e('admin.table.user'); ?></th>
+                            <th><?php _e('admin.table.amount'); ?></th>
+                            <th><?php _e('admin.table.pay_type'); ?></th>
+                            <th><?php _e('admin.table.status'); ?></th>
+                            <th><?php _e('admin.table.created_at'); ?></th>
+                            <th><?php _e('admin.table.paid_at'); ?></th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if (empty($orders)): ?>
                             <tr>
-                                <td colspan="8" class="text-center text-muted">暂无订单数据</td>
+                                <td colspan="8" class="text-center text-muted"><?php _e('admin.orders.no_orders'); ?></td>
                             </tr>
                         <?php else: ?>
                             <?php foreach ($orders as $order): ?>
@@ -249,7 +250,7 @@ function payTypeLabel(?string $payType): string {
                                                 </div>
                                             <?php endif; ?>
                                         <?php else: ?>
-                                            <span class="text-muted">未知</span>
+                                            <span class="text-muted"><?php _e('status.unknown'); ?></span>
                                         <?php endif; ?>
                                     </td>
                                     <td>¥<?php echo formatAmount($order['amount']); ?></td>
@@ -274,7 +275,7 @@ function payTypeLabel(?string $payType): string {
 
                     if ($page > 1): ?>
                         <a href="<?php echo $baseUrl; ?>page=<?php echo $page - 1; ?>" class="page-link">
-                            <i class="fas fa-chevron-left"></i> 上一页
+                            <i class="fas fa-chevron-left"></i> <?php _e('admin.pagination.prev'); ?>
                         </a>
                     <?php endif;
 
@@ -306,7 +307,7 @@ function payTypeLabel(?string $payType): string {
 
                     if ($page < $totalPages): ?>
                         <a href="<?php echo $baseUrl; ?>page=<?php echo $page + 1; ?>" class="page-link">
-                            下一页 <i class="fas fa-chevron-right"></i>
+                            <?php _e('admin.pagination.next'); ?> <i class="fas fa-chevron-right"></i>
                         </a>
                     <?php endif; ?>
                 </div>
@@ -315,15 +316,25 @@ function payTypeLabel(?string $payType): string {
     </div>
 
     <script>
+    // 注入 i18n
+    window.LSJ_LANG = '<?php echo currentLocale(); ?>';
+    </script>
+    <script src="<?php echo url('/i18n/i18n.js'); ?>"></script>
+    <script>
+    // 等待 i18n 初始化
+    function getTrans(key, defaultVal) {
+        return window.i18n ? window.i18n.t(key) : defaultVal;
+    }
+
     // 回填旧订单过期时间
     document.getElementById('backfillBtn')?.addEventListener('click', function() {
-        if (!confirm('确定要为所有旧待支付订单回填过期时间吗？回填后这些订单将被标记为过期。')) {
+        if (!confirm(getTrans('admin.orders.backfill_confirm', '确定要为所有旧待支付订单回填过期时间吗？回填后这些订单将被标记为过期。'))) {
             return;
         }
         
         const btn = this;
         btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 处理中...';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + getTrans('form.processing', '处理中...');
         
         fetch('api.php', {
             method: 'POST',
@@ -338,27 +349,27 @@ function payTypeLabel(?string $payType): string {
                 alert(data.message);
                 location.reload();
             } else {
-                alert('操作失败: ' + data.message);
+                alert(getTrans('error.unknown', '操作失败') + ': ' + data.message);
                 btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-clock"></i> 回填过期时间（5分钟）';
+                btn.innerHTML = '<i class="fas fa-clock"></i> ' + getTrans('admin.orders.backfill_btn', '回填过期时间（5分钟）');
             }
         })
         .catch(error => {
-            alert('请求失败: ' + error.message);
+            alert(getTrans('error.unknown', '请求失败') + ': ' + error.message);
             btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-clock"></i> 回填过期时间（5分钟）';
+            btn.innerHTML = '<i class="fas fa-clock"></i> ' + getTrans('admin.orders.backfill_btn', '回填过期时间（5分钟）');
         });
     });
     
     // 批量取消过期订单
     document.getElementById('cancelExpiredBtn')?.addEventListener('click', function() {
-        if (!confirm('确定要批量取消所有过期的待支付订单吗？此操作不可撤销。')) {
+        if (!confirm(getTrans('admin.orders.cancel_confirm', '确定要批量取消所有过期的待支付订单吗？此操作不可撤销。'))) {
             return;
         }
         
         const btn = this;
         btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 处理中...';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + getTrans('form.processing', '处理中...');
         
         fetch('api.php', {
             method: 'POST',
@@ -370,18 +381,18 @@ function payTypeLabel(?string $payType): string {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                alert('成功取消 ' + data.data.cancelled_count + ' 个过期订单');
+                alert(getTrans('admin.orders.cancelled_count', {count: data.data.cancelled_count}) || ('成功取消 ' + data.data.cancelled_count + ' 个过期订单'));
                 location.reload();
             } else {
-                alert('操作失败: ' + data.message);
+                alert(getTrans('error.unknown', '操作失败') + ': ' + data.message);
                 btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-trash-alt"></i> 批量取消过期订单';
+                btn.innerHTML = '<i class="fas fa-trash-alt"></i> ' + getTrans('admin.orders.cancel_expired', '批量取消过期订单');
             }
         })
         .catch(error => {
-            alert('请求失败: ' + error.message);
+            alert(getTrans('error.unknown', '请求失败') + ': ' + error.message);
             btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-trash-alt"></i> 批量取消过期订单';
+            btn.innerHTML = '<i class="fas fa-trash-alt"></i> ' + getTrans('admin.orders.cancel_expired', '批量取消过期订单');
         });
     });
     </script>

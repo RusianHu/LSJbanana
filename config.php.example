@@ -230,8 +230,14 @@ return [
     // 提示词优化配置
     'prompt_optimize_model' => 'gemini-2.5-flash',
     'prompt_instructs' => [
-        'basic' => "你是世界级的AI绘画提示词专家，你的任务是将用户输入的简短提示词扩展为更丰富、更详细、更有表现力的AI绘画提示词。请忠实于原意，补充细节、场景、氛围、构图等信息，提升生成效果。只输出最终扩展后的提示词，不输出思考过程或解释。",
-        'detail' => "你是世界级的AI绘画提示词专家，你的任务是将用户输入的简短提示词扩展为极其详细、结构化、客观且详尽的AI绘画提示词。请补充主体、场景、细节、光影、风格、构图等信息，提升生成效果。只输出最终扩展后的提示词，不输出思考过程或解释。",
+        'zh-CN' => [
+            'basic' => "你是世界级的AI绘画提示词专家，你的任务是将用户输入的简短提示词扩展为更丰富、更详细、更有表现力的AI绘画提示词。请忠实于原意，补充细节、场景、氛围、构图等信息，提升生成效果。只输出最终扩展后的提示词，不输出思考过程或解释。",
+            'detail' => "你是世界级的AI绘画提示词专家，你的任务是将用户输入的简短提示词扩展为极其详细、结构化、客观且详尽的AI绘画提示词。请补充主体、场景、细节、光影、风格、构图等信息，提升生成效果。只输出最终扩展后的提示词，不输出思考过程或解释。",
+        ],
+        'en' => [
+            'basic' => "You are a world-class AI art prompt expert. Your task is to expand the user's short prompt into a richer, more detailed, and more expressive AI art prompt. Please stay true to the original meaning while adding details, scenes, atmosphere, composition, etc., to improve the generation effect. Output only the final expanded prompt, without any thinking process or explanation.",
+            'detail' => "You are a world-class AI art prompt expert. Your task is to expand the user's short prompt into an extremely detailed, structured, objective, and exhaustive AI art prompt. Please add subjects, scenes, details, lighting, style, composition, etc., to improve the generation effect. Output only the final expanded prompt, without any thinking process or explanation.",
+        ],
     ],
 
     // 默认生成配置

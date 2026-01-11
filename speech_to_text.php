@@ -54,9 +54,13 @@ class GeminiSpeechToText implements SpeechToTextProvider {
     private int $connectTimeout;
     
     public function __construct(array $config) {
+        // 引入国际化支持
+        require_once __DIR__ . '/i18n/I18n.php';
+        
         $sttConfig = $config['speech_to_text'] ?? [];
         $this->model = $sttConfig['model'] ?? 'gemini-2.5-flash';
-        $this->prompt = $sttConfig['prompt'] ?? '请将以下音频内容准确转录为文字。只输出转录的文字内容，不要添加任何解释或格式化。如果音频中没有可识别的语音，请返回空字符串。';
+        // 使用国际化 System Prompt，优先使用配置中的 prompt（如果存在）
+        $this->prompt = $sttConfig['prompt'] ?? __('ai.speech_to_text.system_prompt');
         $this->temperature = $sttConfig['temperature'] ?? 0.1;
         $this->maxOutputTokens = $sttConfig['max_output_tokens'] ?? 2048;
         $this->timeout = $sttConfig['timeout'] ?? 60;
@@ -76,7 +80,7 @@ class GeminiSpeechToText implements SpeechToTextProvider {
             return [
                 'success' => false,
                 'text' => '',
-                'error' => 'cURL 扩展未启用'
+                'error' => __('error.cause_extension')
             ];
         }
         
@@ -222,7 +226,7 @@ class SpeechToText {
         return [
             'success' => false,
             'text' => '',
-            'error' => $lastError ?? '没有可用的语音转文字服务提供商',
+            'error' => $lastError ?? __('api.no_speech'),
             'provider' => null
         ];
     }
@@ -250,13 +254,13 @@ class SpeechToText {
 
         // 检查上传错误
         if (!isset($file['error']) || $file['error'] !== UPLOAD_ERR_OK) {
-            return ['valid' => false, 'error' => '请上传有效的音频文件'];
+            return ['valid' => false, 'error' => __('validation.required', ['field' => 'audio'])];
         }
 
         // 验证文件大小
         if ($file['size'] > $maxSize) {
             $maxMB = $maxSize / 1024 / 1024;
-            return ['valid' => false, 'error' => "音频文件过大，最大支持 {$maxMB}MB"];
+            return ['valid' => false, 'error' => __('validation.max_size', ['max' => $maxMB])];
         }
 
         // 检测 MIME 类型
@@ -275,13 +279,13 @@ class SpeechToText {
         }
 
         if (!$isValidMime) {
-            return ['valid' => false, 'error' => '不支持的音频格式: ' . $uploadMime];
+            return ['valid' => false, 'error' => __('error.invalid_format', ['format' => $uploadMime])];
         }
 
         // 读取音频数据
         $audioData = file_get_contents($file['tmp_name']);
         if ($audioData === false) {
-            return ['valid' => false, 'error' => '无法读取音频文件'];
+            return ['valid' => false, 'error' => __('error.read_failed')];
         }
 
         return [
