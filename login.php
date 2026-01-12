@@ -298,6 +298,52 @@ $redirect = normalizeRedirectPath($_GET['redirect'] ?? '', '');
         .forgot-password:hover {
             color: var(--primary-color);
         }
+        /* 顶部导航栏 */
+        .auth-top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .auth-top-bar .back-link {
+            margin-bottom: 0;
+        }
+        .language-switcher-inline {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .lang-link {
+            color: #888;
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+        }
+        .lang-link:hover {
+            color: #333;
+            background: rgba(0, 0, 0, 0.05);
+        }
+        .lang-link.active {
+            color: var(--primary-color);
+            background: rgba(255, 193, 7, 0.15);
+        }
+        .lang-sep {
+            color: #ddd;
+            font-size: 0.8rem;
+        }
+        @media (max-width: 480px) {
+            .auth-top-bar {
+                flex-direction: column;
+                gap: 12px;
+                align-items: flex-start;
+            }
+            .language-switcher-inline {
+                align-self: flex-end;
+            }
+        }
         .captcha-group {
             display: flex;
             gap: 10px;
@@ -370,13 +416,15 @@ $redirect = normalizeRedirectPath($_GET['redirect'] ?? '', '');
     </div>
 <?php else: ?>
 <div class="auth-container">
-    <a href="index.php" class="back-link">
-        <i class="fas fa-arrow-left"></i> <?php _e('nav.back_home'); ?>
-    </a>
-
-    <div class="language-switcher" style="position: absolute; top: 20px; right: 20px;">
-        <a href="?lang=zh-CN" class="<?php echo isZhCN() ? 'active' : ''; ?>" style="text-decoration: none; margin-right: 10px; color: #666;">中文</a>
-        <a href="?lang=en" class="<?php echo isEn() ? 'active' : ''; ?>" style="text-decoration: none; color: #666;">English</a>
+    <div class="auth-top-bar">
+        <a href="index.php" class="back-link">
+            <i class="fas fa-arrow-left"></i> <?php _e('nav.back_home'); ?>
+        </a>
+        <div class="language-switcher-inline">
+            <a href="?lang=zh-CN" class="lang-link<?php echo isZhCN() ? ' active' : ''; ?>">CN</a>
+            <span class="lang-sep">|</span>
+            <a href="?lang=en" class="lang-link<?php echo isEn() ? ' active' : ''; ?>">EN</a>
+        </div>
     </div>
 
     <div class="auth-box">

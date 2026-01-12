@@ -287,6 +287,9 @@ return [
         'thinking_expand' => '点击展开',
         'thinking_collapse' => '点击收起',
         'ai_thinking' => 'AI 思考过程',
+        // 价格提示
+        'cost_per_task' => '单次消耗 :price 元',
+        'available_times' => '可用 :count 次',
     ],
 
     // ============================================================
@@ -475,6 +478,7 @@ return [
             'password' => '密码管理',
             'logs' => '日志查看',
             'logout' => '退出登录',
+            'toggle_menu' => '切换菜单',
         ],
         // 仪表盘
         'dashboard' => [

@@ -287,6 +287,9 @@ return [
         'thinking_expand' => 'Click to expand',
         'thinking_collapse' => 'Click to collapse',
         'ai_thinking' => 'AI Thinking Process',
+        // Price hints
+        'cost_per_task' => ':price CNY per task',
+        'available_times' => ':count tasks available',
     ],
 
     // ============================================================
@@ -475,6 +478,7 @@ return [
             'password' => 'Password Management',
             'logs' => 'View Logs',
             'logout' => 'Logout',
+            'toggle_menu' => 'Toggle Menu',
         ],
         // Dashboard
         'dashboard' => [

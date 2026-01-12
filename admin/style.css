@@ -636,6 +636,73 @@ select.form-control {
    响应式设计
    ============================================================ */
 
+/* 菜单切换按钮 - 默认隐藏 */
+.menu-toggle {
+    display: none;
+    position: fixed;
+    top: 15px;
+    left: 15px;
+    z-index: 1001;
+    background: var(--admin-primary);
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    transition: all 0.2s ease;
+}
+
+.menu-toggle:hover {
+    background: var(--admin-primary-dark);
+    transform: scale(1.05);
+}
+
+.menu-toggle:active {
+    transform: scale(0.98);
+}
+
+/* 移动端遮罩层 */
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.sidebar-overlay.active {
+    display: block;
+    opacity: 1;
+}
+
+/* 平板设备适配 */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .admin-sidebar {
+        width: 220px;
+    }
+    
+    .admin-main {
+        margin-left: 220px;
+    }
+    
+    .stat-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .nav-item {
+        padding: 12px 20px;
+        font-size: 0.95rem;
+    }
+}
+
+/* 移动端适配 */
 @media (max-width: 768px) {
     .admin-sidebar {
         transform: translateX(-100%);
@@ -650,17 +717,22 @@ select.form-control {
     }
 
     .menu-toggle {
-        display: block;
-        position: fixed;
-        top: 15px;
-        left: 15px;
-        z-index: 1001;
-        background: var(--admin-primary);
-        color: white;
-        border: none;
-        padding: 10px 15px;
-        border-radius: 6px;
-        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .admin-header {
+        padding: 15px 20px;
+        padding-left: 65px; /* 为菜单按钮留出空间 */
+    }
+    
+    .admin-header h1 {
+        font-size: 1.3rem;
+    }
+    
+    .admin-content {
+        padding: 15px;
     }
 
     .stat-cards {
@@ -675,6 +747,45 @@ select.form-control {
     .search-inputs select,
     .search-inputs button {
         width: 100%;
+    }
+    
+    .admin-table {
+        overflow-x: auto;
+    }
+    
+    .admin-table table {
+        min-width: 600px;
+    }
+    
+    .panel-body {
+        padding: 15px;
+    }
+}
+
+/* 小屏幕移动端 */
+@media (max-width: 480px) {
+    .admin-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+        padding-left: 60px;
+    }
+    
+    .admin-user-info {
+        font-size: 0.85rem;
+    }
+    
+    .stat-card {
+        padding: 18px;
+    }
+    
+    .stat-card-value {
+        font-size: 1.6rem;
+    }
+    
+    .btn {
+        padding: 8px 14px;
+        font-size: 0.9rem;
     }
 }
 

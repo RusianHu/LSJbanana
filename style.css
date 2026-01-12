@@ -36,7 +36,14 @@ header {
 /* 移动端为固定用户区域预留顶部空间 */
 @media (max-width: 600px) {
     header {
-        padding-top: 60px;
+        padding-top: 70px;
+    }
+}
+
+/* 平板设备为固定用户区域预留顶部空间 */
+@media (min-width: 601px) and (max-width: 900px) {
+    header {
+        padding-top: 50px;
     }
 }
 
@@ -51,14 +58,32 @@ header {
     gap: 12px;
 }
 
+/* 平板设备适配 */
+@media (min-width: 601px) and (max-width: 900px) {
+    .header-user-fixed {
+        top: 15px;
+        right: 15px;
+        gap: 10px;
+    }
+    
+    .header-user-fixed .btn-auth {
+        padding: 8px 14px;
+        font-size: 0.9rem;
+    }
+}
+
+/* 移动端适配 - 保持 fixed 定位但优化布局 */
 @media (max-width: 600px) {
     .header-user-fixed {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        left: 10px;
+        position: fixed;
+        top: 0;
+        right: 0;
+        left: 0;
+        padding: 10px 15px;
+        background: linear-gradient(to bottom, rgba(244, 244, 249, 0.98) 0%, rgba(244, 244, 249, 0.95) 80%, rgba(244, 244, 249, 0) 100%);
         display: flex;
         justify-content: flex-end;
+        gap: 8px;
     }
     
     .header-user-fixed .auth-buttons {
@@ -401,6 +426,33 @@ textarea {
 
 .btn-primary:hover {
     background-color: var(--primary-hover);
+}
+
+/* 按钮下方费用提示 */
+.cost-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: linear-gradient(135deg, #f5f5f5 0%, #fafafa 100%);
+    border: 1px dashed #ddd;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    color: #666;
+}
+
+.cost-hint i {
+    color: var(--primary-color);
+    font-size: 0.9rem;
+}
+
+@media (max-width: 600px) {
+    .cost-hint {
+        padding: 6px 10px;
+        font-size: 0.8rem;
+    }
 }
 
 /* Result Area */
@@ -1508,6 +1560,20 @@ textarea {
     opacity: 0.9;
 }
 
+.user-balance .balance-separator {
+    opacity: 0.5;
+    margin: 0 4px;
+    font-weight: 300;
+}
+
+.user-balance .available-times {
+    font-size: 0.8rem;
+    opacity: 0.9;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+
 .user-balance.balance-updated {
     animation: balance-pulse 0.5s ease;
 }
@@ -1845,6 +1911,12 @@ textarea {
 
     .auth-buttons-inline {
         justify-content: center;
+    }
+
+    /* 移动端隐藏可用次数，避免挤占空间 */
+    .user-balance .available-times,
+    .user-balance .balance-separator {
+        display: none;
     }
 }
 

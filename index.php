@@ -86,6 +86,11 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
                     <i class="fas fa-wallet"></i>
                     <span class="balance-amount"><?php echo number_format((float)$currentUser['balance'], 2); ?></span>
                     <span class="balance-unit"><?php _e('user.balance_unit'); ?></span>
+                    <span class="balance-separator">|</span>
+                    <span class="available-times"><?php
+                        $availableTimes = $pricePerTask > 0 ? floor((float)$currentUser['balance'] / $pricePerTask) : 0;
+                        _e('index.available_times', ['count' => $availableTimes]);
+                    ?></span>
                 </div>
                 <div class="user-menu">
                     <button class="user-menu-trigger" id="user-menu-trigger">
@@ -223,6 +228,10 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
                     </div>
 
                     <button type="submit" class="btn-primary"><i class="fas fa-magic"></i> <?php _e('index.btn_generate'); ?></button>
+                    <div class="cost-hint">
+                        <i class="fas fa-coins"></i>
+                        <span><?php _e('index.cost_per_task', ['price' => $pricePerTask]); ?></span>
+                    </div>
                 </form>
             </section>
 
@@ -307,6 +316,10 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
                     </div>
 
                     <button type="submit" class="btn-primary"><i class="fas fa-paint-brush"></i> <?php _e('index.btn_edit'); ?></button>
+                    <div class="cost-hint">
+                        <i class="fas fa-coins"></i>
+                        <span><?php _e('index.cost_per_task', ['price' => $pricePerTask]); ?></span>
+                    </div>
                 </form>
             </section>
 

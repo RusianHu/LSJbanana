@@ -2,6 +2,68 @@
  * 管理后台前端脚本
  */
 
+// 移动端菜单切换
+document.addEventListener('DOMContentLoaded', function() {
+    initMobileMenu();
+});
+
+function initMobileMenu() {
+    const menuToggle = document.getElementById('menuToggle');
+    const sidebar = document.getElementById('adminSidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    const menuIcon = document.getElementById('menuIcon');
+    
+    if (!menuToggle || !sidebar) return;
+    
+    function openMenu() {
+        sidebar.classList.add('open');
+        if (overlay) overlay.classList.add('active');
+        if (menuIcon) {
+            menuIcon.classList.remove('fa-bars');
+            menuIcon.classList.add('fa-times');
+        }
+        document.body.style.overflow = 'hidden';
+    }
+    
+    function closeMenu() {
+        sidebar.classList.remove('open');
+        if (overlay) overlay.classList.remove('active');
+        if (menuIcon) {
+            menuIcon.classList.remove('fa-times');
+            menuIcon.classList.add('fa-bars');
+        }
+        document.body.style.overflow = '';
+    }
+    
+    function toggleMenu() {
+        if (sidebar.classList.contains('open')) {
+            closeMenu();
+        } else {
+            openMenu();
+        }
+    }
+    
+    menuToggle.addEventListener('click', toggleMenu);
+    
+    if (overlay) {
+        overlay.addEventListener('click', closeMenu);
+    }
+    
+    // ESC 键关闭菜单
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && sidebar.classList.contains('open')) {
+            closeMenu();
+        }
+    });
+    
+    // 窗口大小变化时自动关闭移动端菜单
+    window.addEventListener('resize', function() {
+        if (window.innerWidth > 768 && sidebar.classList.contains('open')) {
+            closeMenu();
+        }
+    });
+}
+
 // Toast 提示
 function showToast(message, type = 'success') {
     const toast = document.createElement('div');

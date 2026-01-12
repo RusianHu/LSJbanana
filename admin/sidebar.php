@@ -8,7 +8,15 @@ require_once __DIR__ . '/../i18n/I18n.php';
 
 $currentPage = basename($_SERVER['PHP_SELF']);
 ?>
-<div class="admin-sidebar">
+<!-- 移动端菜单切换按钮 -->
+<button class="menu-toggle" id="menuToggle" aria-label="<?php _e('admin.sidebar.toggle_menu'); ?>">
+    <i class="fas fa-bars" id="menuIcon"></i>
+</button>
+
+<!-- 移动端遮罩层 -->
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<div class="admin-sidebar" id="adminSidebar">
     <div class="sidebar-logo">
         <h2>
             <i class="fas fa-crown"></i>
