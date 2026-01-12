@@ -246,28 +246,28 @@ function formatTime($datetime): string {
                     <!-- 登录历史标签页 -->
                     <div class="tab-pane" id="tab-login">
                         <div id="userLoginContent">
-                            <div class="text-center"><i class="fas fa-spinner fa-spin"></i> 加载中...</div>
+                            <div class="text-center"><i class="fas fa-spinner fa-spin"></i> <?php _e('form.loading'); ?></div>
                         </div>
                     </div>
                     
                     <!-- 消费明细标签页 -->
                     <div class="tab-pane" id="tab-consumption">
                         <div id="userConsumptionContent">
-                            <div class="text-center"><i class="fas fa-spinner fa-spin"></i> 加载中...</div>
+                            <div class="text-center"><i class="fas fa-spinner fa-spin"></i> <?php _e('form.loading'); ?></div>
                         </div>
                     </div>
                     
                     <!-- 余额变动标签页 -->
                     <div class="tab-pane" id="tab-balance">
                         <div id="userBalanceContent">
-                            <div class="text-center"><i class="fas fa-spinner fa-spin"></i> 加载中...</div>
+                            <div class="text-center"><i class="fas fa-spinner fa-spin"></i> <?php _e('form.loading'); ?></div>
                         </div>
                     </div>
                     
                     <!-- 充值订单标签页 -->
                     <div class="tab-pane" id="tab-orders">
                         <div id="userOrdersContent">
-                            <div class="text-center"><i class="fas fa-spinner fa-spin"></i> 加载中...</div>
+                            <div class="text-center"><i class="fas fa-spinner fa-spin"></i> <?php _e('form.loading'); ?></div>
                         </div>
                     </div>
                 </div>
@@ -410,7 +410,7 @@ function formatTime($datetime): string {
             };
             
             const container = document.getElementById(contentId);
-            container.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> 加载中...</div>';
+            container.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> ' + window.i18n.t('form.loading') + '</div>';
             
             const pagination = tabPagination[tabName];
             const result = await apiRequest(actionMap[tabName], {
@@ -422,7 +422,7 @@ function formatTime($datetime): string {
             if (result.success) {
                 renderTabContent(tabName, result.data, container);
             } else {
-                container.innerHTML = `<div class="alert alert-danger">${escapeHtml(result.message || '加载失败')}</div>`;
+                container.innerHTML = `<div class="alert alert-danger">${escapeHtml(result.message || window.i18n.t('admin.load_failed'))}</div>`;
             }
         }
         
@@ -447,7 +447,7 @@ function formatTime($datetime): string {
         // 渲染登录历史
         function renderLoginLogs(data, container) {
             if (!data.logs || data.logs.length === 0) {
-                container.innerHTML = '<div class="text-center text-muted">暂无登录记录</div>';
+                container.innerHTML = '<div class="text-center text-muted">' + window.i18n.t('admin.users.no_login_records') + '</div>';
                 return;
             }
             
@@ -456,10 +456,10 @@ function formatTime($datetime): string {
                     <table>
                         <thead>
                             <tr>
-                                <th>登录时间</th>
-                                <th>IP地址</th>
-                                <th>登录方式</th>
-                                <th>状态</th>
+                                <th>${window.i18n.t('admin.table.login_time')}</th>
+                                <th>${window.i18n.t('admin.table.ip_address')}</th>
+                                <th>${window.i18n.t('admin.table.login_method')}</th>
+                                <th>${window.i18n.t('admin.table.result')}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -467,9 +467,13 @@ function formatTime($datetime): string {
             
             data.logs.forEach(log => {
                 const statusBadge = log.status == 1
-                    ? '<span class="badge badge-success">成功</span>'
-                    : '<span class="badge badge-danger">失败</span>';
-                const loginType = log.login_type === 'password' ? '密码' : (log.login_type === 'token' ? '令牌' : log.login_type);
+                    ? '<span class="badge badge-success">' + window.i18n.t('status.success') + '</span>'
+                    : '<span class="badge badge-danger">' + window.i18n.t('status.failed') + '</span>';
+                
+                let loginType = log.login_type;
+                if (log.login_type === 'password') loginType = window.i18n.t('admin.login_type.password');
+                else if (log.login_type === 'token') loginType = window.i18n.t('admin.login_type.token');
+                else if (log.login_type === 'quick_login') loginType = window.i18n.t('admin.login_type.quick_login');
                 
                 html += `
                     <tr>
@@ -509,7 +513,7 @@ function formatTime($datetime): string {
         // 渲染消费明细
         function renderConsumptionLogs(data, container) {
             if (!data.logs || data.logs.length === 0) {
-                container.innerHTML = '<div class="text-center text-muted">暂无消费记录</div>';
+                container.innerHTML = '<div class="text-center text-muted">' + window.i18n.t('admin.users.no_consumption_records') + '</div>';
                 return;
             }
             
@@ -518,20 +522,23 @@ function formatTime($datetime): string {
                     <table>
                         <thead>
                             <tr>
-                                <th>时间</th>
-                                <th>类型</th>
-                                <th>金额</th>
-                                <th>图片数</th>
-                                <th>模型</th>
-                                <th>提示词摘要</th>
-                                <th>生成文件</th>
+                                <th>${window.i18n.t('admin.table.time')}</th>
+                                <th>${window.i18n.t('admin.table.type')}</th>
+                                <th>${window.i18n.t('admin.table.amount')}</th>
+                                <th>${window.i18n.t('admin.table.image_count')}</th>
+                                <th>${window.i18n.t('admin.table.model')}</th>
+                                <th>${window.i18n.t('admin.table.prompt_summary')}</th>
+                                <th>${window.i18n.t('admin.table.gen_files')}</th>
                             </tr>
                         </thead>
                         <tbody>
             `;
             
             data.logs.forEach(log => {
-                const actionLabel = log.action === 'generate' ? '生成' : (log.action === 'edit' ? '编辑' : log.action);
+                let actionLabel = log.action;
+                if (log.action === 'generate') actionLabel = window.i18n.t('admin.action_type.generate');
+                else if (log.action === 'edit') actionLabel = window.i18n.t('admin.action_type.edit');
+
                 const remarkData = parseConsumptionRemark(log.remark);
                 const prompt = remarkData.prompt;
                 const promptSummary = prompt.length > 50 ? prompt.substring(0, 50) + '...' : prompt;
@@ -568,7 +575,7 @@ function formatTime($datetime): string {
         // 渲染余额变动
         function renderBalanceLogs(data, container) {
             if (!data.logs || data.logs.length === 0) {
-                container.innerHTML = '<div class="text-center text-muted">暂无余额变动记录</div>';
+                container.innerHTML = '<div class="text-center text-muted">' + window.i18n.t('admin.users.no_balance_records') + '</div>';
                 return;
             }
             
@@ -577,12 +584,12 @@ function formatTime($datetime): string {
                     <table>
                         <thead>
                             <tr>
-                                <th>时间</th>
-                                <th>类型</th>
-                                <th>金额</th>
-                                <th>变动前</th>
-                                <th>变动后</th>
-                                <th>备注</th>
+                                <th>${window.i18n.t('admin.table.time')}</th>
+                                <th>${window.i18n.t('admin.table.type')}</th>
+                                <th>${window.i18n.t('admin.table.amount')}</th>
+                                <th>${window.i18n.t('admin.table.before')}</th>
+                                <th>${window.i18n.t('admin.table.after')}</th>
+                                <th>${window.i18n.t('admin.table.details')}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -590,9 +597,10 @@ function formatTime($datetime): string {
             
             data.logs.forEach(log => {
                 const isRecharge = log.type === 'recharge';
+                const typeLabel = isRecharge ? window.i18n.t('admin.balance_type.recharge') : window.i18n.t('admin.balance_type.deduct');
                 const typeBadge = isRecharge
-                    ? '<span class="badge badge-success">充值</span>'
-                    : '<span class="badge badge-danger">扣款</span>';
+                    ? `<span class="badge badge-success">${typeLabel}</span>`
+                    : `<span class="badge badge-danger">${typeLabel}</span>`;
                 const amountClass = isRecharge ? 'text-success' : 'text-danger';
                 const amountSign = isRecharge ? '+' : '';
                 
@@ -616,21 +624,21 @@ function formatTime($datetime): string {
         // 渲染充值订单
         function renderRechargeOrders(data, container) {
             if (!data.orders || data.orders.length === 0) {
-                container.innerHTML = '<div class="text-center text-muted">暂无充值订单</div>';
+                container.innerHTML = '<div class="text-center text-muted">' + window.i18n.t('admin.users.no_orders') + '</div>';
                 return;
             }
             
             const statusMap = {
-                0: { label: '待支付', class: 'warning' },
-                1: { label: '已支付', class: 'success' },
-                2: { label: '已取消', class: 'danger' },
-                3: { label: '已退款', class: 'info' }
+                0: { label: window.i18n.t('admin.order_status.0'), class: 'warning' },
+                1: { label: window.i18n.t('admin.order_status.1'), class: 'success' },
+                2: { label: window.i18n.t('admin.order_status.2'), class: 'danger' },
+                3: { label: window.i18n.t('admin.order_status.3'), class: 'info' }
             };
             
             const payTypeMap = {
-                'alipay': '支付宝',
-                'wxpay': '微信支付',
-                'qqpay': 'QQ支付'
+                'alipay': window.i18n.t('admin.pay_type.alipay'),
+                'wxpay': window.i18n.t('admin.pay_type.wxpay'),
+                'qqpay': window.i18n.t('admin.pay_type.qqpay')
             };
             
             let html = `
@@ -638,19 +646,19 @@ function formatTime($datetime): string {
                     <table>
                         <thead>
                             <tr>
-                                <th>订单号</th>
-                                <th>金额</th>
-                                <th>支付方式</th>
-                                <th>状态</th>
-                                <th>创建时间</th>
-                                <th>支付时间</th>
+                                <th>${window.i18n.t('admin.table.order_no')}</th>
+                                <th>${window.i18n.t('admin.table.amount')}</th>
+                                <th>${window.i18n.t('admin.table.pay_type')}</th>
+                                <th>${window.i18n.t('admin.table.result')}</th>
+                                <th>${window.i18n.t('admin.table.create_time')}</th>
+                                <th>${window.i18n.t('admin.table.pay_time')}</th>
                             </tr>
                         </thead>
                         <tbody>
             `;
             
             data.orders.forEach(order => {
-                const status = statusMap[order.status] || { label: '未知', class: 'secondary' };
+                const status = statusMap[order.status] || { label: window.i18n.t('status.unknown'), class: 'secondary' };
                 const payType = payTypeMap[order.pay_type] || order.pay_type || '-';
                 
                 html += `
@@ -681,7 +689,12 @@ function formatTime($datetime): string {
                 html += `<button class="btn btn-sm" onclick="goToPage('${tabName}', ${data.page - 1})"><i class="fas fa-chevron-left"></i></button>`;
             }
             
-            html += `<span class="page-info">第 ${data.page} / ${data.total_pages} 页 (共 ${data.total} 条)</span>`;
+            const pageInfo = window.i18n.t('admin.page_info', {
+                current: data.page,
+                total: data.total_pages,
+                count: data.total
+            });
+            html += `<span class="page-info">${pageInfo}</span>`;
             
             // 下一页
             if (data.page < data.total_pages) {
@@ -730,7 +743,7 @@ function formatTime($datetime): string {
             switchTab('basic');
             
             showModal('userDetailModal');
-            document.getElementById('userBasicContent').innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> 加载中...</div>';
+            document.getElementById('userBasicContent').innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> ' + window.i18n.t('form.loading') + '</div>';
             document.getElementById('userDetailTitle').textContent = '';
 
             const result = await apiRequest('get_user_detail', { user_id: userId });
@@ -750,15 +763,15 @@ function formatTime($datetime): string {
                 document.getElementById('userBasicContent').innerHTML = `
                     <div class="user-info-grid">
                         <div class="form-group">
-                            <label>用户ID</label>
+                            <label>${window.i18n.t('admin.users.user_id')}</label>
                             <input type="text" class="form-control" value="#${user.id}" disabled>
                         </div>
                         <div class="form-group">
-                            <label>用户名</label>
+                            <label>${window.i18n.t('admin.table.username')}</label>
                             <input type="text" class="form-control" value="${safeUsername}" disabled>
                         </div>
                         <div class="form-group">
-                            <label>邮箱</label>
+                            <label>${window.i18n.t('admin.table.email')}</label>
                             <div style="display: flex; gap: 10px;">
                                 <input type="text" class="form-control" value="${safeEmail}" disabled style="flex: 1;">
                                 <button class="btn btn-warning btn-sm" onclick="editEmail(${user.id}, '${jsEscapedEmail}')">
@@ -767,53 +780,53 @@ function formatTime($datetime): string {
                             </div>
                         </div>
                         <div class="form-group">
-                            <label>余额</label>
+                            <label>${window.i18n.t('admin.table.balance')}</label>
                             <input type="text" class="form-control" value="¥${parseFloat(user.balance).toFixed(2)}" disabled>
                         </div>
                         <div class="form-group">
-                            <label>状态</label>
-                            <input type="text" class="form-control" value="${user.status == 1 ? '正常' : '禁用'}" disabled>
+                            <label>${window.i18n.t('admin.table.status')}</label>
+                            <input type="text" class="form-control" value="${user.status == 1 ? window.i18n.t('user.status_active') : window.i18n.t('user.status_disabled')}" disabled>
                         </div>
                         <div class="form-group">
-                            <label>注册时间</label>
+                            <label>${window.i18n.t('admin.table.created_at')}</label>
                             <input type="text" class="form-control" value="${safeCreatedAt}" disabled>
                         </div>
                     </div>
                     <hr>
-                    <h4><i class="fas fa-chart-bar"></i> 统计数据</h4>
+                    <h4><i class="fas fa-chart-bar"></i> ${window.i18n.t('admin.users.statistics')}</h4>
                     <div class="stats-grid">
                         <div class="stat-item">
-                            <span class="stat-label">累计充值</span>
+                            <span class="stat-label">${window.i18n.t('admin.users.total_recharge')}</span>
                             <span class="stat-value text-success">¥${parseFloat(stats.total_recharge || 0).toFixed(2)}</span>
                         </div>
                         <div class="stat-item">
-                            <span class="stat-label">累计消费</span>
+                            <span class="stat-label">${window.i18n.t('admin.users.total_consumption')}</span>
                             <span class="stat-value text-danger">¥${parseFloat(stats.total_consumption || 0).toFixed(2)}</span>
                         </div>
                         <div class="stat-item">
-                            <span class="stat-label">生成图片</span>
-                            <span class="stat-value">${parseInt(stats.total_images) || 0} 张</span>
+                            <span class="stat-label">${window.i18n.t('admin.users.total_images')}</span>
+                            <span class="stat-value">${parseInt(stats.total_images) || 0} ${window.i18n.t('misc.unit_images')}</span>
                         </div>
                     </div>
                     <hr>
-                    <h4><i class="fas fa-tools"></i> 快捷操作</h4>
+                    <h4><i class="fas fa-tools"></i> ${window.i18n.t('admin.users.quick_actions')}</h4>
                     <div class="action-grid">
                         <button class="btn btn-success" onclick="hideModal('userDetailModal'); showBalanceModal(${user.id}, 'add')">
-                            <i class="fas fa-plus-circle"></i> 充值
+                            <i class="fas fa-plus-circle"></i> ${window.i18n.t('admin.users.add_balance')}
                         </button>
                         <button class="btn btn-danger" onclick="hideModal('userDetailModal'); showBalanceModal(${user.id}, 'deduct')">
-                            <i class="fas fa-minus-circle"></i> 扣款
+                            <i class="fas fa-minus-circle"></i> ${window.i18n.t('admin.users.deduct_balance')}
                         </button>
                         <button class="btn btn-warning" onclick="hideModal('userDetailModal'); showResetPasswordModal(${user.id})">
-                            <i class="fas fa-key"></i> 重置密码
+                            <i class="fas fa-key"></i> ${window.i18n.t('admin.users.reset_password')}
                         </button>
                         <button class="btn btn-${user.status == 1 ? 'secondary' : 'success'}" onclick="toggleUserStatus(${user.id})">
-                            <i class="fas fa-${user.status == 1 ? 'ban' : 'check'}"></i> ${user.status == 1 ? '禁用' : '启用'}
+                            <i class="fas fa-${user.status == 1 ? 'ban' : 'check'}"></i> ${user.status == 1 ? window.i18n.t('action.disable') : window.i18n.t('action.enable')}
                         </button>
                     </div>
                 `;
             } else {
-                document.getElementById('userBasicContent').innerHTML = `<div class="alert alert-danger">${escapeHtml(result.message || '获取用户信息失败')}</div>`;
+                document.getElementById('userBasicContent').innerHTML = `<div class="alert alert-danger">${escapeHtml(result.message || window.i18n.t('error.unknown'))}</div>`;
             }
         }
 
@@ -834,7 +847,7 @@ function formatTime($datetime): string {
             });
 
             if (result.success) {
-                showToast('邮箱修改成功');
+                showToast(window.i18n.t('admin.email_updated'));
                 hideModal('editEmailModal');
                 setTimeout(() => location.reload(), 1000);
             } else {
@@ -847,7 +860,8 @@ function formatTime($datetime): string {
             showModal('balanceModal');
             document.getElementById('balanceUserId').value = userId;
             document.getElementById('balanceAction').value = action;
-            document.getElementById('balanceModalTitle').innerHTML = `<i class="fas fa-wallet"></i> ${action === 'add' ? '人工充值' : '人工扣款'}`;
+            const titleText = action === 'add' ? window.i18n.t('admin.balance.add_title') : window.i18n.t('admin.balance.deduct_title');
+            document.getElementById('balanceModalTitle').innerHTML = `<i class="fas fa-wallet"></i> ${titleText}`;
             document.getElementById('balanceAmount').value = '';
             document.getElementById('balanceRemark').value = '';
         }

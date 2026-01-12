@@ -85,7 +85,8 @@
     "unknown": "未知错误",
     "http": "HTTP 错误",
     "parse_failed": "服务器响应格式异常",
-    "request_failed": "请求失败"
+    "request_failed": "请求失败",
+    "user_not_found": "用户不存在"
   },
   "confirm": {
     "action": "确定要执行此操作吗？",
@@ -115,6 +116,24 @@
     "load_failed": "加载失败",
     "no_data": "暂无数据",
     "page_info": "第 {current} / {total} 页 (共 {count} 条)",
+    "login_time": "登录时间",
+    "ip_address": "IP地址",
+    "login_method": "登录方式",
+    "result": "状态",
+    "time": "时间",
+    "type": "类型",
+    "amount": "金额",
+    "image_count": "图片数",
+    "model": "模型",
+    "prompt_summary": "提示词摘要",
+    "gen_files": "生成文件",
+    "before": "变动前",
+    "after": "变动后",
+    "details": "详细信息",
+    "order_no": "订单号",
+    "pay_type": "支付方式",
+    "create_time": "创建时间",
+    "pay_time": "支付时间",
     "login_type": {
       "password": "密码",
       "token": "令牌",
@@ -128,7 +147,47 @@
       "recharge": "充值",
       "deduct": "扣款"
     },
-    "order_status": {
+    "balance": {
+      "user_placeholder": "请输入用户名/邮箱/ID",
+      "selected_user": "选中用户",
+      "current_balance": "当前余额",
+      "select_user_hint": "请先选择用户",
+      "deduct_confirm_negative": "警告：扣除该金额后用户余额将变为负数 (当前: {balance})。是否继续？"
+      },
+      "orders": {
+        "backfill_confirm": "确定要为所有旧待支付订单回填过期时间吗？回填后这些订单将被标记为过期。",
+        "backfill_btn": "回填过期时间",
+        "cancel_confirm": "确定要批量取消所有过期的待支付订单吗？此操作不可撤销。",
+        "cancelled_count": "成功取消 {count} 个过期订单",
+        "cancel_expired": "批量取消过期订单"
+      },
+      "table": {
+          "login_time": "登录时间",
+          "ip_address": "IP地址",
+          "login_method": "登录方式",
+          "result": "状态",
+          "time": "时间",
+          "type": "类型",
+          "amount": "金额",
+          "image_count": "图片数",
+          "model": "模型",
+          "prompt_summary": "提示词摘要",
+          "gen_files": "生成文件",
+          "before": "变动前",
+          "after": "变动后",
+          "details": "详细信息",
+          "order_no": "订单号",
+          "pay_type": "支付方式",
+          "create_time": "创建时间",
+          "pay_time": "支付时间",
+          "user": "用户",
+          "username": "用户名",
+          "email": "邮箱",
+          "balance": "余额",
+          "status": "状态",
+          "created_at": "注册时间"
+      },
+      "order_status": {
       "0": "待支付",
       "1": "已支付",
       "2": "已取消",
@@ -139,6 +198,36 @@
       "wxpay": "微信支付",
       "qqpay": "QQ支付"
     },
-    "files": "{count} 个文件"
+    "files": "{count} 个文件",
+    "users": {
+        "no_login_records": "暂无登录记录",
+        "no_consumption_records": "暂无消费记录",
+        "no_balance_records": "暂无余额变动记录",
+        "no_orders": "暂无充值订单",
+        "user_id": "用户ID",
+        "user_detail": "用户详情",
+        "basic_info": "基本信息",
+        "login_history": "登录历史",
+        "consumption_detail": "消费明细",
+        "balance_history": "余额变动",
+        "recharge_orders": "充值订单",
+        "statistics": "统计数据",
+        "total_recharge": "累计充值",
+        "total_consumption": "累计消费",
+        "total_images": "生成图片",
+        "quick_actions": "快捷操作",
+        "add_balance": "充值",
+        "deduct_balance": "扣款",
+        "reset_password": "重置密码"
+    }
+  },
+  "user": {
+      "status_active": "正常",
+      "status_disabled": "禁用"
+  },
+  "status": {
+      "success": "成功",
+      "failed": "失败",
+      "unknown": "未知"
   }
 }

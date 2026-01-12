@@ -85,7 +85,8 @@
     "unknown": "Unknown error",
     "http": "HTTP Error",
     "parse_failed": "Server response format error",
-    "request_failed": "Request failed"
+    "request_failed": "Request failed",
+    "user_not_found": "User not found"
   },
   "confirm": {
     "action": "Are you sure you want to perform this action?",
@@ -115,6 +116,24 @@
     "load_failed": "Failed to load",
     "no_data": "No data",
     "page_info": "Page {current} / {total} (Total {count} items)",
+    "login_time": "Login Time",
+    "ip_address": "IP Address",
+    "login_method": "Login Method",
+    "result": "Result",
+    "time": "Time",
+    "type": "Type",
+    "amount": "Amount",
+    "image_count": "Images",
+    "model": "Model",
+    "prompt_summary": "Prompt Summary",
+    "gen_files": "Files",
+    "before": "Before",
+    "after": "After",
+    "details": "Details",
+    "order_no": "Order No",
+    "pay_type": "Payment Type",
+    "create_time": "Created At",
+    "pay_time": "Paid At",
     "login_type": {
       "password": "Password",
       "token": "Token",
@@ -128,6 +147,46 @@
       "recharge": "Recharge",
       "deduct": "Deduction"
     },
+    "balance": {
+      "user_placeholder": "Enter Username / Email / ID",
+      "selected_user": "Selected User",
+      "current_balance": "Current Balance",
+      "select_user_hint": "Please select a user first",
+      "deduct_confirm_negative": "Warning: User balance will become negative after this deduction (Current: {balance}). Continue?"
+    },
+    "orders": {
+      "backfill_confirm": "Are you sure you want to backfill expiration time for all old pending orders? These orders will be marked as expired.",
+      "backfill_btn": "Backfill Expiration",
+      "cancel_confirm": "Are you sure you want to batch cancel all expired pending orders? This cannot be undone.",
+      "cancelled_count": "Successfully cancelled {count} expired orders",
+      "cancel_expired": "Batch Cancel Expired Orders"
+    },
+    "table": {
+        "login_time": "Login Time",
+        "ip_address": "IP Address",
+        "login_method": "Login Method",
+        "result": "Result",
+        "time": "Time",
+        "type": "Type",
+        "amount": "Amount",
+        "image_count": "Images",
+        "model": "Model",
+        "prompt_summary": "Prompt Summary",
+        "gen_files": "Files",
+        "before": "Before",
+        "after": "After",
+        "details": "Details",
+        "order_no": "Order No",
+        "pay_type": "Payment Type",
+        "create_time": "Created At",
+        "pay_time": "Paid At",
+        "user": "User",
+        "username": "Username",
+        "email": "Email",
+        "balance": "Balance",
+        "status": "Status",
+        "created_at": "Registered"
+    },
     "order_status": {
       "0": "Pending",
       "1": "Paid",
@@ -139,6 +198,37 @@
       "wxpay": "WeChat Pay",
       "qqpay": "QQ Pay"
     },
-    "files": "{count} files"
+    "files": "{count} files",
+    "users": {
+        "no_login_records": "No login records",
+        "no_consumption_records": "No consumption records",
+        "no_balance_records": "No balance records",
+        "no_orders": "No recharge orders",
+        "user_id": "User ID",
+        "statistics": "Statistics",
+        "total_recharge": "Total Recharge",
+        "total_consumption": "Total Consumption",
+        "total_images": "Generated Images",
+        "quick_actions": "Quick Actions",
+        "add_balance": "Add Balance",
+        "deduct_balance": "Deduct Balance",
+        "reset_password": "Reset Password",
+        "user_detail": "User Details",
+        "basic_info": "Basic Info",
+        "login_history": "Login History",
+        "consumption_detail": "Consumption Details",
+        "balance_history": "Balance History",
+        "recharge_orders": "Recharge Orders"
+    },
+    "page_info": "Page {current} / {total} (Total {count} items)"
+  },
+  "user": {
+      "status_active": "Active",
+      "status_disabled": "Disabled"
+  },
+  "status": {
+      "success": "Success",
+      "failed": "Failed",
+      "unknown": "Unknown"
   }
 }
