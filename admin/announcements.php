@@ -500,7 +500,7 @@ $totalPages = ceil($totalCount / $perPage);
     </div>
 
     <!-- 创建/编辑公告模态框 -->
-    <div class="modal-overlay" id="announcementModal" data-modal="announcement">
+    <div class="modal-overlay" id="announcementModal" data-modal="announcement" style="display: none;">
         <div class="modal-content" data-modal-content>
             <div class="modal-header">
                 <h3 id="modalTitle"><?php _e('admin.announcements.create'); ?></h3>
@@ -710,7 +710,11 @@ $totalPages = ceil($totalCount / $perPage);
             
             show() {
                 if (!this.modal) return;
-                this.modal.classList.add('show');
+                this.modal.style.display = 'flex'; // 强制显示
+                // 稍微延迟添加 show 类以触发动画（如果有）
+                requestAnimationFrame(() => {
+                    this.modal.classList.add('show');
+                });
                 this.isOpen = true;
                 document.body.style.overflow = 'hidden';
                 
@@ -724,6 +728,12 @@ $totalPages = ceil($totalCount / $perPage);
             close() {
                 if (!this.modal) return;
                 this.modal.classList.remove('show');
+                // 等待动画结束后隐藏
+                setTimeout(() => {
+                    if (!this.modal.classList.contains('show')) {
+                        this.modal.style.display = 'none';
+                    }
+                }, 300);
                 this.isOpen = false;
                 document.body.style.overflow = '';
             },
