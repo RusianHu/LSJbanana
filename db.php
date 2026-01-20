@@ -1688,4 +1688,430 @@ class Database {
 
         return ['orders' => $orders, 'total' => $total];
     }
+
+    // ============================================================
+    // 公告系统相关操作
+    // ============================================================
+
+    /**
+     * 检查并初始化公告系统表
+     * @return array 返回初始化结果 ['success' => bool, 'created' => array, 'message' => string]
+     */
+    public function initAnnouncementTables(): array {
+        $result = [
+            'success' => true,
+            'created' => [],
+            'message' => ''
+        ];
+
+        $announcementTables = [
+            'announcements' => "
+                CREATE TABLE IF NOT EXISTS announcements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title VARCHAR(200) NOT NULL,
+                    content TEXT NOT NULL,
+                    type VARCHAR(20) DEFAULT 'info',
+                    display_mode VARCHAR(20) DEFAULT 'banner',
+                    target VARCHAR(20) DEFAULT 'all',
+                    priority INTEGER DEFAULT 0,
+                    is_dismissible INTEGER DEFAULT 1,
+                    is_active INTEGER DEFAULT 1,
+                    start_at DATETIME,
+                    end_at DATETIME,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    created_by VARCHAR(50) DEFAULT 'admin'
+                )
+            ",
+            'announcement_dismissals' => "
+                CREATE TABLE IF NOT EXISTS announcement_dismissals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    announcement_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    dismissed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (announcement_id) REFERENCES announcements(id) ON DELETE CASCADE,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                    UNIQUE(announcement_id, user_id)
+                )
+            "
+        ];
+
+        $indexes = [
+            "CREATE INDEX IF NOT EXISTS idx_announcements_active ON announcements(is_active)",
+            "CREATE INDEX IF NOT EXISTS idx_announcements_priority ON announcements(priority DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_announcements_dates ON announcements(start_at, end_at)",
+            "CREATE INDEX IF NOT EXISTS idx_announcements_type ON announcements(type)",
+            "CREATE INDEX IF NOT EXISTS idx_announcements_display_mode ON announcements(display_mode)",
+            "CREATE INDEX IF NOT EXISTS idx_dismissals_user ON announcement_dismissals(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_dismissals_announcement ON announcement_dismissals(announcement_id)"
+        ];
+
+        try {
+            // 检查并创建表
+            foreach ($announcementTables as $tableName => $createSql) {
+                $stmt = $this->pdo->query(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='$tableName'"
+                );
+
+                if (!$stmt->fetch()) {
+                    $this->pdo->exec($createSql);
+                    $result['created'][] = $tableName;
+                }
+            }
+
+            // 创建索引
+            foreach ($indexes as $indexSql) {
+                $this->pdo->exec($indexSql);
+            }
+
+            if (!empty($result['created'])) {
+                $result['message'] = '已自动创建 ' . count($result['created']) . ' 个公告系统表';
+            } else {
+                $result['message'] = '所有公告系统表已存在';
+            }
+
+        } catch (PDOException $e) {
+            $result['success'] = false;
+            $result['message'] = '初始化失败: ' . $e->getMessage();
+        }
+
+        return $result;
+    }
+
+    /**
+     * 检查公告表是否完整
+     * @return array 返回缺失的表列表
+     */
+    public function checkAnnouncementTables(): array {
+        $requiredTables = [
+            'announcements',
+            'announcement_dismissals'
+        ];
+
+        $missingTables = [];
+
+        foreach ($requiredTables as $tableName) {
+            $stmt = $this->pdo->query(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='$tableName'"
+            );
+
+            if (!$stmt->fetch()) {
+                $missingTables[] = $tableName;
+            }
+        }
+
+        return $missingTables;
+    }
+
+    /**
+     * 创建公告
+     */
+    public function createAnnouncement(array $data): ?int {
+        $now = $this->now();
+        $sql = "INSERT INTO announcements (title, content, type, display_mode, target, priority, is_dismissible, is_active, start_at, end_at, created_at, updated_at, created_by)
+                VALUES (:title, :content, :type, :display_mode, :target, :priority, :is_dismissible, :is_active, :start_at, :end_at, :created_at, :updated_at, :created_by)";
+        
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([
+                ':title' => $data['title'],
+                ':content' => $data['content'],
+                ':type' => $data['type'] ?? 'info',
+                ':display_mode' => $data['display_mode'] ?? 'banner',
+                ':target' => $data['target'] ?? 'all',
+                ':priority' => (int)($data['priority'] ?? 0),
+                ':is_dismissible' => (int)($data['is_dismissible'] ?? 1),
+                ':is_active' => (int)($data['is_active'] ?? 1),
+                ':start_at' => !empty($data['start_at']) ? $data['start_at'] : null,
+                ':end_at' => !empty($data['end_at']) ? $data['end_at'] : null,
+                ':created_at' => $now,
+                ':updated_at' => $now,
+                ':created_by' => $data['created_by'] ?? 'admin',
+            ]);
+            return (int) $this->pdo->lastInsertId();
+        } catch (PDOException $e) {
+            error_log('Create announcement failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 更新公告
+     */
+    public function updateAnnouncement(int $id, array $data): bool {
+        $now = $this->now();
+        $sql = "UPDATE announcements SET
+                title = :title,
+                content = :content,
+                type = :type,
+                display_mode = :display_mode,
+                target = :target,
+                priority = :priority,
+                is_dismissible = :is_dismissible,
+                is_active = :is_active,
+                start_at = :start_at,
+                end_at = :end_at,
+                updated_at = :updated_at
+                WHERE id = :id";
+        
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            return $stmt->execute([
+                ':id' => $id,
+                ':title' => $data['title'],
+                ':content' => $data['content'],
+                ':type' => $data['type'] ?? 'info',
+                ':display_mode' => $data['display_mode'] ?? 'banner',
+                ':target' => $data['target'] ?? 'all',
+                ':priority' => (int)($data['priority'] ?? 0),
+                ':is_dismissible' => (int)($data['is_dismissible'] ?? 1),
+                ':is_active' => (int)($data['is_active'] ?? 1),
+                ':start_at' => !empty($data['start_at']) ? $data['start_at'] : null,
+                ':end_at' => !empty($data['end_at']) ? $data['end_at'] : null,
+                ':updated_at' => $now,
+            ]);
+        } catch (PDOException $e) {
+            error_log('Update announcement failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 删除公告
+     */
+    public function deleteAnnouncement(int $id): bool {
+        $sql = "DELETE FROM announcements WHERE id = :id";
+        $stmt = $this->pdo->prepare($sql);
+        return $stmt->execute([':id' => $id]);
+    }
+
+    /**
+     * 获取单个公告
+     */
+    public function getAnnouncementById(int $id): ?array {
+        $sql = "SELECT * FROM announcements WHERE id = :id LIMIT 1";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':id' => $id]);
+        $announcement = $stmt->fetch();
+        return $announcement ?: null;
+    }
+
+    /**
+     * 切换公告启用状态
+     */
+    public function toggleAnnouncementStatus(int $id): bool {
+        $sql = "UPDATE announcements SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END,
+                updated_at = :updated_at WHERE id = :id";
+        $stmt = $this->pdo->prepare($sql);
+        return $stmt->execute([':id' => $id, ':updated_at' => $this->now()]);
+    }
+
+    /**
+     * 获取公告列表（管理后台用，支持分页、筛选、搜索）
+     */
+    public function getAnnouncements(int $limit = 20, int $offset = 0, array $filters = []): array {
+        $sql = "SELECT * FROM announcements WHERE 1=1";
+        $params = [];
+
+        // 状态筛选
+        if (isset($filters['status'])) {
+            if ($filters['status'] === 'active') {
+                $sql .= " AND is_active = 1";
+            } elseif ($filters['status'] === 'inactive') {
+                $sql .= " AND is_active = 0";
+            }
+        }
+
+        // 类型筛选
+        if (!empty($filters['type'])) {
+            $sql .= " AND type = :type";
+            $params[':type'] = $filters['type'];
+        }
+
+        // 展示模式筛选
+        if (!empty($filters['display_mode'])) {
+            $sql .= " AND display_mode = :display_mode";
+            $params[':display_mode'] = $filters['display_mode'];
+        }
+
+        // 搜索
+        if (!empty($filters['search'])) {
+            $sql .= " AND (title LIKE :search OR content LIKE :search)";
+            $params[':search'] = '%' . $filters['search'] . '%';
+        }
+
+        $sql .= " ORDER BY priority DESC, created_at DESC LIMIT :limit OFFSET :offset";
+
+        $stmt = $this->pdo->prepare($sql);
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value);
+        }
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * 获取公告总数
+     */
+    public function getAnnouncementCount(array $filters = []): int {
+        $sql = "SELECT COUNT(*) as count FROM announcements WHERE 1=1";
+        $params = [];
+
+        if (isset($filters['status'])) {
+            if ($filters['status'] === 'active') {
+                $sql .= " AND is_active = 1";
+            } elseif ($filters['status'] === 'inactive') {
+                $sql .= " AND is_active = 0";
+            }
+        }
+
+        if (!empty($filters['type'])) {
+            $sql .= " AND type = :type";
+            $params[':type'] = $filters['type'];
+        }
+
+        if (!empty($filters['display_mode'])) {
+            $sql .= " AND display_mode = :display_mode";
+            $params[':display_mode'] = $filters['display_mode'];
+        }
+
+        if (!empty($filters['search'])) {
+            $sql .= " AND (title LIKE :search OR content LIKE :search)";
+            $params[':search'] = '%' . $filters['search'] . '%';
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        $result = $stmt->fetch();
+
+        return (int) ($result['count'] ?? 0);
+    }
+
+    /**
+     * 获取当前有效公告（前端展示用）
+     *
+     * @param bool $isLoggedIn 用户是否已登录
+     * @param int|null $userId 用户ID（已登录时提供）
+     * @param array $dismissedIds 已关闭的公告ID列表（访客从localStorage获取）
+     * @return array 按展示模式分组的公告列表
+     */
+    public function getActiveAnnouncements(bool $isLoggedIn = false, ?int $userId = null, array $dismissedIds = []): array {
+        $now = $this->now();
+        
+        // 构建基础查询
+        $sql = "SELECT * FROM announcements
+                WHERE is_active = 1
+                AND (start_at IS NULL OR start_at <= :now1)
+                AND (end_at IS NULL OR end_at >= :now2)";
+        
+        $params = [
+            ':now1' => $now,
+            ':now2' => $now,
+        ];
+        
+        // 目标用户筛选
+        if ($isLoggedIn) {
+            $sql .= " AND target IN ('all', 'logged_in')";
+        } else {
+            $sql .= " AND target IN ('all', 'guest')";
+        }
+        
+        $sql .= " ORDER BY priority DESC, created_at DESC";
+        
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        $announcements = $stmt->fetchAll();
+        
+        // 获取已登录用户的关闭记录
+        $userDismissedIds = [];
+        if ($isLoggedIn && $userId) {
+            $dismissSql = "SELECT announcement_id FROM announcement_dismissals WHERE user_id = :user_id";
+            $dismissStmt = $this->pdo->prepare($dismissSql);
+            $dismissStmt->execute([':user_id' => $userId]);
+            $userDismissedIds = array_column($dismissStmt->fetchAll(), 'announcement_id');
+        }
+        
+        // 合并关闭记录
+        $allDismissedIds = array_unique(array_merge($dismissedIds, $userDismissedIds));
+        
+        // 过滤已关闭的公告，并按展示模式分组
+        $result = [
+            'banners' => [],
+            'modals' => [],
+            'inlines' => []
+        ];
+        
+        foreach ($announcements as $announcement) {
+            // 跳过已关闭的公告
+            if (in_array($announcement['id'], $allDismissedIds)) {
+                continue;
+            }
+            
+            $item = [
+                'id' => (int)$announcement['id'],
+                'title' => $announcement['title'],
+                'content' => $announcement['content'],
+                'type' => $announcement['type'],
+                'is_dismissible' => (bool)$announcement['is_dismissible'],
+            ];
+            
+            switch ($announcement['display_mode']) {
+                case 'banner':
+                    $result['banners'][] = $item;
+                    break;
+                case 'modal':
+                    $result['modals'][] = $item;
+                    break;
+                case 'inline':
+                    $result['inlines'][] = $item;
+                    break;
+            }
+        }
+        
+        return $result;
+    }
+
+    /**
+     * 记录用户关闭公告
+     */
+    public function dismissAnnouncement(int $announcementId, int $userId): bool {
+        $sql = "INSERT OR IGNORE INTO announcement_dismissals (announcement_id, user_id, dismissed_at)
+                VALUES (:announcement_id, :user_id, :dismissed_at)";
+        
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            return $stmt->execute([
+                ':announcement_id' => $announcementId,
+                ':user_id' => $userId,
+                ':dismissed_at' => $this->now(),
+            ]);
+        } catch (PDOException $e) {
+            error_log('Dismiss announcement failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 获取用户已关闭的公告ID列表
+     */
+    public function getUserDismissedAnnouncementIds(int $userId): array {
+        $sql = "SELECT announcement_id FROM announcement_dismissals WHERE user_id = :user_id";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':user_id' => $userId]);
+        return array_column($stmt->fetchAll(), 'announcement_id');
+    }
+
+    /**
+     * 清理过期的关闭记录（针对已删除的公告）
+     */
+    public function cleanupDismissals(): int {
+        $sql = "DELETE FROM announcement_dismissals
+                WHERE announcement_id NOT IN (SELECT id FROM announcements)";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute();
+        return $stmt->rowCount();
+    }
 }

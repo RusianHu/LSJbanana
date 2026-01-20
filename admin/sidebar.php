@@ -55,6 +55,11 @@ $currentPage = basename($_SERVER['PHP_SELF']);
             <?php _e('admin.sidebar.logs'); ?>
         </a>
 
+        <a href="<?php echo url('/admin/announcements.php'); ?>" class="nav-item <?php echo $currentPage === 'announcements.php' ? 'active' : ''; ?>">
+            <i class="fas fa-bullhorn"></i>
+            <?php _e('admin.sidebar.announcements'); ?>
+        </a>
+
         <a href="<?php echo url('/admin/login.php?action=logout'); ?>" class="nav-item logout">
             <i class="fas fa-sign-out-alt"></i>
             <?php _e('admin.sidebar.logout'); ?>

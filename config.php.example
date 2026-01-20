@@ -144,6 +144,18 @@ $adminConfig = [
     ],
 ];
 
+// 公告系统配置
+$announcementConfig = [
+    'enabled' => true,                          // 是否启用公告系统
+    'max_banners' => 3,                         // 最多同时显示的横幅数量
+    'max_modals_per_session' => 1,              // 每次会话最多显示的弹窗数量
+    'cache_ttl' => 300,                         // 公告缓存时间 (秒)
+    'allow_html' => true,                       // 是否允许 HTML 内容
+    'sanitize_html' => true,                    // 是否过滤危险 HTML 标签
+    'allowed_tags' => '<b><i><u><a><br><p><ul><ol><li><strong><em><span>',  // 允许的 HTML 标签
+    'guest_dismissal_ttl' => 7 * 24 * 3600,     // 访客关闭记录保留时间 (秒，默认7天)
+];
+
 // 管理员初始化引导配置
 $adminSetupConfig = [
     'enabled' => false,                                     // 是否启用初始化引导页
@@ -316,4 +328,5 @@ return [
     'captcha' => $captchaConfig,
     'admin' => $adminConfig,
     'admin_setup' => $adminSetupConfig,
+    'announcement' => $announcementConfig,
 ];

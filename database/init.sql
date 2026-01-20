@@ -187,3 +187,47 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
 -- 重置令牌索引
 CREATE INDEX IF NOT EXISTS idx_reset_token ON password_reset_tokens(token_hash);
 CREATE INDEX IF NOT EXISTS idx_reset_user ON password_reset_tokens(user_id);
+
+-- ============================================================
+-- 公告系统表
+-- ============================================================
+
+-- 公告表
+CREATE TABLE IF NOT EXISTS announcements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title VARCHAR(200) NOT NULL,              -- 公告标题
+    content TEXT NOT NULL,                     -- 公告内容 (支持 HTML)
+    type VARCHAR(20) DEFAULT 'info',           -- 类型: info/warning/success/important
+    display_mode VARCHAR(20) DEFAULT 'banner', -- 展示模式: banner/modal/inline
+    target VARCHAR(20) DEFAULT 'all',          -- 目标用户: all/logged_in/guest
+    priority INTEGER DEFAULT 0,                -- 优先级 (越大越靠前)
+    is_dismissible INTEGER DEFAULT 1,          -- 是否可关闭: 0=否, 1=是
+    is_active INTEGER DEFAULT 1,               -- 是否启用: 0=禁用, 1=启用
+    start_at DATETIME,                         -- 开始展示时间 (NULL=立即)
+    end_at DATETIME,                           -- 结束展示时间 (NULL=永久)
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_by VARCHAR(50) DEFAULT 'admin'     -- 创建者标识
+);
+
+-- 公告索引
+CREATE INDEX IF NOT EXISTS idx_announcements_active ON announcements(is_active);
+CREATE INDEX IF NOT EXISTS idx_announcements_priority ON announcements(priority DESC);
+CREATE INDEX IF NOT EXISTS idx_announcements_dates ON announcements(start_at, end_at);
+CREATE INDEX IF NOT EXISTS idx_announcements_type ON announcements(type);
+CREATE INDEX IF NOT EXISTS idx_announcements_display_mode ON announcements(display_mode);
+
+-- 用户关闭公告记录表 (用于追踪已登录用户的关闭状态)
+CREATE TABLE IF NOT EXISTS announcement_dismissals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    announcement_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    dismissed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (announcement_id) REFERENCES announcements(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(announcement_id, user_id)
+);
+
+-- 关闭记录索引
+CREATE INDEX IF NOT EXISTS idx_dismissals_user ON announcement_dismissals(user_id);
+CREATE INDEX IF NOT EXISTS idx_dismissals_announcement ON announcement_dismissals(announcement_id);

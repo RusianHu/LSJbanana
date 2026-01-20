@@ -353,7 +353,7 @@ try {
     sendError(__('api.invalid_action'), 400);
 }
 
-if (!in_array($action, ['generate', 'edit', 'optimize_prompt', 'transcribe', 'get_user_status'], true)) {
+if (!in_array($action, ['generate', 'edit', 'optimize_prompt', 'transcribe', 'get_user_status', 'get_announcements', 'dismiss_announcement'], true)) {
     sendError(__('api.unknown_action'), 400);
 }
 
@@ -424,6 +424,128 @@ function validateUserAuthAndStatus(Auth $auth, bool $requireBalance = false, flo
     }
 
     return $user;
+}
+
+// 公告相关 API（不需要登录也可以获取公告）
+if ($action === 'get_announcements') {
+    // 获取公告配置
+    $announcementConfig = $config['announcement'] ?? [];
+    
+    // 检查公告系统是否启用
+    if (!($announcementConfig['enabled'] ?? true)) {
+        echo json_encode([
+            'success' => true,
+            'data' => [
+                'banners' => [],
+                'modals' => [],
+                'inlines' => []
+            ]
+        ]);
+        exit;
+    }
+    
+    try {
+        // 确保公告表存在
+        $db = Database::getInstance();
+        $db->initAnnouncementTables();
+        
+        // 获取用户登录状态
+        $isLoggedIn = $auth->isLoggedIn();
+        $userId = $isLoggedIn ? $auth->getCurrentUserId() : null;
+        
+        // 获取访客已关闭的公告 ID（从请求中获取，前端通过 localStorage 存储）
+        $dismissedIdsJson = $_POST['dismissed_ids'] ?? '[]';
+        $dismissedIds = json_decode($dismissedIdsJson, true);
+        if (!is_array($dismissedIds)) {
+            $dismissedIds = [];
+        }
+        // 确保 ID 是整数
+        $dismissedIds = array_map('intval', $dismissedIds);
+        
+        // 获取有效公告
+        $announcements = $db->getActiveAnnouncements($isLoggedIn, $userId, $dismissedIds);
+        
+        // 验证返回数据结构
+        if (!is_array($announcements)) {
+            $announcements = ['banners' => [], 'modals' => [], 'inlines' => []];
+        }
+        if (!isset($announcements['banners']) || !is_array($announcements['banners'])) {
+            $announcements['banners'] = [];
+        }
+        if (!isset($announcements['modals']) || !is_array($announcements['modals'])) {
+            $announcements['modals'] = [];
+        }
+        if (!isset($announcements['inlines']) || !is_array($announcements['inlines'])) {
+            $announcements['inlines'] = [];
+        }
+        
+        // 应用最大数量限制
+        $maxBanners = (int)($announcementConfig['max_banners'] ?? 3);
+        if (count($announcements['banners']) > $maxBanners) {
+            $announcements['banners'] = array_slice($announcements['banners'], 0, $maxBanners);
+        }
+        
+        echo json_encode([
+            'success' => true,
+            'data' => $announcements
+        ]);
+    } catch (Exception $e) {
+        // 数据库错误时返回空数据，不影响页面正常显示
+        error_log('Get announcements error: ' . $e->getMessage());
+        echo json_encode([
+            'success' => true,
+            'data' => [
+                'banners' => [],
+                'modals' => [],
+                'inlines' => []
+            ]
+        ]);
+    }
+    exit;
+}
+
+// 关闭公告（已登录用户持久化到数据库）
+if ($action === 'dismiss_announcement') {
+    $announcementId = (int)($_POST['announcement_id'] ?? 0);
+    
+    if ($announcementId <= 0) {
+        sendError(__('validation.required', ['field' => 'announcement_id']), 400);
+    }
+    
+    // 检查用户是否登录
+    if (!$auth->isLoggedIn()) {
+        // 未登录用户：返回成功，让前端使用 localStorage 存储
+        echo json_encode([
+            'success' => true,
+            'persisted' => false,
+            'message' => __('announcement.dismiss_local')
+        ]);
+        exit;
+    }
+    
+    try {
+        // 已登录用户：持久化到数据库
+        $db = Database::getInstance();
+        $db->initAnnouncementTables();
+        
+        $userId = $auth->getCurrentUserId();
+        $result = $db->dismissAnnouncement($announcementId, $userId);
+        
+        echo json_encode([
+            'success' => true,
+            'persisted' => $result,
+            'message' => __('announcement.dismiss_success')
+        ]);
+    } catch (Exception $e) {
+        // 数据库错误时也返回成功，前端已通过 localStorage 处理
+        error_log('Dismiss announcement error: ' . $e->getMessage());
+        echo json_encode([
+            'success' => true,
+            'persisted' => false,
+            'message' => __('announcement.dismiss_local')
+        ]);
+    }
+    exit;
 }
 
 // 用户状态查询（不需要登录也可以查询，返回是否登录等信息）

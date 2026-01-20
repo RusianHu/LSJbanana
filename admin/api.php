@@ -573,6 +573,197 @@ try {
             jsonResponse(true, '获取成功', ['count' => $count]);
             break;
 
+        // ============================================================
+        // 公告管理相关
+        // ============================================================
+
+        case 'get_announcement':
+            $id = (int)($_POST['id'] ?? 0);
+            if ($id <= 0) {
+                jsonResponse(false, __('validation.required', ['field' => 'ID']));
+            }
+            
+            // 确保公告表存在
+            $db->initAnnouncementTables();
+            
+            $announcement = $db->getAnnouncementById($id);
+            if (!$announcement) {
+                jsonResponse(false, __('error.not_found'));
+            }
+            
+            jsonResponse(true, __('status.success'), $announcement);
+            break;
+
+        case 'create_announcement':
+            // 确保公告表存在
+            $db->initAnnouncementTables();
+            
+            $title = trim($_POST['title'] ?? '');
+            $content = trim($_POST['content'] ?? '');
+            
+            if (empty($title)) {
+                jsonResponse(false, __('validation.required', ['field' => __('admin.announcements.form.title')]));
+            }
+            if (empty($content)) {
+                jsonResponse(false, __('validation.required', ['field' => __('admin.announcements.form.content')]));
+            }
+            
+            // 过滤危险 HTML 标签
+            $config = require __DIR__ . '/../config.php';
+            $announcementConfig = $config['announcement'] ?? [];
+            if ($announcementConfig['sanitize_html'] ?? true) {
+                $allowedTags = $announcementConfig['allowed_tags'] ?? '<b><i><u><a><br><p><ul><ol><li><strong><em><span>';
+                $content = strip_tags($content, $allowedTags);
+            }
+            
+            $data = [
+                'title' => $title,
+                'content' => $content,
+                'type' => $_POST['type'] ?? 'info',
+                'display_mode' => $_POST['display_mode'] ?? 'banner',
+                'target' => $_POST['target'] ?? 'all',
+                'priority' => (int)($_POST['priority'] ?? 0),
+                'is_dismissible' => (int)($_POST['is_dismissible'] ?? 1),
+                'is_active' => (int)($_POST['is_active'] ?? 1),
+                'start_at' => !empty($_POST['start_at']) ? $_POST['start_at'] : null,
+                'end_at' => !empty($_POST['end_at']) ? $_POST['end_at'] : null,
+                'created_by' => 'admin',
+            ];
+            
+            $newId = $db->createAnnouncement($data);
+            
+            if ($newId) {
+                // 记录操作日志
+                $db->logAdminOperation('announcement_create', null, [
+                    'announcement_id' => $newId,
+                    'title' => $title,
+                ], getClientIp());
+                
+                jsonResponse(true, __('admin.announcements.save_success'), ['id' => $newId]);
+            } else {
+                jsonResponse(false, __('error.unknown'));
+            }
+            break;
+
+        case 'update_announcement':
+            $id = (int)($_POST['id'] ?? 0);
+            if ($id <= 0) {
+                jsonResponse(false, __('validation.required', ['field' => 'ID']));
+            }
+            
+            // 确保公告表存在
+            $db->initAnnouncementTables();
+            
+            $title = trim($_POST['title'] ?? '');
+            $content = trim($_POST['content'] ?? '');
+            
+            if (empty($title)) {
+                jsonResponse(false, __('validation.required', ['field' => __('admin.announcements.form.title')]));
+            }
+            if (empty($content)) {
+                jsonResponse(false, __('validation.required', ['field' => __('admin.announcements.form.content')]));
+            }
+            
+            // 过滤危险 HTML 标签
+            $config = require __DIR__ . '/../config.php';
+            $announcementConfig = $config['announcement'] ?? [];
+            if ($announcementConfig['sanitize_html'] ?? true) {
+                $allowedTags = $announcementConfig['allowed_tags'] ?? '<b><i><u><a><br><p><ul><ol><li><strong><em><span>';
+                $content = strip_tags($content, $allowedTags);
+            }
+            
+            $data = [
+                'title' => $title,
+                'content' => $content,
+                'type' => $_POST['type'] ?? 'info',
+                'display_mode' => $_POST['display_mode'] ?? 'banner',
+                'target' => $_POST['target'] ?? 'all',
+                'priority' => (int)($_POST['priority'] ?? 0),
+                'is_dismissible' => (int)($_POST['is_dismissible'] ?? 1),
+                'is_active' => (int)($_POST['is_active'] ?? 1),
+                'start_at' => !empty($_POST['start_at']) ? $_POST['start_at'] : null,
+                'end_at' => !empty($_POST['end_at']) ? $_POST['end_at'] : null,
+            ];
+            
+            $result = $db->updateAnnouncement($id, $data);
+            
+            if ($result) {
+                // 记录操作日志
+                $db->logAdminOperation('announcement_update', null, [
+                    'announcement_id' => $id,
+                    'title' => $title,
+                ], getClientIp());
+                
+                jsonResponse(true, __('admin.announcements.save_success'));
+            } else {
+                jsonResponse(false, __('error.unknown'));
+            }
+            break;
+
+        case 'delete_announcement':
+            $id = (int)($_POST['id'] ?? 0);
+            if ($id <= 0) {
+                jsonResponse(false, __('validation.required', ['field' => 'ID']));
+            }
+            
+            // 确保公告表存在
+            $db->initAnnouncementTables();
+            
+            // 获取公告信息用于日志
+            $announcement = $db->getAnnouncementById($id);
+            if (!$announcement) {
+                jsonResponse(false, __('error.not_found'));
+            }
+            
+            $result = $db->deleteAnnouncement($id);
+            
+            if ($result) {
+                // 记录操作日志
+                $db->logAdminOperation('announcement_delete', null, [
+                    'announcement_id' => $id,
+                    'title' => $announcement['title'],
+                ], getClientIp());
+                
+                jsonResponse(true, __('admin.announcements.delete_success'));
+            } else {
+                jsonResponse(false, __('error.unknown'));
+            }
+            break;
+
+        case 'toggle_announcement':
+            $id = (int)($_POST['id'] ?? 0);
+            if ($id <= 0) {
+                jsonResponse(false, __('validation.required', ['field' => 'ID']));
+            }
+            
+            // 确保公告表存在
+            $db->initAnnouncementTables();
+            
+            $announcement = $db->getAnnouncementById($id);
+            if (!$announcement) {
+                jsonResponse(false, __('error.not_found'));
+            }
+            
+            $result = $db->toggleAnnouncementStatus($id);
+            
+            if ($result) {
+                $newStatus = $announcement['is_active'] == 1 ? 0 : 1;
+                $opType = $newStatus == 1 ? 'announcement_enable' : 'announcement_disable';
+                
+                // 记录操作日志
+                $db->logAdminOperation($opType, null, [
+                    'announcement_id' => $id,
+                    'title' => $announcement['title'],
+                    'new_status' => $newStatus,
+                ], getClientIp());
+                
+                $message = $newStatus == 1 ? __('admin.announcements.enabled') : __('admin.announcements.disabled');
+                jsonResponse(true, $message);
+            } else {
+                jsonResponse(false, __('error.unknown'));
+            }
+            break;
+
         default:
             jsonResponse(false, '未知的操作: ' . $action);
     }

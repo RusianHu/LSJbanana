@@ -230,5 +230,9 @@
       "success": "Success",
       "failed": "Failed",
       "unknown": "Unknown"
+  },
+  "announcement": {
+      "dismiss": "Dismiss",
+      "i_know": "Got it"
   }
 }

@@ -2162,3 +2162,483 @@ textarea {
         font-size: 0.8rem;
     }
 }
+
+/* ============================================
+   公告系统样式 (Announcement System)
+   ============================================ */
+
+/* 公告类型颜色方案 */
+:root {
+    /* Info - 蓝色系 */
+    --announcement-info-bg: linear-gradient(135deg, #e3f2fd 0%, #fff 100%);
+    --announcement-info-border: #90caf9;
+    --announcement-info-text: #1565c0;
+    --announcement-info-icon: #1976d2;
+    
+    /* Warning - 橙色系 */
+    --announcement-warning-bg: linear-gradient(135deg, #fff3e0 0%, #fff 100%);
+    --announcement-warning-border: #ffcc80;
+    --announcement-warning-text: #e65100;
+    --announcement-warning-icon: #ff9800;
+    
+    /* Success - 绿色系 */
+    --announcement-success-bg: linear-gradient(135deg, #e8f5e9 0%, #fff 100%);
+    --announcement-success-border: #a5d6a7;
+    --announcement-success-text: #2e7d32;
+    --announcement-success-icon: #4caf50;
+    
+    /* Important - 项目主色香蕉黄 */
+    --announcement-important-bg: linear-gradient(135deg, #fffde7 0%, #fff8e1 100%);
+    --announcement-important-border: #ffc107;
+    --announcement-important-text: #6b4c00;
+    --announcement-important-icon: #ffc107;
+}
+
+/* ========== Banner 模式 (顶部横幅) ========== */
+.announcement-banners {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1001;
+    display: flex;
+    flex-direction: column;
+}
+
+.announcement-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    font-size: 0.95rem;
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        transform: translateY(-100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.announcement-banner.closing {
+    animation: slideUp 0.3s ease-out forwards;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateY(-100%);
+        opacity: 0;
+    }
+}
+
+.announcement-banner.info {
+    background: var(--announcement-info-bg);
+    border-bottom: 2px solid var(--announcement-info-border);
+    color: var(--announcement-info-text);
+}
+
+.announcement-banner.warning {
+    background: var(--announcement-warning-bg);
+    border-bottom: 2px solid var(--announcement-warning-border);
+    color: var(--announcement-warning-text);
+}
+
+.announcement-banner.success {
+    background: var(--announcement-success-bg);
+    border-bottom: 2px solid var(--announcement-success-border);
+    color: var(--announcement-success-text);
+}
+
+.announcement-banner.important {
+    background: var(--announcement-important-bg);
+    border-bottom: 2px solid var(--announcement-important-border);
+    color: var(--announcement-important-text);
+}
+
+.announcement-banner__content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+}
+
+.announcement-banner__icon {
+    font-size: 1.2rem;
+    flex-shrink: 0;
+}
+
+.announcement-banner.info .announcement-banner__icon { color: var(--announcement-info-icon); }
+.announcement-banner.warning .announcement-banner__icon { color: var(--announcement-warning-icon); }
+.announcement-banner.success .announcement-banner__icon { color: var(--announcement-success-icon); }
+.announcement-banner.important .announcement-banner__icon { color: var(--announcement-important-icon); }
+
+.announcement-banner__text {
+    flex: 1;
+    line-height: 1.4;
+}
+
+.announcement-banner__text a {
+    color: inherit;
+    text-decoration: underline;
+}
+
+.announcement-banner__close {
+    background: none;
+    border: none;
+    padding: 8px;
+    cursor: pointer;
+    color: inherit;
+    opacity: 0.6;
+    font-size: 1rem;
+    transition: opacity 0.2s;
+    flex-shrink: 0;
+}
+
+.announcement-banner__close:hover {
+    opacity: 1;
+}
+
+/* ========== Modal 模式 (弹窗) ========== */
+.announcement-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10001;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s, visibility 0.3s;
+}
+
+.announcement-modal-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.announcement-modal {
+    background: #fff;
+    border-radius: 16px;
+    max-width: 500px;
+    width: 90%;
+    max-height: 80vh;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    transform: scale(0.9) translateY(20px);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.announcement-modal-overlay.active .announcement-modal {
+    transform: scale(1) translateY(0);
+}
+
+.announcement-modal__header {
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid #eee;
+}
+
+.announcement-modal.info .announcement-modal__header {
+    background: var(--announcement-info-bg);
+    border-bottom-color: var(--announcement-info-border);
+}
+
+.announcement-modal.warning .announcement-modal__header {
+    background: var(--announcement-warning-bg);
+    border-bottom-color: var(--announcement-warning-border);
+}
+
+.announcement-modal.success .announcement-modal__header {
+    background: var(--announcement-success-bg);
+    border-bottom-color: var(--announcement-success-border);
+}
+
+.announcement-modal.important .announcement-modal__header {
+    background: var(--announcement-important-bg);
+    border-bottom-color: var(--announcement-important-border);
+}
+
+.announcement-modal__icon {
+    font-size: 1.5rem;
+}
+
+.announcement-modal.info .announcement-modal__icon { color: var(--announcement-info-icon); }
+.announcement-modal.warning .announcement-modal__icon { color: var(--announcement-warning-icon); }
+.announcement-modal.success .announcement-modal__icon { color: var(--announcement-success-icon); }
+.announcement-modal.important .announcement-modal__icon { color: var(--announcement-important-icon); }
+
+.announcement-modal__title {
+    flex: 1;
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.announcement-modal.info .announcement-modal__title { color: var(--announcement-info-text); }
+.announcement-modal.warning .announcement-modal__title { color: var(--announcement-warning-text); }
+.announcement-modal.success .announcement-modal__title { color: var(--announcement-success-text); }
+.announcement-modal.important .announcement-modal__title { color: var(--announcement-important-text); }
+
+.announcement-modal__body {
+    padding: 24px;
+    max-height: 300px;
+    overflow-y: auto;
+    line-height: 1.6;
+    color: #444;
+}
+
+.announcement-modal__body a {
+    color: #1976d2;
+    text-decoration: none;
+}
+
+.announcement-modal__body a:hover {
+    text-decoration: underline;
+}
+
+.announcement-modal__footer {
+    padding: 16px 24px;
+    border-top: 1px solid #eee;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.announcement-modal__btn {
+    padding: 10px 24px;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.announcement-modal.info .announcement-modal__btn {
+    background: var(--announcement-info-icon);
+    color: #fff;
+}
+
+.announcement-modal.warning .announcement-modal__btn {
+    background: var(--announcement-warning-icon);
+    color: #fff;
+}
+
+.announcement-modal.success .announcement-modal__btn {
+    background: var(--announcement-success-icon);
+    color: #fff;
+}
+
+.announcement-modal.important .announcement-modal__btn {
+    background: var(--announcement-important-icon);
+    color: #333;
+}
+
+.announcement-modal__btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* ========== Inline 模式 (内嵌卡片) ========== */
+.announcement-inlines {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.announcement-inline {
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    animation: fadeInUp 0.3s ease-out;
+}
+
+@keyframes fadeInUp {
+    from {
+        transform: translateY(10px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.announcement-inline.closing {
+    animation: fadeOutUp 0.3s ease-out forwards;
+}
+
+@keyframes fadeOutUp {
+    from {
+        transform: translateY(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateY(-10px);
+        opacity: 0;
+    }
+}
+
+.announcement-inline.info {
+    background: var(--announcement-info-bg);
+    border: 1px solid var(--announcement-info-border);
+}
+
+.announcement-inline.warning {
+    background: var(--announcement-warning-bg);
+    border: 1px solid var(--announcement-warning-border);
+}
+
+.announcement-inline.success {
+    background: var(--announcement-success-bg);
+    border: 1px solid var(--announcement-success-border);
+}
+
+.announcement-inline.important {
+    background: var(--announcement-important-bg);
+    border: 1px solid var(--announcement-important-border);
+}
+
+.announcement-inline__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.announcement-inline__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.announcement-inline.info .announcement-inline__title { color: var(--announcement-info-text); }
+.announcement-inline.warning .announcement-inline__title { color: var(--announcement-warning-text); }
+.announcement-inline.success .announcement-inline__title { color: var(--announcement-success-text); }
+.announcement-inline.important .announcement-inline__title { color: var(--announcement-important-text); }
+
+.announcement-inline__title i {
+    font-size: 1.1rem;
+}
+
+.announcement-inline.info .announcement-inline__title i { color: var(--announcement-info-icon); }
+.announcement-inline.warning .announcement-inline__title i { color: var(--announcement-warning-icon); }
+.announcement-inline.success .announcement-inline__title i { color: var(--announcement-success-icon); }
+.announcement-inline.important .announcement-inline__title i { color: var(--announcement-important-icon); }
+
+.announcement-inline__close {
+    background: none;
+    border: none;
+    padding: 6px;
+    cursor: pointer;
+    color: #888;
+    font-size: 0.9rem;
+    transition: color 0.2s;
+}
+
+.announcement-inline__close:hover {
+    color: #333;
+}
+
+.announcement-inline__body {
+    padding: 12px 16px;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: #555;
+}
+
+.announcement-inline__body a {
+    color: #1976d2;
+    text-decoration: none;
+}
+
+.announcement-inline__body a:hover {
+    text-decoration: underline;
+}
+
+/* 响应式适配 */
+@media (max-width: 600px) {
+    .announcement-banner {
+        padding: 10px 14px;
+        font-size: 0.85rem;
+    }
+    
+    .announcement-banner__icon {
+        font-size: 1rem;
+    }
+    
+    .announcement-modal {
+        max-width: 95%;
+        margin: 10px;
+    }
+    
+    .announcement-modal__header {
+        padding: 16px 18px;
+    }
+    
+    .announcement-modal__body {
+        padding: 18px;
+    }
+    
+    .announcement-inline {
+        border-radius: 10px;
+    }
+    
+    .announcement-inline__header {
+        padding: 10px 14px;
+    }
+    
+    .announcement-inline__body {
+        padding: 10px 14px;
+    }
+}
+
+/* 当有 banner 公告时，为顶部固定元素预留空间 */
+body.has-announcement-banners .header-user-fixed {
+    top: calc(20px + var(--announcement-banners-height, 0px));
+    transition: top 0.3s ease;
+}
+
+@media (max-width: 600px) {
+    body.has-announcement-banners header {
+        padding-top: calc(70px + var(--announcement-banners-height, 0px));
+    }
+}
+
+@media (min-width: 601px) and (max-width: 900px) {
+    body.has-announcement-banners header {
+        padding-top: calc(50px + var(--announcement-banners-height, 0px));
+    }
+}
+
+/* 减少动画偏好 */
+@media (prefers-reduced-motion: reduce) {
+    .announcement-banner,
+    .announcement-inline,
+    .announcement-modal {
+        animation: none;
+    }
+    
+    .announcement-banner.closing,
+    .announcement-inline.closing {
+        display: none;
+    }
+}

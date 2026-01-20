@@ -40,6 +40,35 @@ return [
     ],
 
     // ============================================================
+    // Announcement System
+    // ============================================================
+    'announcement' => [
+        'title' => 'Announcement',
+        'no_announcements' => 'No announcements',
+        'dismiss' => 'Dismiss',
+        'read_more' => 'Read more',
+        'i_know' => 'Got it',
+        'dismiss_success' => 'Announcement dismissed',
+        'dismiss_local' => 'Announcement dismissed (local)',
+        'type' => [
+            'info' => 'Information',
+            'warning' => 'Warning',
+            'success' => 'Success',
+            'important' => 'Important',
+        ],
+        'display_mode' => [
+            'banner' => 'Top Banner',
+            'modal' => 'Modal Popup',
+            'inline' => 'Inline Card',
+        ],
+        'target' => [
+            'all' => 'All Users',
+            'logged_in' => 'Logged In Users',
+            'guest' => 'Guests Only',
+        ],
+    ],
+
+    // ============================================================
     // Navigation Menu
     // ============================================================
     'nav' => [
@@ -479,6 +508,52 @@ return [
             'logs' => 'View Logs',
             'logout' => 'Logout',
             'toggle_menu' => 'Toggle Menu',
+            'announcements' => 'Announcements',
+        ],
+        // Announcements
+        'announcements' => [
+            'title' => 'Announcements',
+            'create' => 'Create Announcement',
+            'edit' => 'Edit Announcement',
+            'delete_confirm' => 'Are you sure you want to delete this announcement?',
+            'no_announcements' => 'No announcements found',
+            'preview' => 'Preview',
+            'preview_title' => 'Announcement Title Example',
+            'preview_content' => 'Here is the preview area for announcement content...',
+            'save_success' => 'Announcement saved successfully',
+            'delete_success' => 'Announcement deleted successfully',
+            'enabled' => 'Announcement enabled',
+            'disabled' => 'Announcement disabled',
+            'time_range' => 'Display Time',
+            'time_permanent' => 'Permanent',
+            'time_now' => 'Start Now',
+            'time_forever' => 'Forever',
+            'search_placeholder' => 'Search title or content...',
+            'all_status' => 'All Status',
+            'all_types' => 'All Types',
+            'all_modes' => 'All Modes',
+            'form' => [
+                'title' => 'Title',
+                'content' => 'Content',
+                'content_hint' => 'Supports HTML, e.g. <b>bold</b>, <a href="#">link</a>',
+                'type' => 'Type',
+                'display_mode' => 'Display Mode',
+                'target' => 'Target Users',
+                'priority' => 'Priority',
+                'priority_hint' => 'Higher value means higher priority (0-100)',
+                'is_dismissible' => 'Allow Dismiss',
+                'is_active' => 'Active Immediately',
+                'start_at' => 'Start Time',
+                'end_at' => 'End Time',
+                'time_hint' => 'Leave empty for immediate start / never expire',
+            ],
+            'status' => [
+                'active' => 'Active',
+                'inactive' => 'Inactive',
+                'scheduled' => 'Scheduled',
+                'expired' => 'Expired',
+            ],
+            'system_disabled' => 'The announcement system is disabled in the configuration file. To enable announcements, set $announcementConfig[\'enabled\'] to true in config.php.',
         ],
         // Dashboard
         'dashboard' => [

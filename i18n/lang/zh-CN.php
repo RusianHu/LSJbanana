@@ -40,6 +40,35 @@ return [
     ],
 
     // ============================================================
+    // 公告系统
+    // ============================================================
+    'announcement' => [
+        'title' => '公告',
+        'no_announcements' => '暂无公告',
+        'dismiss' => '关闭',
+        'read_more' => '查看详情',
+        'i_know' => '我知道了',
+        'dismiss_success' => '公告已关闭',
+        'dismiss_local' => '公告已关闭（本地记录）',
+        'type' => [
+            'info' => '普通信息',
+            'warning' => '警告提醒',
+            'success' => '成功通知',
+            'important' => '重要公告',
+        ],
+        'display_mode' => [
+            'banner' => '顶部横幅',
+            'modal' => '弹窗通知',
+            'inline' => '内嵌卡片',
+        ],
+        'target' => [
+            'all' => '所有用户',
+            'logged_in' => '仅登录用户',
+            'guest' => '仅访客',
+        ],
+    ],
+
+    // ============================================================
     // 导航菜单
     // ============================================================
     'nav' => [
@@ -479,6 +508,52 @@ return [
             'logs' => '日志查看',
             'logout' => '退出登录',
             'toggle_menu' => '切换菜单',
+            'announcements' => '公告管理',
+        ],
+        // 公告管理
+        'announcements' => [
+            'title' => '公告管理',
+            'create' => '新建公告',
+            'edit' => '编辑公告',
+            'delete_confirm' => '确定要删除这条公告吗？',
+            'no_announcements' => '暂无公告数据',
+            'preview' => '预览',
+            'preview_title' => '公告标题示例',
+            'preview_content' => '这里是公告内容预览区域...',
+            'save_success' => '公告保存成功',
+            'delete_success' => '公告删除成功',
+            'enabled' => '公告已启用',
+            'disabled' => '公告已禁用',
+            'time_range' => '展示时间',
+            'time_permanent' => '永久有效',
+            'time_now' => '立即开始',
+            'time_forever' => '永不结束',
+            'search_placeholder' => '搜索标题或内容...',
+            'all_status' => '全部状态',
+            'all_types' => '全部类型',
+            'all_modes' => '全部模式',
+            'form' => [
+                'title' => '公告标题',
+                'content' => '公告内容',
+                'content_hint' => '支持 HTML 格式，可使用 <b>粗体</b>、<a href="#">链接</a> 等',
+                'type' => '公告类型',
+                'display_mode' => '展示模式',
+                'target' => '目标用户',
+                'priority' => '优先级',
+                'priority_hint' => '数值越大越靠前 (0-100)',
+                'is_dismissible' => '允许用户关闭',
+                'is_active' => '立即启用',
+                'start_at' => '开始时间',
+                'end_at' => '结束时间',
+                'time_hint' => '留空表示立即开始/永不结束',
+            ],
+            'status' => [
+                'active' => '启用中',
+                'inactive' => '已禁用',
+                'scheduled' => '待生效',
+                'expired' => '已过期',
+            ],
+            'system_disabled' => '公告系统已在配置文件中禁用。要启用公告功能，请将 config.php 中的 $announcementConfig[\'enabled\'] 设置为 true。',
         ],
         // 仪表盘
         'dashboard' => [

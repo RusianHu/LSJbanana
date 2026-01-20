@@ -229,5 +229,9 @@
       "success": "成功",
       "failed": "失败",
       "unknown": "未知"
+  },
+  "announcement": {
+      "dismiss": "关闭",
+      "i_know": "我知道了"
   }
 }
