@@ -500,11 +500,11 @@ $totalPages = ceil($totalCount / $perPage);
     </div>
 
     <!-- 创建/编辑公告模态框 -->
-    <div class="modal-overlay" id="announcementModal">
-        <div class="modal-content">
+    <div class="modal-overlay" id="announcementModal" data-modal="announcement">
+        <div class="modal-content" data-modal-content>
             <div class="modal-header">
                 <h3 id="modalTitle"><?php _e('admin.announcements.create'); ?></h3>
-                <button class="modal-close" onclick="closeModal()">&times;</button>
+                <button type="button" class="modal-close" data-modal-close aria-label="<?php _e('form.close'); ?>">&times;</button>
             </div>
             <div class="modal-body">
                 <form id="announcementForm">
@@ -595,107 +595,184 @@ $totalPages = ceil($totalCount / $perPage);
                 </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn-secondary" onclick="closeModal()"><?php _e('form.cancel'); ?></button>
-                <button type="button" class="btn-primary" onclick="saveAnnouncement()"><?php _e('form.save'); ?></button>
+                <button type="button" class="btn-secondary" data-modal-close><?php _e('form.cancel'); ?></button>
+                <button type="button" class="btn-primary" id="saveAnnouncementBtn"><?php _e('form.save'); ?></button>
             </div>
         </div>
     </div>
 
     <script>
-        // 模态框操作
+        // ========== 模态框管理器 ==========
+        const AnnouncementModal = {
+            modal: null,
+            form: null,
+            isOpen: false,
+            
+            init() {
+                this.modal = document.getElementById('announcementModal');
+                this.form = document.getElementById('announcementForm');
+                if (!this.modal) return;
+                
+                this.bindEvents();
+            },
+            
+            bindEvents() {
+                // 使用事件委托处理所有关闭按钮
+                this.modal.addEventListener('click', (e) => {
+                    // 点击遮罩背景关闭
+                    if (e.target === this.modal) {
+                        this.close();
+                        return;
+                    }
+                    // 点击带有 data-modal-close 属性的元素关闭
+                    if (e.target.closest('[data-modal-close]')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        this.close();
+                        return;
+                    }
+                });
+                
+                // ESC 键关闭
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape' && this.isOpen) {
+                        this.close();
+                    }
+                });
+                
+                // 保存按钮
+                const saveBtn = document.getElementById('saveAnnouncementBtn');
+                if (saveBtn) {
+                    saveBtn.addEventListener('click', () => this.save());
+                }
+            },
+            
+            open(mode = 'create', id = null) {
+                if (!this.modal) return;
+                
+                if (mode === 'create') {
+                    document.getElementById('modalTitle').textContent = '<?php _e('admin.announcements.create'); ?>';
+                    this.form.reset();
+                    document.getElementById('formId').value = '';
+                    document.getElementById('formDismissible').checked = true;
+                    document.getElementById('formActive').checked = true;
+                    updatePreview();
+                    this.show();
+                } else if (mode === 'edit' && id) {
+                    document.getElementById('modalTitle').textContent = '<?php _e('admin.announcements.edit'); ?>';
+                    this.loadAndEdit(id);
+                }
+            },
+            
+            loadAndEdit(id) {
+                fetch('api.php', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    body: 'action=get_announcement&id=' + id
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        const a = data.data;
+                        document.getElementById('formId').value = a.id;
+                        document.getElementById('formTitle').value = a.title;
+                        document.getElementById('formContent').value = a.content;
+                        document.getElementById('formType').value = a.type;
+                        document.getElementById('formDisplayMode').value = a.display_mode;
+                        document.getElementById('formTarget').value = a.target;
+                        document.getElementById('formPriority').value = a.priority;
+                        document.getElementById('formDismissible').checked = a.is_dismissible == 1;
+                        document.getElementById('formActive').checked = a.is_active == 1;
+                        
+                        // 处理日期时间
+                        if (a.start_at) {
+                            document.getElementById('formStartAt').value = a.start_at.replace(' ', 'T').slice(0, 16);
+                        } else {
+                            document.getElementById('formStartAt').value = '';
+                        }
+                        if (a.end_at) {
+                            document.getElementById('formEndAt').value = a.end_at.replace(' ', 'T').slice(0, 16);
+                        } else {
+                            document.getElementById('formEndAt').value = '';
+                        }
+                        
+                        updatePreview();
+                        this.show();
+                    } else {
+                        alert(data.message || '<?php _e('error.data_load_failed'); ?>');
+                    }
+                })
+                .catch(e => {
+                    console.error(e);
+                    alert('<?php _e('error.request_failed'); ?>');
+                });
+            },
+            
+            show() {
+                if (!this.modal) return;
+                this.modal.classList.add('show');
+                this.isOpen = true;
+                document.body.style.overflow = 'hidden';
+                
+                // 焦点管理：聚焦到第一个输入框
+                setTimeout(() => {
+                    const firstInput = this.modal.querySelector('input:not([type="hidden"]), textarea');
+                    if (firstInput) firstInput.focus();
+                }, 100);
+            },
+            
+            close() {
+                if (!this.modal) return;
+                this.modal.classList.remove('show');
+                this.isOpen = false;
+                document.body.style.overflow = '';
+            },
+            
+            save() {
+                const formData = new FormData(this.form);
+                const id = formData.get('id');
+                
+                formData.append('action', id ? 'update_announcement' : 'create_announcement');
+                formData.set('is_dismissible', document.getElementById('formDismissible').checked ? '1' : '0');
+                formData.set('is_active', document.getElementById('formActive').checked ? '1' : '0');
+                
+                // 转换日期时间格式
+                const startAt = formData.get('start_at');
+                const endAt = formData.get('end_at');
+                if (startAt) formData.set('start_at', startAt.replace('T', ' ') + ':00');
+                if (endAt) formData.set('end_at', endAt.replace('T', ' ') + ':00');
+                
+                fetch('api.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        this.close();
+                        location.reload();
+                    } else {
+                        alert(data.message || '<?php _e('error.unknown'); ?>');
+                    }
+                })
+                .catch(e => {
+                    console.error(e);
+                    alert('<?php _e('error.request_failed'); ?>');
+                });
+            }
+        };
+        
+        // 兼容旧的全局函数调用
         function openCreateModal() {
-            document.getElementById('modalTitle').textContent = '<?php _e('admin.announcements.create'); ?>';
-            document.getElementById('announcementForm').reset();
-            document.getElementById('formId').value = '';
-            document.getElementById('formDismissible').checked = true;
-            document.getElementById('formActive').checked = true;
-            updatePreview();
-            document.getElementById('announcementModal').classList.add('show');
+            AnnouncementModal.open('create');
         }
         
         function openEditModal(id) {
-            document.getElementById('modalTitle').textContent = '<?php _e('admin.announcements.edit'); ?>';
-            
-            // 获取公告详情
-            fetch('api.php', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: 'action=get_announcement&id=' + id
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    const a = data.data;
-                    document.getElementById('formId').value = a.id;
-                    document.getElementById('formTitle').value = a.title;
-                    document.getElementById('formContent').value = a.content;
-                    document.getElementById('formType').value = a.type;
-                    document.getElementById('formDisplayMode').value = a.display_mode;
-                    document.getElementById('formTarget').value = a.target;
-                    document.getElementById('formPriority').value = a.priority;
-                    document.getElementById('formDismissible').checked = a.is_dismissible == 1;
-                    document.getElementById('formActive').checked = a.is_active == 1;
-                    
-                    // 处理日期时间
-                    if (a.start_at) {
-                        document.getElementById('formStartAt').value = a.start_at.replace(' ', 'T').slice(0, 16);
-                    } else {
-                        document.getElementById('formStartAt').value = '';
-                    }
-                    if (a.end_at) {
-                        document.getElementById('formEndAt').value = a.end_at.replace(' ', 'T').slice(0, 16);
-                    } else {
-                        document.getElementById('formEndAt').value = '';
-                    }
-                    
-                    updatePreview();
-                    document.getElementById('announcementModal').classList.add('show');
-                } else {
-                    alert(data.message || '<?php _e('error.data_load_failed'); ?>');
-                }
-            })
-            .catch(e => {
-                console.error(e);
-                alert('<?php _e('error.request_failed'); ?>');
-            });
+            AnnouncementModal.open('edit', id);
         }
         
         function closeModal() {
-            document.getElementById('announcementModal').classList.remove('show');
-        }
-        
-        function saveAnnouncement() {
-            const form = document.getElementById('announcementForm');
-            const formData = new FormData(form);
-            const id = formData.get('id');
-            
-            formData.append('action', id ? 'update_announcement' : 'create_announcement');
-            formData.set('is_dismissible', document.getElementById('formDismissible').checked ? '1' : '0');
-            formData.set('is_active', document.getElementById('formActive').checked ? '1' : '0');
-            
-            // 转换日期时间格式
-            const startAt = formData.get('start_at');
-            const endAt = formData.get('end_at');
-            if (startAt) formData.set('start_at', startAt.replace('T', ' ') + ':00');
-            if (endAt) formData.set('end_at', endAt.replace('T', ' ') + ':00');
-            
-            fetch('api.php', {
-                method: 'POST',
-                body: formData
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    closeModal();
-                    location.reload();
-                } else {
-                    alert(data.message || '<?php _e('error.unknown'); ?>');
-                }
-            })
-            .catch(e => {
-                console.error(e);
-                alert('<?php _e('error.request_failed'); ?>');
-            });
+            AnnouncementModal.close();
         }
         
         function toggleStatus(id) {
@@ -759,11 +836,9 @@ $totalPages = ceil($totalCount / $perPage);
         document.getElementById('formContent').addEventListener('input', updatePreview);
         document.getElementById('formType').addEventListener('change', updatePreview);
         
-        // 点击模态框外部关闭
-        document.getElementById('announcementModal').addEventListener('click', function(e) {
-            if (e.target === this) {
-                closeModal();
-            }
+        // 初始化模态框管理器
+        document.addEventListener('DOMContentLoaded', function() {
+            AnnouncementModal.init();
         });
     </script>
 </body>
