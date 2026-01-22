@@ -602,6 +602,12 @@ $totalPages = ceil($totalCount / $perPage);
     </div>
 
     <script>
+    // 注入 i18n 配置
+    window.ADMIN_API_ENDPOINT = '<?php echo url('/admin/api.php'); ?>';
+    window.LSJ_LANG = '<?php echo currentLocale(); ?>';
+    </script>
+    <script src="<?php echo url('/i18n/i18n.js'); ?>"></script>
+    <script>
         // ========== 模态框管理器 ==========
         const AnnouncementModal = {
             modal: null,

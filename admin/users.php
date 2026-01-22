@@ -354,7 +354,9 @@ function formatTime($datetime): string {
     <script>
     // 注入 API 端点配置 (可选,script.js 会回退到相对路径)
     window.ADMIN_API_ENDPOINT = '<?php echo url('/admin/api.php'); ?>';
+    window.LSJ_LANG = '<?php echo currentLocale(); ?>';
     </script>
+    <script src="<?php echo url('/i18n/i18n.js'); ?>"></script>
     <script src="<?php echo url('/admin/script.js'); ?>"></script>
     <script>
         // 当前查看的用户ID
