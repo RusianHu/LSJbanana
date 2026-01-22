@@ -1456,33 +1456,6 @@ textarea {
 
 /* ========== 用户系统样式 ========== */
 
-/* 头部布局 */
-.header-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 20px;
-    margin-bottom: 15px;
-}
-
-.header-brand {
-    flex: 1;
-}
-
-.header-brand h1 {
-    font-size: 2rem;
-    margin-bottom: 5px;
-}
-
-.header-brand p {
-    color: #666;
-    font-size: 0.95rem;
-}
-
-.header-user {
-    flex-shrink: 0;
-}
-
 /* 认证按钮 */
 .auth-buttons {
     display: flex;
@@ -1708,32 +1681,6 @@ textarea {
     color: #e53935;
 }
 
-/* 价格提示 */
-.price-notice {
-    background: linear-gradient(135deg, #fff8e1 0%, #fff 100%);
-    border: 1px solid #ffe082;
-    border-radius: 8px;
-    padding: 10px 15px;
-    font-size: 0.9rem;
-    color: #5d4037;
-    text-align: center;
-}
-
-.price-notice i {
-    color: #ff9800;
-    margin-right: 5px;
-}
-
-.price-notice a {
-    color: #1976d2;
-    text-decoration: none;
-    font-weight: 600;
-}
-
-.price-notice a:hover {
-    text-decoration: underline;
-}
-
 /* 余额不足错误样式 */
 .insufficient-balance-error {
     display: flex;
@@ -1865,20 +1812,6 @@ textarea {
 
 /* 移动端适配 */
 @media (max-width: 600px) {
-    .header-top {
-        flex-direction: column;
-        align-items: stretch;
-        text-align: center;
-    }
-
-    .header-brand h1 {
-        font-size: 1.6rem;
-    }
-
-    .header-user {
-        margin-top: 15px;
-    }
-
     .auth-buttons {
         justify-content: center;
     }
