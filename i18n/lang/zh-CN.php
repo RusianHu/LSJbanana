@@ -191,6 +191,7 @@ return [
         'old_password_wrong' => '旧密码错误',
         'amount_min' => '最低金额为 :min 元',
         'amount_max' => '最高金额为 :max 元',
+        'max_size' => '文件大小不能超过 :size',
     ],
 
     // ============================================================
@@ -218,6 +219,17 @@ return [
         'action_check_db' => '确认 database 目录存在且具有写入权限',
         'action_check_logs' => '查看服务器错误日志获取详细信息',
         'partial_function' => '部分功能可能无法正常使用。请检查配置文件和数据库设置。',
+        'prompt_rejected' => '提示词被拒绝',
+        'optimization_interrupted' => '优化过程被中断',
+        'optimization_no_result' => '未获取到优化结果',
+        'invalid_token_length' => '无效的令牌长度',
+        'secure_token_failed' => '无法生成安全令牌',
+        'upload_failed' => '上传失败',
+        'invalid_upload_source' => '无效的上传来源',
+        'file_too_large' => '文件过大',
+        'unsupported_image_format' => '不支持的图片格式',
+        'invalid_format' => '无效的格式',
+        'read_failed' => '读取失败',
     ],
 
     // ============================================================
@@ -319,6 +331,16 @@ return [
         // 价格提示
         'cost_per_task' => '单次消耗 :price 元',
         'available_times' => '可用 :count 次',
+    ],
+
+    // ============================================================
+    // 余额相关（前端）
+    // ============================================================
+    'balance' => [
+        'recharge' => '立即充值',
+        'insufficient' => '余额不足',
+        'current' => '当前余额',
+        'required' => '本次需要',
     ],
 
     // ============================================================
@@ -498,6 +520,13 @@ return [
         'need_init' => '需要初始化管理员系统',
         'need_init_desc' => '检测到管理员表缺失，请先完成初始化引导。',
         'start_init' => '开始初始化',
+        'feature_disabled' => '该功能已禁用',
+        'email_updated' => '邮箱修改成功',
+        'user_enabled' => '用户已启用',
+        'user_disabled' => '用户已禁用',
+        'balance_added' => '充值成功',
+        'balance_deducted' => '扣款成功',
+        'password_reset' => '密码重置成功',
         // 侧边栏
         'sidebar' => [
             'dashboard' => '仪表盘',
@@ -580,6 +609,7 @@ return [
             'all_status' => '全部状态',
             'user_id' => '用户ID',
             'no_users' => '暂无用户数据',
+            'invalid_id' => '无效的用户ID',
             'view_detail' => '查看详情',
             'user_detail' => '用户详情',
             'basic_info' => '基本信息',

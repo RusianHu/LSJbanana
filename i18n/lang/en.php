@@ -191,6 +191,7 @@ return [
         'old_password_wrong' => 'Current password is incorrect',
         'amount_min' => 'Minimum amount is :min CNY',
         'amount_max' => 'Maximum amount is :max CNY',
+        'max_size' => 'File size cannot exceed :size',
     ],
 
     // ============================================================
@@ -218,6 +219,17 @@ return [
         'action_check_db' => 'Ensure database directory exists and has write permissions',
         'action_check_logs' => 'Check server error logs for more details',
         'partial_function' => 'Some features may not work properly. Please check configuration and database settings.',
+        'prompt_rejected' => 'Prompt was rejected',
+        'optimization_interrupted' => 'Optimization process was interrupted',
+        'optimization_no_result' => 'No optimization result received',
+        'invalid_token_length' => 'Invalid token length',
+        'secure_token_failed' => 'Failed to generate secure token',
+        'upload_failed' => 'Upload failed',
+        'invalid_upload_source' => 'Invalid upload source',
+        'file_too_large' => 'File is too large',
+        'unsupported_image_format' => 'Unsupported image format',
+        'invalid_format' => 'Invalid format',
+        'read_failed' => 'Read failed',
     ],
 
     // ============================================================
@@ -319,6 +331,16 @@ return [
         // Price hints
         'cost_per_task' => ':price CNY per task',
         'available_times' => ':count tasks available',
+    ],
+
+    // ============================================================
+    // Balance Related (Frontend)
+    // ============================================================
+    'balance' => [
+        'recharge' => 'Recharge Now',
+        'insufficient' => 'Insufficient Balance',
+        'current' => 'Current Balance',
+        'required' => 'Required',
     ],
 
     // ============================================================
@@ -498,6 +520,13 @@ return [
         'need_init' => 'Admin System Initialization Required',
         'need_init_desc' => 'Admin tables are missing, please complete the initialization wizard first.',
         'start_init' => 'Start Initialization',
+        'feature_disabled' => 'This feature is disabled',
+        'email_updated' => 'Email updated successfully',
+        'user_enabled' => 'User enabled',
+        'user_disabled' => 'User disabled',
+        'balance_added' => 'Balance added successfully',
+        'balance_deducted' => 'Balance deducted successfully',
+        'password_reset' => 'Password reset successfully',
         // Sidebar
         'sidebar' => [
             'dashboard' => 'Dashboard',
@@ -580,6 +609,7 @@ return [
             'all_status' => 'All Status',
             'user_id' => 'User ID',
             'no_users' => 'No user data',
+            'invalid_id' => 'Invalid user ID',
             'view_detail' => 'View Details',
             'user_detail' => 'User Details',
             'basic_info' => 'Basic Info',
