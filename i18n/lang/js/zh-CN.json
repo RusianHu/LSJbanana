@@ -1,7 +1,8 @@
 {
   "site": {
     "title": "老司机的香蕉",
-    "subtitle": "LSJbanana"
+    "subtitle": "LSJbanana",
+    "balance_unit": "元"
   },
   "index": {
     "tab_generate": "文生图 (Generate)",
@@ -103,7 +104,8 @@
   "form": {
     "loading": "加载中...",
     "processing": "处理中...",
-    "submitting": "提交中..."
+    "submitting": "提交中...",
+    "close": "关闭"
   },
   "admin": {
     "email_updated": "邮箱修改成功",
@@ -152,7 +154,9 @@
       "selected_user": "选中用户",
       "current_balance": "当前余额",
       "select_user_hint": "请先选择用户",
-      "deduct_confirm_negative": "警告：扣除该金额后用户余额将变为负数 (当前: {balance})。是否继续？"
+      "deduct_confirm_negative": "警告：扣除该金额后用户余额将变为负数 (当前: {balance})。是否继续？",
+      "add_title": "人工充值",
+      "deduct_title": "人工扣款"
       },
       "orders": {
         "backfill_confirm": "确定要为所有旧待支付订单回填过期时间吗？回填后这些订单将被标记为过期。",
@@ -233,5 +237,16 @@
   "announcement": {
       "dismiss": "关闭",
       "i_know": "我知道了"
+  },
+  "misc": {
+      "confirm_action": "确定要执行此操作吗？",
+      "unit_images": "张"
+  },
+  "action": {
+      "enable": "启用账户",
+      "disable": "禁用账户"
+  },
+  "api": {
+      "prompt_required": "提示词不能为空"
   }
 }

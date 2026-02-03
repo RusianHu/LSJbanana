@@ -1,7 +1,8 @@
 {
   "site": {
     "title": "LSJbanana",
-    "subtitle": "LSJbanana"
+    "subtitle": "LSJbanana",
+    "balance_unit": "CNY"
   },
   "index": {
     "tab_generate": "Text to Image (Generate)",
@@ -103,7 +104,8 @@
   "form": {
     "loading": "Loading...",
     "processing": "Processing...",
-    "submitting": "Submitting..."
+    "submitting": "Submitting...",
+    "close": "Close"
   },
   "admin": {
     "email_updated": "Email updated successfully",
@@ -152,7 +154,9 @@
       "selected_user": "Selected User",
       "current_balance": "Current Balance",
       "select_user_hint": "Please select a user first",
-      "deduct_confirm_negative": "Warning: User balance will become negative after this deduction (Current: {balance}). Continue?"
+      "deduct_confirm_negative": "Warning: User balance will become negative after this deduction (Current: {balance}). Continue?",
+      "add_title": "Manual Recharge",
+      "deduct_title": "Manual Deduction"
     },
     "orders": {
       "backfill_confirm": "Are you sure you want to backfill expiration time for all old pending orders? These orders will be marked as expired.",
@@ -234,5 +238,16 @@
   "announcement": {
       "dismiss": "Dismiss",
       "i_know": "Got it"
+  },
+  "misc": {
+      "confirm_action": "Are you sure you want to perform this action?",
+      "unit_images": "images"
+  },
+  "action": {
+      "enable": "Enable Account",
+      "disable": "Disable Account"
+  },
+  "api": {
+      "prompt_required": "Prompt cannot be empty"
   }
 }
