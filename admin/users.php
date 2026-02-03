@@ -165,7 +165,7 @@ function formatTime($datetime): string {
                     // 上一页
                     if ($page > 1): ?>
                         <a href="<?php echo $baseUrl; ?>page=<?php echo $page - 1; ?>" class="page-link">
-                            <i class="fas fa-chevron-left"></i> 上一页
+                            <i class="fas fa-chevron-left"></i> <?php _e('admin.pagination.prev'); ?>
                         </a>
                     <?php endif;
 
@@ -552,7 +552,7 @@ function formatTime($datetime): string {
                     if (imageFiles.length === 1) {
                         imageDisplay = `<code style="font-size: 0.7rem;">${escapeHtml(imageFiles[0])}</code>`;
                     } else {
-                        imageDisplay = `<span class="badge badge-info" title="${escapeHtml(imageFiles.join(', '))}">${imageFiles.length} 个文件</span>`;
+                        imageDisplay = `<span class="badge badge-info" title="${escapeHtml(imageFiles.join(', '))}">${window.i18n.t('admin.files', {count: imageFiles.length})}</span>`;
                     }
                 }
                 

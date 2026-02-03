@@ -275,7 +275,7 @@ window.addEventListener('i18nReady', () => {
 
                 const data = await response.json();
                 if (!data.success) {
-                    throw new Error(data.message || '优化失败，请稍后重试');
+                    throw new Error(data.message || window.i18n.t('index.optimize_failed', {message: 'Unknown error'}));
                 }
 
                 const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);

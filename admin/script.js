@@ -111,7 +111,7 @@ async function apiRequest(action, data = {}) {
         return result;
     } catch (error) {
         console.error('API请求失败:', error);
-        return { success: false, message: '网络错误,请重试' };
+        return { success: false, message: window.i18n ? window.i18n.t('error.request_failed') : 'Network error, please retry' };
     }
 }
 
