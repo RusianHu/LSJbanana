@@ -79,8 +79,8 @@ function showToast(message, type = 'success') {
     }, 3000);
 }
 
-// 确认对话框
-function confirm(message, callback) {
+// 确认对话框（使用 confirmAction 避免与原生 window.confirm 冲突）
+function confirmAction(message, callback) {
     // 优先使用 callback，如果 message 是字符串则作为提示，否则使用默认提示
     const msg = typeof message === 'string' ? message : (window.i18n ? window.i18n.t('misc.confirm_action') : '确定要执行此操作吗？');
     if (window.confirm(msg)) {

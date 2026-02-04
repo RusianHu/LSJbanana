@@ -9,7 +9,8 @@ $auth = null;
 try {
     $configFile = __DIR__ . '/config.php';
     if (!file_exists($configFile)) {
-        throw new Exception('配置文件不存在：config.php。请复制 config.php.example 并根据环境配置。');
+        // 在 i18n 加载之前抛出的异常使用英文
+        throw new Exception('Configuration file missing: config.php. Please copy config.php.example and configure it.');
     }
     $config = require $configFile;
     require_once __DIR__ . '/i18n/I18n.php';

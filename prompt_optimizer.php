@@ -77,7 +77,7 @@ class PromptOptimizer
                     }
                 }
             }
-            $detail = $categories ? ('，类别：' . implode('、', $categories)) : '';
+            $detail = $categories ? (__('misc.comma') . __('misc.category_label') . implode(__('misc.list_separator'), $categories)) : '';
             sendError(__('error.prompt_rejected', ['reason' => $reason . $detail]), 400);
         }
 

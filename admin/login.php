@@ -147,7 +147,7 @@ if (!$initError && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $captchaInput = trim($_POST['captcha'] ?? '');
 
     try {
-        $result = $adminAuth->login($key, $captchaInput);
+        $result = $adminAuth->loginWithCode($key, $captchaInput);
 
         if ($result['success']) {
             renderActionPage(
@@ -167,7 +167,13 @@ if (!$initError && $_SERVER['REQUEST_METHOD'] === 'POST') {
             );
         } else {
             $error = $result['message'];
+            $errorCode = $result['code'] ?? '';
             $lockoutTime = $result['lockout_time'] ?? 0;
+            
+            // 根据错误码进行特殊处理
+            if ($errorCode === 'IP_LOCKED' && $lockoutTime > 0) {
+                // 已通过 $lockoutTime 变量在下方显示锁定界面
+            }
         }
     } catch (Exception $e) {
         $error = __('auth.error.username_or_password') . ': ' . $e->getMessage();

@@ -860,5 +860,8 @@ return [
         'unit_images' => 'images',
         'unit_times' => 'times',
         'unit_yuan' => 'CNY',
+        'comma' => ', ',
+        'list_separator' => ', ',
+        'category_label' => 'Category: ',
     ],
 ];

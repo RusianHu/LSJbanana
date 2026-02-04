@@ -13,7 +13,7 @@ try {
 
     $configFile = __DIR__ . '/config.php';
     if (!file_exists($configFile)) {
-        throw new Exception('配置文件不存在：config.php。请复制 config.php.example 并根据环境配置。');
+        throw new Exception(__('error.config_missing'));
     }
     $config = require $configFile;
     $captcha = getCaptcha();
@@ -46,6 +46,7 @@ if (isset($auth) && $auth && $auth->isLoggedIn()) {
 
 // 检查是否开放注册
 $registrationClosed = false;
+$userConfig = [];
 if ($config) {
     $userConfig = $config['user'] ?? [];
     if (!($userConfig['enable_registration'] ?? true)) {

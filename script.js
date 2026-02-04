@@ -896,7 +896,7 @@ function initVoiceInput() {
             recognition = new SpeechRecognition();
 
             // 配置识别参数
-            recognition.lang = 'zh-CN';           // 默认中文，会自动识别其他语言
+            recognition.lang = document.documentElement.lang || 'zh-CN';
             recognition.continuous = true;        // 持续识别
             recognition.interimResults = true;    // 显示临时结果
             recognition.maxAlternatives = 1;      // 只取最佳结果

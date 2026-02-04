@@ -67,8 +67,8 @@ try {
 
         // 检查快速登录是否启用
         if (!$adminAuth->isQuickLoginEnabled()) {
-            fwrite(STDERR, "错误: 管理员调试快速登录未启用\n");
-            fwrite(STDERR, "请在 config.php 中设置 admin.debug_quick_login.enabled = true\n");
+            fwrite(STDERR, "Error: Admin quick login is not enabled\n");
+            fwrite(STDERR, "Please set admin.debug_quick_login.enabled = true in config.php\n");
             exit(1);
         }
 
@@ -78,19 +78,18 @@ try {
         // 输出结果
         echo "\n";
         echo "========================================\n";
-        echo "    管理员快速登录URL生成成功\n";
+        echo "    Admin Quick Login URL Generated\n";
         echo "========================================\n";
         echo "\n";
         echo "URL: {$result['url']}\n";
         echo "\n";
-        echo "过期时间: {$result['expires_at']}\n";
-        echo "有效期: {$result['expires_seconds']} 秒\n";
+        echo "Expires At: {$result['expires_at']}\n";
+        echo "Expires In: {$result['expires_seconds']} seconds\n";
         echo "\n";
         echo "----------------------------------------\n";
-        echo "安全提示:\n";
-        echo "  1. 此链接仅用于开发调试环境\n";
-        echo "  2. 生产环境请务必关闭快速登录功能\n";
-        echo "  3. 请勿将此链接分享给他人\n";
+        echo "WARNING:\n";
+        echo "  1. Debug feature only - disable in production\n";
+        echo "  2. Set debug_quick_login.enabled = false\n";
         echo "----------------------------------------\n";
         echo "\n";
 
@@ -121,25 +120,23 @@ try {
         // 输出结果
         echo "\n";
         echo "========================================\n";
-        echo "    用户快速登录URL生成成功\n";
+        echo "    User Quick Login URL Generated\n";
         echo "========================================\n";
         echo "\n";
         echo "URL: {$result['url']}\n";
         echo "\n";
-        echo "测试用户信息:\n";
-        echo "  用户名: {$username}\n";
-        echo "  邮箱:   {$email}\n";
-        echo "  初始余额: {$balance} 元\n";
+        echo "Test User Info:\n";
+        echo "  Username: {$username}\n";
+        echo "  Email:    {$email}\n";
+        echo "  Balance:  {$balance} CNY\n";
         echo "\n";
-        echo "过期时间: {$result['expires_at']}\n";
-        echo "有效期: {$result['expires_seconds']} 秒\n";
+        echo "Expires At: {$result['expires_at']}\n";
+        echo "Expires In: {$result['expires_seconds']} seconds\n";
         echo "\n";
         echo "----------------------------------------\n";
-        echo "安全提示:\n";
-        echo "  1. 此链接仅用于开发调试环境\n";
-        echo "  2. 生产环境请务必关闭快速登录功能\n";
-        echo "  3. 请勿将此链接分享给他人\n";
-        echo "  4. 测试用户首次访问时自动创建\n";
+        echo "WARNING:\n";
+        echo "  1. Debug feature only - disable in production\n";
+        echo "  2. Set debug_quick_login.enabled = false\n";
         echo "----------------------------------------\n";
         echo "\n";
 
@@ -186,28 +183,26 @@ try {
         // 输出结果
         echo "\n";
         echo "========================================\n";
-        echo "   诊断接口访问URL生成成功\n";
+        echo "   Diagnostic URL Generated\n";
         echo "========================================\n";
         echo "\n";
-        echo "基础URL（添加 action 参数使用）:\n";
+        echo "Base URL:\n";
         echo "  {$diagnosticUrl}\n";
         echo "\n";
-        echo "常用查询示例:\n";
-        echo "  状态检查: {$diagnosticUrl}&action=status\n";
-        echo "  配置信息: {$diagnosticUrl}&action=config\n";
-        echo "  数据库健康: {$diagnosticUrl}&action=db_health\n";
-        echo "  环境诊断: {$diagnosticUrl}&action=env\n";
-        echo "  系统统计: {$diagnosticUrl}&action=stats\n";
+        echo "Examples:\n";
+        echo "  Status: {$diagnosticUrl}&action=status\n";
+        echo "  Config: {$diagnosticUrl}&action=config\n";
+        echo "  DB Health: {$diagnosticUrl}&action=db_health\n";
+        echo "  Env: {$diagnosticUrl}&action=env\n";
+        echo "  Stats: {$diagnosticUrl}&action=stats\n";
         echo "\n";
-        echo "过期时间: " . date('Y-m-d H:i:s', $timestamp + $expiresSeconds) . "\n";
-        echo "有效期: {$expiresSeconds} 秒\n";
+        echo "Expires At: " . date('Y-m-d H:i:s', $timestamp + $expiresSeconds) . "\n";
+        echo "Expires In: {$expiresSeconds} seconds\n";
         echo "\n";
         echo "----------------------------------------\n";
-        echo "安全提示:\n";
-        echo "  1. 此链接仅用于开发调试环境\n";
-        echo "  2. 生产环境请务必关闭诊断接口功能\n";
-        echo "  3. 请勿将此链接分享给他人\n";
-        echo "  4. 链接过期后需重新生成\n";
+        echo "WARNING:\n";
+        echo "  1. Debug feature only - disable in production\n";
+        echo "  2. Set debug_diagnostic.enabled = false\n";
         echo "----------------------------------------\n";
         echo "\n";
     }

@@ -860,5 +860,8 @@ return [
         'unit_images' => '张',
         'unit_times' => '次',
         'unit_yuan' => '元',
+        'comma' => '，',
+        'list_separator' => '、',
+        'category_label' => '类别：',
     ],
 ];

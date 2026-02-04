@@ -323,7 +323,12 @@ function payTypeLabel(?string $payType): string {
     <script>
     // 等待 i18n 初始化
     function getTrans(key, defaultVal) {
-        return window.i18n ? window.i18n.t(key) : defaultVal;
+        if (!window.i18n || !window.i18n.loaded) {
+            return defaultVal;
+        }
+        const result = window.i18n.t(key);
+        // 如果返回的是键名本身，说明翻译不存在，返回默认值
+        return (result === key) ? defaultVal : result;
     }
 
     // 回填旧订单过期时间

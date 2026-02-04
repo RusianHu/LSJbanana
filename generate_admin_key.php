@@ -4,9 +4,11 @@
  * 使用方法: 在浏览器访问 http://127.0.0.1:8080/generate_admin_key.php
  */
 
+require_once __DIR__ . '/i18n/I18n.php';
+
 // 安全检查:仅在本地环境运行
 if (!in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1', 'localhost'])) {
-    die('此脚本仅允许在本地环境运行');
+    die(__('error.permission_denied'));
 }
 
 $key = '';
@@ -24,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>生成管理员密钥哈希</title>
+    <title><?php echo 'Generate Admin Key Hash'; // 简单标题，不依赖复杂翻译 ?></title>
     <style>
         * {
             margin: 0;
@@ -148,54 +150,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 <body>
     <div class="container">
-        <h1>🔐 生成管理员密钥哈希</h1>
+        <h1>🔐 <?php echo '生成管理员密钥哈希'; ?></h1>
 
         <div class="alert alert-warning">
-            <strong>⚠️ 安全提醒:</strong><br>
-            1. 请设置一个强密码作为管理员密钥<br>
-            2. 生成哈希后,请立即复制并保存到 config.php 中<br>
-            3. 完成配置后,请删除此文件(generate_admin_key.php)
+            <strong>⚠️ <?php echo '安全提醒:'; ?></strong><br>
+            1. <?php echo '请设置一个强密码作为管理员密钥'; ?><br>
+            2. <?php echo '生成哈希后,请立即复制并保存到 config.php 中'; ?><br>
+            3. <?php echo '完成配置后,请删除此文件(generate_admin_key.php)'; ?>
         </div>
 
         <form method="POST">
             <div class="form-group">
-                <label for="key">输入管理员密钥 (建议12位以上)</label>
+                <label for="key"><?php echo '输入管理员密钥 (建议12位以上)'; ?></label>
                 <input
                     type="password"
                     id="key"
                     name="key"
-                    placeholder="请输入一个安全的密钥..."
+                    placeholder="<?php echo '请输入一个安全的密钥...'; ?>"
                     required
                     value="<?php echo htmlspecialchars($key); ?>"
                 >
             </div>
-            <button type="submit">生成 SHA-256 哈希值</button>
+            <button type="submit"><?php echo '生成 SHA-256 哈希值'; ?></button>
         </form>
 
         <?php if ($hash): ?>
             <div class="alert alert-success" style="margin-top: 20px;">
-                <strong>✓ 哈希值生成成功!</strong>
+                <strong>✓ <?php echo '哈希值生成成功!'; ?></strong>
             </div>
 
             <div class="form-group">
                 <label for="hash">SHA-256 哈希值</label>
                 <textarea id="hash" readonly onclick="this.select()"><?php echo $hash; ?></textarea>
-                <button class="copy-btn" onclick="copyHash()">📋 复制哈希值</button>
+                <button class="copy-btn" onclick="copyHash()">📋 <?php echo '复制哈希值'; ?></button>
             </div>
 
             <div class="steps">
-                <strong>📝 下一步操作:</strong>
+                <strong>📝 <?php echo '下一步操作:'; ?></strong>
                 <ol>
-                    <li>复制上面的哈希值</li>
-                    <li>打开 <code>config.php</code> 文件</li>
-                    <li>找到 <code>$adminConfig['key_hash']</code> 配置项</li>
-                    <li>将哈希值粘贴进去,例如:<br>
+                    <li><?php echo '复制上面的哈希值'; ?></li>
+                    <li><?php echo '打开'; ?> <code>config.php</code> <?php echo '文件'; ?></li>
+                    <li><?php echo '找到'; ?> <code>$adminConfig['key_hash']</code> <?php echo '配置项'; ?></li>
+                    <li><?php echo '将哈希值粘贴进去,例如:'; ?><br>
                         <code>'key_hash' => '<?php echo substr($hash, 0, 20); ?>...'</code>
                     </li>
-                    <li>保存 config.php 文件</li>
-                    <li>运行 <code>setup_admin.php</code> 创建管理员表</li>
-                    <li>访问 <code>/admin/login.php</code> 使用原始密钥登录</li>
-                    <li><strong style="color: #dc3545;">删除此文件 generate_admin_key.php</strong></li>
+                    <li><?php echo '保存 config.php 文件'; ?></li>
+                    <li><?php echo '运行'; ?> <code>setup_admin.php</code> <?php echo '创建管理员表'; ?></li>
+                    <li><?php echo '访问'; ?> <code>/admin/login.php</code> <?php echo '使用原始密钥登录'; ?></li>
+                    <li><strong style="color: #dc3545;"><?php echo '删除此文件 generate_admin_key.php'; ?></strong></li>
                 </ol>
             </div>
         <?php endif; ?>

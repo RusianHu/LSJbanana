@@ -22,12 +22,12 @@ class AdminAuth {
         if ($config === null) {
             $configFile = __DIR__ . '/config.php';
             if (!file_exists($configFile)) {
-                throw new Exception('配置文件不存在：config.php。请复制 config.php.example 并根据环境配置。');
+                throw new Exception('Configuration file missing: config.php. Please copy config.php.example and configure it.');
             }
             try {
                 $fullConfig = require $configFile;
             } catch (Throwable $e) {
-                throw new Exception('配置文件加载失败：' . $e->getMessage());
+                throw new Exception('Configuration file load failed: ' . $e->getMessage());
             }
             $config = $fullConfig['admin'] ?? [];
         }
@@ -113,88 +113,10 @@ class AdminAuth {
     }
 
     /**
-     * 管理员登录
+     * 管理员登录 (向后兼容)
      */
     public function login(string $key, string $captcha): array {
-        $ip = $this->getClientIp();
-
-        // 检查管理员功能是否启用
-        if (!($this->config['enabled'] ?? true)) {
-            return ['success' => false, 'message' => __('admin.feature_disabled')];
-        }
-
-        // 检查IP锁定
-        if ($this->isIpLocked($ip)) {
-            $lockoutTime = $this->getLockoutTime($ip);
-            $minutes = ceil($lockoutTime / 60);
-            return [
-                'success' => false,
-                'message' => __('admin.ip_locked', ['minutes' => $minutes]),
-                'lockout_time' => $lockoutTime
-            ];
-        }
-
-        // 验证码验证
-        if ($this->captcha->isLoginEnabled() && !$this->captcha->verify($captcha)) {
-            return ['success' => false, 'message' => __('auth.error.captcha_invalid')];
-        }
-
-        // 验证密钥
-        $keyHash = hash('sha256', $key);
-        $configKeyHash = $this->config['key_hash'] ?? '';
-
-        if (empty($configKeyHash)) {
-            return ['success' => false, 'message' => __('error.config_missing')];
-        }
-
-        if ($keyHash !== $configKeyHash) {
-            // 记录失败尝试
-            $this->db->logAdminAttempt($ip, 0);
-
-            $attempts = $this->db->getRecentAdminAttempts($ip, 15);
-            $maxAttempts = $this->config['max_attempts'] ?? 5;
-            $remaining = $maxAttempts - $attempts;
-
-            if ($remaining > 0) {
-                return [
-                    'success' => false,
-                    'message' => __('auth.error.username_or_password')
-                ];
-            } else {
-                return [
-                    'success' => false,
-                    'message' => __('admin.ip_locked', ['minutes' => 15])
-                ];
-            }
-        }
-
-        // 记录成功登录
-        $this->db->logAdminAttempt($ip, 1);
-
-        // 创建Session
-        $token = SecurityUtils::generateSecureToken(64);
-        $sessionLifetime = $this->config['session_lifetime'] ?? 3600;
-        $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? null;
-
-        $this->db->createAdminSession($token, $ip, $userAgent, $sessionLifetime);
-
-        // 设置Cookie
-        $cookieLifetime = time() + $sessionLifetime;
-        $cookiePath = '/';
-        $cookieSecure = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
-        $cookieHttpOnly = true;
-
-        setcookie(
-            self::COOKIE_ADMIN_SESSION,
-            $token,
-            $cookieLifetime,
-            $cookiePath,
-            '',
-            $cookieSecure,
-            $cookieHttpOnly
-        );
-
-        return ['success' => true, 'message' => __('admin.login_success')];
+        return $this->loginWithCode($key, $captcha);
     }
 
     /**
@@ -255,6 +177,94 @@ class AdminAuth {
             exit;
         }
         return true;
+    }
+
+    /**
+     * 获取带错误码的登录结果
+     */
+    public function loginWithCode(string $key, string $captcha): array {
+        $ip = $this->getClientIp();
+
+        // 检查管理员功能是否启用
+        if (!($this->config['enabled'] ?? true)) {
+            return ['success' => false, 'message' => __('admin.feature_disabled'), 'code' => 'FEATURE_DISABLED'];
+        }
+
+        // 检查IP锁定
+        if ($this->isIpLocked($ip)) {
+            $lockoutTime = $this->getLockoutTime($ip);
+            $minutes = ceil($lockoutTime / 60);
+            return [
+                'success' => false,
+                'message' => __('admin.ip_locked', ['minutes' => $minutes]),
+                'lockout_time' => $lockoutTime,
+                'code' => 'IP_LOCKED'
+            ];
+        }
+
+        // 验证码验证
+        if ($this->captcha->isLoginEnabled() && !$this->captcha->verify($captcha)) {
+            return ['success' => false, 'message' => __('auth.error.captcha_invalid'), 'code' => 'CAPTCHA_INVALID'];
+        }
+
+        // 验证密钥
+        $keyHash = hash('sha256', $key);
+        $configKeyHash = $this->config['key_hash'] ?? '';
+
+        if (empty($configKeyHash)) {
+            return ['success' => false, 'message' => __('error.config_missing'), 'code' => 'CONFIG_MISSING'];
+        }
+
+        if ($keyHash !== $configKeyHash) {
+            // 记录失败尝试
+            $this->db->logAdminAttempt($ip, 0);
+
+            $attempts = $this->db->getRecentAdminAttempts($ip, 15);
+            $maxAttempts = $this->config['max_attempts'] ?? 5;
+            $remaining = $maxAttempts - $attempts;
+
+            if ($remaining > 0) {
+                return [
+                    'success' => false,
+                    'message' => __('auth.error.username_or_password'),
+                    'code' => 'INVALID_CREDENTIALS'
+                ];
+            } else {
+                return [
+                    'success' => false,
+                    'message' => __('admin.ip_locked', ['minutes' => 15]),
+                    'code' => 'IP_LOCKED'
+                ];
+            }
+        }
+
+        // 记录成功登录
+        $this->db->logAdminAttempt($ip, 1);
+
+        // 创建Session
+        $token = SecurityUtils::generateSecureToken(64);
+        $sessionLifetime = $this->config['session_lifetime'] ?? 3600;
+        $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? null;
+
+        $this->db->createAdminSession($token, $ip, $userAgent, $sessionLifetime);
+
+        // 设置Cookie
+        $cookieLifetime = time() + $sessionLifetime;
+        $cookiePath = '/';
+        $cookieSecure = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+        $cookieHttpOnly = true;
+
+        setcookie(
+            self::COOKIE_ADMIN_SESSION,
+            $token,
+            $cookieLifetime,
+            $cookiePath,
+            '',
+            $cookieSecure,
+            $cookieHttpOnly
+        );
+
+        return ['success' => true, 'message' => __('admin.login_success'), 'code' => 'SUCCESS'];
     }
 
     /**
@@ -373,7 +383,7 @@ class AdminAuth {
      */
     public function generateQuickLoginUrl(string $baseUrl): array {
         if (!$this->isQuickLoginEnabled()) {
-            throw new Exception('调试快速登录未启用');
+            throw new Exception(__('admin.feature_disabled'));
         }
 
         $quickLoginConfig = $this->config['debug_quick_login'];
@@ -408,7 +418,7 @@ class AdminAuth {
     public function verifyQuickLogin(int $timestamp, string $signature): array {
         // 检查是否启用
         if (!$this->isQuickLoginEnabled()) {
-            return ['success' => false, 'message' => '调试快速登录未启用'];
+            return ['success' => false, 'message' => __('admin.feature_disabled')];
         }
 
         $quickLoginConfig = $this->config['debug_quick_login'];
@@ -421,7 +431,7 @@ class AdminAuth {
             $clientIp = $this->getClientIp();
             if (!in_array($clientIp, $ipWhitelist, true)) {
                 $this->logQuickLoginAttempt($clientIp, false, 'IP not in whitelist');
-                return ['success' => false, 'message' => 'IP地址不在白名单中'];
+                return ['success' => false, 'message' => __('error.permission_denied')];
             }
         }
 
@@ -429,21 +439,21 @@ class AdminAuth {
         $currentTime = time();
         if ($timestamp > $currentTime + 60) {
             // 时间戳在未来超过60秒，可能是时钟不同步或伪造
-            return ['success' => false, 'message' => '无效的时间戳'];
+            return ['success' => false, 'message' => __('auth.quick_login_invalid')];
         }
 
         if ($currentTime - $timestamp > $expiresSeconds) {
-            return ['success' => false, 'message' => '快速登录链接已过期'];
+            return ['success' => false, 'message' => __('auth.session_expired')];
         }
 
         // 验证签名
         $expectedSignature = hash_hmac('sha256', (string)$timestamp, $keyHash);
         if (!hash_equals($expectedSignature, $signature)) {
             $this->logQuickLoginAttempt($this->getClientIp(), false, 'Invalid signature');
-            return ['success' => false, 'message' => '签名验证失败'];
+            return ['success' => false, 'message' => __('auth.quick_login_failed')];
         }
 
-        return ['success' => true, 'message' => '验证成功'];
+        return ['success' => true, 'message' => __('status.success')];
     }
 
     /**
@@ -488,7 +498,7 @@ class AdminAuth {
         // 记录成功的快速登录
         $this->logQuickLoginAttempt($ip, true, 'Quick login successful');
 
-        return ['success' => true, 'message' => '快速登录成功'];
+        return ['success' => true, 'message' => __('auth.quick_login_success')];
     }
 
     /**

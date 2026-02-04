@@ -462,7 +462,7 @@ $allRecords = array_slice($allRecords, 0, 10);
 
             <div class="price-info">
                 <i class="fas fa-info-circle"></i>
-                <?php _e('recharge.price_info'); ?>: <strong><?php _e('recharge.price_per_task', ['price' => $pricePerTask]); ?></strong>，<?php _e('recharge.recharge_after_use'); ?>
+                <?php _e('recharge.price_info'); ?>: <strong><?php _e('recharge.price_per_task', ['price' => $pricePerTask]); ?></strong><?php _e('misc.comma'); ?><?php _e('recharge.recharge_after_use'); ?>
             </div>
 
             <form method="POST" action="">
