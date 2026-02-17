@@ -372,12 +372,18 @@ function handleConfigAction(array $config): array {
     // OpenAI 兼容配置（脱敏）
     if (!empty($config['openai_compatible'])) {
         $oc = $config['openai_compatible'];
+        $tm = $oc['thinking_mode'] ?? [];
         $result['openai_compatible'] = [
             'base_url' => $oc['base_url'] ?? '',
             'api_key' => !empty($oc['api_key']) ? maskApiKey($oc['api_key']) : '',
             'timeout' => $oc['timeout'] ?? 300,
             'connect_timeout' => $oc['connect_timeout'] ?? 30,
             'enable_thinking' => $oc['enable_thinking'] ?? false,
+            'thinking_mode' => [
+                'mode' => $tm['mode'] ?? 'auto',
+                'level' => $tm['level'] ?? 'high',
+                'fallback_cache_ttl' => $tm['fallback_cache_ttl'] ?? 3600,
+            ],
         ];
     }
 

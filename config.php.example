@@ -216,6 +216,24 @@ return [
         'timeout' => 300,
         'connect_timeout' => 30,
         'enable_thinking' => true,  // 启用思考模型，提取 reasoning_content
+
+        // 思考模式配置 (精细控制)
+        // 部分中转站可能不支持 reasoning_effort 参数，通过此配置可灵活控制
+        'thinking_mode' => [
+            // 思考模式: 'auto' | 'force' | 'off'
+            //   'auto'  - 自动降级: 先尝试带 reasoning_effort 发送，若中转站返回不支持则自动去掉参数重试
+            //   'force' - 强制启用: 始终发送 reasoning_effort，中转站不支持时直接报错
+            //   'off'   - 关闭: 不发送 reasoning_effort 参数 (适用于确认不支持的中转站)
+            'mode' => 'auto',
+
+            // reasoning_effort 级别: 'low' | 'medium' | 'high'
+            'level' => 'high',
+
+            // 自动降级缓存时间 (秒): 在 auto 模式下，首次降级成功后缓存结果
+            // 在此时间内直接使用降级方案，避免重复尝试带来的额外延迟
+            // 设为 0 则每次都尝试 (不推荐，会增加约 1-2s 延迟)
+            'fallback_cache_ttl' => 3600,
+        ],
     ],
 
     // Gemini 原生格式代理配置 (当 api_provider 为 'gemini_proxy' 时使用) 适用于国内代理站点，NewAPI 类中转站

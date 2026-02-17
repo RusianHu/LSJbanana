@@ -5,6 +5,11 @@
  * 将 Gemini 原生 API 请求转换为 OpenAI 兼容格式，支持中转站调用。
  * 支持文本生成、图片生成/编辑、思考模型等功能。
  *
+ * 思考模式支持三种策略：
+ * - auto:  自动降级 - 先尝试带 reasoning_effort，失败后去掉参数重试
+ * - force: 强制启用 - 始终发送 reasoning_effort
+ * - off:   关闭 - 不发送 reasoning_effort
+ *
  * 用法:
  * $adapter = new GeminiOpenAIAdapter($config);
  * $response = $adapter->generateContent($modelName, $payload);
@@ -32,6 +37,14 @@ class GeminiOpenAIAdapter {
     private int $connectTimeout;
     private bool $enableThinking;
 
+    // 思考模式精细配置
+    private string $thinkingMode;       // 'auto' | 'force' | 'off'
+    private string $thinkingLevel;      // 'low' | 'medium' | 'high'
+    private int $fallbackCacheTtl;      // 自动降级缓存时间 (秒)
+
+    // 降级缓存文件路径
+    private string $fallbackCacheFile;
+
     public function __construct(array $config) {
         $openaiConfig = $config['openai_compatible'] ?? [];
         $this->baseUrl = rtrim($openaiConfig['base_url'] ?? '', '/');
@@ -39,6 +52,32 @@ class GeminiOpenAIAdapter {
         $this->timeout = (int)($openaiConfig['timeout'] ?? 300);
         $this->connectTimeout = (int)($openaiConfig['connect_timeout'] ?? 30);
         $this->enableThinking = (bool)($openaiConfig['enable_thinking'] ?? true);
+
+        // 解析思考模式配置
+        $thinkingModeConfig = $openaiConfig['thinking_mode'] ?? [];
+        $this->thinkingMode = $this->validateThinkingMode($thinkingModeConfig['mode'] ?? 'auto');
+        $this->thinkingLevel = $this->validateThinkingLevel($thinkingModeConfig['level'] ?? 'high');
+        $this->fallbackCacheTtl = max(0, (int)($thinkingModeConfig['fallback_cache_ttl'] ?? 3600));
+
+        // 降级缓存文件存放在 logs 目录
+        $this->fallbackCacheFile = __DIR__ . '/logs/thinking_fallback_cache.json';
+    }
+
+    /**
+     * 验证思考模式值
+     */
+    private function validateThinkingMode(string $mode): string {
+        $allowed = ['auto', 'force', 'off'];
+        return in_array($mode, $allowed, true) ? $mode : 'auto';
+    }
+
+    /**
+     * 验证思考级别值
+     */
+    private function validateThinkingLevel(string $level): string {
+        $allowed = ['low', 'medium', 'high'];
+        $level = strtolower($level);
+        return in_array($level, $allowed, true) ? $level : 'high';
     }
 
     /**
@@ -46,6 +85,19 @@ class GeminiOpenAIAdapter {
      */
     public function isAvailable(): bool {
         return $this->baseUrl !== '' && $this->apiKey !== '';
+    }
+
+    /**
+     * 获取当前思考模式配置状态（供诊断接口使用）
+     */
+    public function getThinkingStatus(): array {
+        return [
+            'enable_thinking' => $this->enableThinking,
+            'thinking_mode' => $this->thinkingMode,
+            'thinking_level' => $this->thinkingLevel,
+            'fallback_cache_ttl' => $this->fallbackCacheTtl,
+            'is_fallback_active' => $this->isFallbackCached(),
+        ];
     }
 
     /**
@@ -58,8 +110,183 @@ class GeminiOpenAIAdapter {
      */
     public function generateContent(string $modelName, array $payload): array {
         $openaiPayload = $this->convertToOpenAIFormat($modelName, $payload);
-        $response = $this->sendRequest($openaiPayload);
-        return $this->convertToGeminiFormat($response);
+
+        // 根据思考模式策略决定是否携带 reasoning_effort
+        $shouldTryThinking = $this->shouldAttemptThinking($openaiPayload);
+
+        if ($shouldTryThinking) {
+            // 尝试带 reasoning_effort 的请求
+            try {
+                $response = $this->sendRequest($openaiPayload);
+                return $this->convertToGeminiFormat($response);
+            } catch (OpenAIAdapterException $e) {
+                // 仅在 auto 模式下尝试降级
+                if ($this->thinkingMode === 'auto' && $this->isThinkingNotSupportedError($e)) {
+                    // 记录降级日志
+                    error_log(sprintf(
+                        '[OpenAIAdapter] reasoning_effort not supported for model "%s", falling back without it. Error: %s',
+                        $modelName,
+                        $e->getMessage()
+                    ));
+
+                    // 缓存降级状态
+                    $this->cacheFallbackState($modelName);
+
+                    // 移除 reasoning_effort 重试
+                    unset($openaiPayload['reasoning_effort']);
+                    $response = $this->sendRequest($openaiPayload);
+                    return $this->convertToGeminiFormat($response);
+                }
+
+                // force 模式或非思考相关错误，直接抛出
+                throw $e;
+            }
+        } else {
+            // 直接发送不带 reasoning_effort 的请求
+            unset($openaiPayload['reasoning_effort']);
+            $response = $this->sendRequest($openaiPayload);
+            return $this->convertToGeminiFormat($response);
+        }
+    }
+
+    /**
+     * 判断是否应该尝试带 reasoning_effort 发送请求
+     */
+    private function shouldAttemptThinking(array $payload): bool {
+        // 如果 payload 中没有 reasoning_effort，无需尝试
+        if (!isset($payload['reasoning_effort'])) {
+            return false;
+        }
+
+        // off 模式: 不尝试
+        if ($this->thinkingMode === 'off') {
+            return false;
+        }
+
+        // force 模式: 始终尝试
+        if ($this->thinkingMode === 'force') {
+            return true;
+        }
+
+        // auto 模式: 检查缓存，如果已知不支持则跳过
+        if ($this->thinkingMode === 'auto' && $this->isFallbackCached()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * 判断异常是否表示中转站不支持 reasoning_effort
+     *
+     * 常见错误模式:
+     * - "Thinking level is not supported for this model."
+     * - "reasoning_effort is not supported"
+     * - HTTP 400 + 含 "thinking" 或 "reasoning" 关键词
+     */
+    private function isThinkingNotSupportedError(OpenAIAdapterException $e): bool {
+        $httpCode = $e->getHttpCode();
+        $message = strtolower($e->getMessage());
+
+        // 只有 400 错误才可能是参数不支持
+        if ($httpCode !== 400) {
+            return false;
+        }
+
+        // 关键词匹配
+        $keywords = [
+            'thinking level is not supported',
+            'thinking is not supported',
+            'reasoning_effort',
+            'reasoning effort',
+            'not supported for this model',
+            'invalid parameter',
+            'unknown parameter',
+        ];
+
+        foreach ($keywords as $keyword) {
+            if (str_contains($message, $keyword)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * 缓存降级状态到文件
+     */
+    private function cacheFallbackState(string $modelName): void {
+        if ($this->fallbackCacheTtl <= 0) {
+            return;
+        }
+
+        $cacheData = [
+            'model' => $modelName,
+            'base_url' => $this->baseUrl,
+            'timestamp' => time(),
+            'expires_at' => time() + $this->fallbackCacheTtl,
+            'reason' => 'reasoning_effort not supported',
+        ];
+
+        // 确保 logs 目录存在
+        $logsDir = dirname($this->fallbackCacheFile);
+        if (!is_dir($logsDir)) {
+            @mkdir($logsDir, 0755, true);
+        }
+
+        @file_put_contents(
+            $this->fallbackCacheFile,
+            json_encode($cacheData, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
+        );
+    }
+
+    /**
+     * 检查降级缓存是否有效
+     */
+    private function isFallbackCached(): bool {
+        if ($this->fallbackCacheTtl <= 0) {
+            return false;
+        }
+
+        if (!file_exists($this->fallbackCacheFile)) {
+            return false;
+        }
+
+        $content = @file_get_contents($this->fallbackCacheFile);
+        if ($content === false) {
+            return false;
+        }
+
+        $data = json_decode($content, true);
+        if (!is_array($data)) {
+            return false;
+        }
+
+        // 检查是否为同一个 base_url（不同中转站可能有不同的支持情况）
+        if (($data['base_url'] ?? '') !== $this->baseUrl) {
+            return false;
+        }
+
+        // 检查是否过期
+        $expiresAt = $data['expires_at'] ?? 0;
+        if (time() >= $expiresAt) {
+            // 过期了，删除缓存文件
+            @unlink($this->fallbackCacheFile);
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * 清除降级缓存（可供管理接口调用）
+     */
+    public function clearFallbackCache(): bool {
+        if (file_exists($this->fallbackCacheFile)) {
+            return @unlink($this->fallbackCacheFile);
+        }
+        return true;
     }
 
     /**
@@ -176,13 +403,32 @@ class GeminiOpenAIAdapter {
 
     /**
      * 添加思考模式配置
-     * 将 Gemini 的 thinkingConfig 转换为 OpenAI 兼容的 reasoning_effort
      *
-     * 支持的级别:
-     * - Gemini 3 Pro 模型: "low", "high"
-     * - Gemini 3 Flash 模型: "minimal", "low", "medium", "high"
+     * 根据思考模式配置 (thinking_mode) 决定是否添加 reasoning_effort:
+     * - 配置了 thinking_mode 时: 使用 thinking_mode.level 作为 reasoning_effort 值
+     * - 未配置 thinking_mode 时: 回退到旧逻辑 (从 thinkingConfig 映射)
+     * - 思考模式为 off 时: 不添加 reasoning_effort
+     *
+     * 注意: reasoning_effort 的实际发送与否由 shouldAttemptThinking() 在 generateContent() 中最终决定
      */
     private function addThinkingConfig(array &$payload, array $genConfig): void {
+        // 如果思考模式关闭，不添加 reasoning_effort
+        if ($this->thinkingMode === 'off') {
+            return;
+        }
+
+        // 如果未启用思考功能，不添加 reasoning_effort
+        if (!$this->enableThinking) {
+            return;
+        }
+
+        // 优先使用 thinking_mode 配置的级别
+        if ($this->thinkingMode === 'auto' || $this->thinkingMode === 'force') {
+            $payload['reasoning_effort'] = $this->thinkingLevel;
+            return;
+        }
+
+        // 回退: 从 Gemini thinkingConfig 映射 (兼容旧逻辑)
         if (!isset($genConfig['thinkingConfig'])) {
             return;
         }
@@ -200,7 +446,7 @@ class GeminiOpenAIAdapter {
         }
 
         // 如果启用了思考但没有指定级别，使用默认值
-        if (!isset($payload['reasoning_effort']) && $this->enableThinking) {
+        if (!isset($payload['reasoning_effort'])) {
             if (isset($thinkingConfig['includeThoughts']) && $thinkingConfig['includeThoughts'] === true) {
                 // 默认使用 high 级别
                 $payload['reasoning_effort'] = 'high';
