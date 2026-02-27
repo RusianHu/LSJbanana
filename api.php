@@ -194,11 +194,11 @@ function extractTextFromCandidates(array $responseData) {
 /**
  * 根据配置生成思考模式配置
  *
- * 支持的思考级别:
- * - Gemini 3 Pro 模型: "LOW", "HIGH"
- * - Gemini 3 Flash 模型: "MINIMAL", "LOW", "MEDIUM", "HIGH"
+ * 支持的思考级别 (thinkingLevel):
+ * - 可用值: "MINIMAL", "LOW", "MEDIUM", "HIGH"
+ * - 具体支持范围取决于模型版本
  *
- * 注意: gemini-3-pro-image-preview 模型只支持 includeThoughts，不支持 thinkingLevel
+ * 注意: 带有 image 后缀的图片生成模型只支持 includeThoughts，不支持 thinkingLevel
  */
 function buildThinkingConfig(array $config, string $modelName): array {
     $thinkingConfig = [];
@@ -212,9 +212,10 @@ function buildThinkingConfig(array $config, string $modelName): array {
         $thinkingConfig['includeThoughts'] = (bool) $rawConfig['include_thoughts'];
     }
 
-    // image-preview 模型不支持 thinkingLevel，只支持 includeThoughts
-    $isImagePreviewModel = stripos($modelName, 'image-preview') !== false;
-    if ($isImagePreviewModel) {
+    // 图片生成模型（含 image-preview 或以 -image 结尾）不支持 thinkingLevel，只支持 includeThoughts
+    $isImageModel = stripos($modelName, 'image-preview') !== false
+        || preg_match('/-image$/i', $modelName);
+    if ($isImageModel) {
         return $thinkingConfig;
     }
 
@@ -641,7 +642,13 @@ if ($action === 'optimize_prompt') {
 
 // 准备生成/编辑 API 请求数据
 $modelName = $config['model_name'];
-$isFlashImage = stripos($modelName, 'flash-image') !== false;
+// 判断当前模型是否为"简易图片模型"（仅支持 1K，不支持分辨率/宽高比设置）
+// 基于配置中声明的能力，而非硬编码模型名称匹配
+$supportedSizes = $config['image_model_supported_sizes'] ?? ['1K'];
+if (!is_array($supportedSizes) || $supportedSizes === []) {
+    $supportedSizes = ['1K'];
+}
+$isBasicImageModel = (count($supportedSizes) === 1 && $supportedSizes[0] === '1K');
 // 构建请求体
 $requestData = [
     'contents' => [],
@@ -653,12 +660,12 @@ if (!empty($thinkingConfig)) {
     $requestData['generationConfig']['thinkingConfig'] = $thinkingConfig;
 }
 
-if ($isFlashImage && isset($requestData['generationConfig']['imageConfig'])) {
+if ($isBasicImageModel && isset($requestData['generationConfig']['imageConfig'])) {
     unset($requestData['generationConfig']['imageConfig']);
 }
 
 // 处理宽高比和分辨率
-if (!$isFlashImage) {
+if (!$isBasicImageModel) {
     $aspectRatio = SecurityUtils::validateAllowedValue(
         SecurityUtils::sanitizeTextInput($_POST['aspect_ratio'] ?? '', 10),
         ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'],
@@ -754,7 +761,7 @@ if ($action === 'generate') {
         }
 
         // 如果未指定宽高比（保持原样），则根据第一张图片自动计算
-        if ($validImageCount === 0 && empty($aspectRatio) && !$isFlashImage) {
+        if ($validImageCount === 0 && empty($aspectRatio) && !$isBasicImageModel) {
             list($width, $height) = getimagesize($validated['tmp_name']);
             if ($width && $height) {
                 $detectedRatio = getClosestAspectRatio($width, $height);

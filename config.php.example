@@ -174,15 +174,15 @@ $adminSetupConfig = [
 // ============================================================
 
 $imageModels = [
-    // Nano Banana Pro（原默认模型）：支持 1K / 2K / 4K 与搜索接地等能力
+    // Nano Banana Pro（默认模型）：支持 1K / 2K / 4K 与搜索接地等能力
     'pro' => [
-        'model_name' => 'gemini-3-pro-image-preview',
+        'model_name' => 'gemini-3.1-flash-image',
         'display_name' => 'Nano Banana Pro',
         'supported_image_sizes' => ['1K', '2K', '4K'],
         'supports_google_search' => true,
     ],
 
-    // Nano Banana（快速模型）：官方文档说明为 1024px（约 1K）输出
+    // Nano Banana（快速模型）：仅支持 1K 输出，不支持分辨率/搜索增强
     'flash' => [
         'model_name' => 'gemini-2.5-flash-image',
         'display_name' => 'Nano Banana',
@@ -191,7 +191,7 @@ $imageModels = [
     ],
 ];
 
-// 开发者快捷切换：默认 'pro' ，将此值改为 'flash' 可切换到快速模型
+// 开发者快捷切换：默认 'pro' (gemini-3.1-flash-image)，改为 'flash' 可切换到 gemini-2.5-flash-image
 $activeImageModelKey = 'pro';
 $activeImageModel = $imageModels[$activeImageModelKey] ?? $imageModels['pro'];
 

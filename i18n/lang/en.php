@@ -30,7 +30,7 @@ return [
     'site' => [
         'title' => 'LSJbanana',
         'subtitle' => 'LSJbanana',
-        'description' => 'AI Image Generation & Editing Tool powered by gemini-3-pro-image (Nano Banana)',
+        'description' => 'AI Image Generation & Editing Tool powered by gemini-3.1-flash-image (Nano Banana Pro)',
         'copyright' => '© :year LSJbanana Project. Powered by Gemini.',
         'github_title' => 'View Source on GitHub',
         'github_text' => 'Source',

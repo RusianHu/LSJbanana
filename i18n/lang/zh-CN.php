@@ -30,7 +30,7 @@ return [
     'site' => [
         'title' => '老司机的香蕉',
         'subtitle' => 'LSJbanana',
-        'description' => '基于 gemini-3-pro-image (Nano Banana) 的图片生成与编辑工具',
+        'description' => '基于 gemini-3.1-flash-image (Nano Banana Pro) 的图片生成与编辑工具',
         'copyright' => '© :year LSJbanana Project. Powered by Gemini.',
         'github_title' => '在 GitHub 上查看源码',
         'github_text' => '源码',
