@@ -280,6 +280,8 @@ class Database {
                     remark TEXT,
                     visible_to_user INTEGER DEFAULT 0,
                     user_remark TEXT,
+                    source_type VARCHAR(30) DEFAULT 'manual_recharge',
+                    source_id INTEGER,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (user_id) REFERENCES users(id)
                 )
@@ -901,6 +903,9 @@ class Database {
 
     /**
      * 记录消费
+     *
+     * 同时写入 consumption_logs（业务消费事件）和 balance_logs（账户流水）。
+     * 若调用方已在事务中，则直接执行；否则自动包裹一层事务保证原子性。
      */
     public function logConsumption(
         int $userId,
@@ -912,23 +917,55 @@ class Database {
         ?string $modelName = null,
         ?string $remark = null
     ): int {
-        $sql = "INSERT INTO consumption_logs
-                (user_id, action, amount, balance_before, balance_after, image_count, model_name, remark, created_at)
-                VALUES (:user_id, :action, :amount, :balance_before, :balance_after, :image_count, :model_name, :remark, :created_at)";
-        
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([
-            ':user_id' => $userId,
-            ':action' => $action,
-            ':amount' => $amount,
-            ':balance_before' => $balanceBefore,
-            ':balance_after' => $balanceAfter,
-            ':image_count' => $imageCount,
-            ':model_name' => $modelName,
-            ':remark' => $remark,
-            ':created_at' => $this->now(),
-        ]);
-        return (int) $this->pdo->lastInsertId();
+        $inTransaction = $this->pdo->inTransaction();
+
+        $doInsert = function () use ($userId, $action, $amount, $balanceBefore, $balanceAfter, $imageCount, $modelName, $remark): int {
+            $now = $this->now();
+
+            // 1. 写入消费记录
+            $sql = "INSERT INTO consumption_logs
+                    (user_id, action, amount, balance_before, balance_after, image_count, model_name, remark, created_at)
+                    VALUES (:user_id, :action, :amount, :balance_before, :balance_after, :image_count, :model_name, :remark, :created_at)";
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([
+                ':user_id' => $userId,
+                ':action' => $action,
+                ':amount' => $amount,
+                ':balance_before' => $balanceBefore,
+                ':balance_after' => $balanceAfter,
+                ':image_count' => $imageCount,
+                ':model_name' => $modelName,
+                ':remark' => $remark,
+                ':created_at' => $now,
+            ]);
+            $consumptionId = (int) $this->pdo->lastInsertId();
+
+            // 2. 同步写入账户流水（消费扣费）
+            $blSql = "INSERT INTO balance_logs (user_id, type, amount, balance_before, balance_after, remark, source_type, source_id, created_at)
+                      VALUES (:user_id, 'deduct', :amount, :before, :after, :remark, 'consumption', :source_id, :created_at)";
+            $blStmt = $this->pdo->prepare($blSql);
+            $blStmt->execute([
+                ':user_id' => $userId,
+                ':amount' => -$amount,
+                ':before' => $balanceBefore,
+                ':after' => $balanceAfter,
+                ':remark' => ($action === 'generate' ? 'Image Generate' : 'Image Edit') . ($modelName ? " ({$modelName})" : ''),
+                ':source_id' => $consumptionId,
+                ':created_at' => $now,
+            ]);
+
+            return $consumptionId;
+        };
+
+        if ($inTransaction) {
+            // 已在事务中，直接执行（依赖外层事务的原子性）
+            return $doInsert();
+        } else {
+            // 非事务上下文，自包一层事务保证原子性
+            return $this->transaction(function () use ($doInsert) {
+                return $doInsert();
+            });
+        }
     }
 
     /**
@@ -1616,7 +1653,7 @@ class Database {
     }
 
     /**
-     * 迁移：为 balance_logs 表添加 visible_to_user 和 user_remark 字段
+     * 迁移：为 balance_logs 表添加 visible_to_user、user_remark、source_type、source_id 字段
      *
      * @return bool 是否成功
      */
@@ -1627,6 +1664,8 @@ class Database {
             $columns = $result->fetchAll(PDO::FETCH_ASSOC);
             $hasVisibleToUser = false;
             $hasUserRemark = false;
+            $hasSourceType = false;
+            $hasSourceId = false;
             
             foreach ($columns as $column) {
                 if ($column['name'] === 'visible_to_user') {
@@ -1634,6 +1673,12 @@ class Database {
                 }
                 if ($column['name'] === 'user_remark') {
                     $hasUserRemark = true;
+                }
+                if ($column['name'] === 'source_type') {
+                    $hasSourceType = true;
+                }
+                if ($column['name'] === 'source_id') {
+                    $hasSourceId = true;
                 }
             }
             
@@ -1645,10 +1690,20 @@ class Database {
             if (!$hasUserRemark) {
                 $this->pdo->exec("ALTER TABLE balance_logs ADD COLUMN user_remark TEXT");
             }
+
+            // source_type: manual_recharge, manual_deduct, online_recharge, consumption
+            if (!$hasSourceType) {
+                $this->pdo->exec("ALTER TABLE balance_logs ADD COLUMN source_type VARCHAR(30) DEFAULT 'manual_recharge'");
+            }
+
+            // source_id: 关联的 recharge_orders.id 或 consumption_logs.id
+            if (!$hasSourceId) {
+                $this->pdo->exec("ALTER TABLE balance_logs ADD COLUMN source_id INTEGER");
+            }
             
             return true;
         } catch (PDOException $e) {
-            error_log('Balance logs visibility migration error: ' . $e->getMessage());
+            error_log('Balance logs migration error: ' . $e->getMessage());
             return false;
         }
     }

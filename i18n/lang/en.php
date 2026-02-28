@@ -30,7 +30,7 @@ return [
     'site' => [
         'title' => 'LSJbanana',
         'subtitle' => 'LSJbanana',
-        'description' => 'AI Image Generation & Editing Tool powered by gemini-3.1-flash-image (Nano Banana Pro)',
+        'description' => 'AI Image Generation & Editing Tool powered by gemini-3.1-flash-image (Nano Banana 2)',
         'copyright' => '© :year LSJbanana Project. Powered by Gemini.',
         'github_title' => 'View Source on GitHub',
         'github_text' => 'Source',
@@ -615,7 +615,7 @@ return [
             'basic_info' => 'Basic Info',
             'login_history' => 'Login History',
             'consumption_detail' => 'Consumption Details',
-            'balance_history' => 'Balance History',
+            'balance_history' => 'Account Ledger',
             'recharge_orders' => 'Recharge Orders',
             'statistics' => 'Statistics',
             'total_recharge' => 'Total Recharge',
@@ -627,7 +627,7 @@ return [
             'reset_password' => 'Reset Password',
             'no_login_records' => 'No login records',
             'no_consumption_records' => 'No consumption records',
-            'no_balance_records' => 'No balance records',
+            'no_balance_records' => 'No ledger records',
             'no_orders' => 'No recharge orders',
         ],
         // Order Management (top level)
@@ -665,7 +665,7 @@ return [
             'remark_admin' => 'Admin Remark (Internal)',
             'remark_placeholder' => 'Enter remark...',
             'visible_to_user' => 'Visible to User',
-            'visible_hint' => 'If checked, user can see this remark in balance logs',
+            'visible_hint' => 'If checked, user can see this remark in account ledger',
             'user_remark' => 'User Remark (Frontend)',
             'user_remark_placeholder' => 'Remark shown to user',
             'user_remark_default' => 'Leave empty for default format',
@@ -749,10 +749,14 @@ return [
             'generate' => 'Generate',
             'edit' => 'Edit',
         ],
-        // Balance Types
+        // Balance Types (Account Ledger Sources)
         'balance_type' => [
             'recharge' => 'Recharge',
             'deduct' => 'Deduction',
+            'online_recharge' => 'Online Recharge',
+            'manual_recharge' => 'Manual Recharge',
+            'consumption' => 'Consumption',
+            'manual_deduct' => 'Manual Deduction',
         ],
         // Payment Types
         'pay_type' => [

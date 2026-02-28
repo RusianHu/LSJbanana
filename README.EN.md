@@ -2,7 +2,7 @@
 
 > **[中文文档](README.md)**
 
-AI Image Generation and Management Platform based on Gemini 3 Pro Image (Nano Banana).
+AI Image Generation and Management Platform based on gemini-3.1-flash-image (Nano Banana 2).
 
 ## Core Features
 
@@ -16,7 +16,7 @@ mindmap
         Multi-image upload up to 14
         Text editing
       Multi-Model
-        Nano Banana Pro 1K/2K/4K
+        Nano Banana 2 1K/2K/4K
         Nano Banana Flash 1K fast
       Multi-Resolution
         9 aspect ratios
@@ -165,7 +165,7 @@ location ~ \.php$ {
   - **Required Extensions**: `curl`, `openssl`, `mbstring`, `fileinfo`
 - **Frontend**: Native JS (ES6+) + CSS3 (Responsive)
 - **AI Capabilities**:
-  - **Drawing**: Gemini 3 Pro Image (Nano Banana Pro)
+  - **Drawing**: gemini-3.1-flash-image (Nano Banana 2)
   - **Optimization**: Gemini 2.5 Flash (Prompt Engineering)
   - **Speech**: Gemini 2.5 Flash (ASR)
 - **Payment Integration**: [LSJ Easy Pay](https://github.com/RusianHu/LsjEpay) (MD5 signature)

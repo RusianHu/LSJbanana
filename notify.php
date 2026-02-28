@@ -78,6 +78,9 @@ if (abs((float)$order['amount'] - $money) > 0.01) {
 
 // 使用事务处理订单
 try {
+    // 确保 balance_logs 表已迁移（幂等操作，部署后首个请求可能是异步回调）
+    $db->migrateBalanceLogsVisibility();
+
     $db->transaction(function ($db) use ($order, $tradeNo, $payType, $params) {
         // 更新订单状态
         $db->markOrderPaid(
@@ -87,8 +90,30 @@ try {
             json_encode($params, JSON_UNESCAPED_UNICODE)
         );
 
+        // 获取充值前余额
+        $user = $db->getUserById($order['user_id']);
+        $balanceBefore = $user ? (float)$user['balance'] : 0.00;
+        $amount = (float)$order['amount'];
+        $balanceAfter = $balanceBefore + $amount;
+
         // 增加用户余额
-        $db->updateUserBalance($order['user_id'], (float)$order['amount']);
+        $db->updateUserBalance($order['user_id'], $amount);
+
+        // 写入账户流水（在线充值）
+        // 在线充值流水仅后台"账户流水"可见，不在前台充值页展示（避免与订单记录重复）
+        $db->execute(
+            "INSERT INTO balance_logs (user_id, type, amount, balance_before, balance_after, remark, visible_to_user, source_type, source_id, created_at)
+             VALUES (:user_id, 'recharge', :amount, :before, :after, :remark, 0, 'online_recharge', :source_id, :created_at)",
+            [
+                'user_id' => $order['user_id'],
+                'amount' => $amount,
+                'before' => $balanceBefore,
+                'after' => $balanceAfter,
+                'remark' => 'Online Recharge - Order: ' . $order['out_trade_no'],
+                'source_id' => $order['id'],
+                'created_at' => date('Y-m-d H:i:s')
+            ]
+        );
     });
 
     // 记录成功日志

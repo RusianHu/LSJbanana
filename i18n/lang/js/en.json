@@ -147,7 +147,11 @@
     },
     "balance_type": {
       "recharge": "Recharge",
-      "deduct": "Deduction"
+      "deduct": "Deduction",
+      "online_recharge": "Online Recharge",
+      "manual_recharge": "Manual Recharge",
+      "consumption": "Consumption",
+      "manual_deduct": "Manual Deduction"
     },
     "balance": {
       "user_placeholder": "Enter Username / Email / ID",
@@ -206,7 +210,7 @@
     "users": {
         "no_login_records": "No login records",
         "no_consumption_records": "No consumption records",
-        "no_balance_records": "No balance records",
+        "no_balance_records": "No ledger records",
         "no_orders": "No recharge orders",
         "user_id": "User ID",
         "statistics": "Statistics",
@@ -221,7 +225,7 @@
         "basic_info": "Basic Info",
         "login_history": "Login History",
         "consumption_detail": "Consumption Details",
-        "balance_history": "Balance History",
+        "balance_history": "Account Ledger",
         "recharge_orders": "Recharge Orders"
     },
     "page_info": "Page {current} / {total} (Total {count} items)"

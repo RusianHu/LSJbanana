@@ -38,7 +38,7 @@ usort($paymentChannels, function($a, $b) {
 // 确保数据库表有 expires_at 字段（自动迁移）
 $db->migrateAddExpiresAtColumn();
 
-// 确保 balance_logs 表有 visible_to_user 和 user_remark 字段（自动迁移）
+// 确保 balance_logs 表有 visible_to_user、user_remark、source_type、source_id 字段（自动迁移）
 $db->migrateBalanceLogsVisibility();
 
 $error = '';
@@ -115,7 +115,7 @@ $rechargeOptions = $billingConfig['recharge_options'] ?? [5, 10, 20, 50, 100];
 // 获取充值记录（在线支付订单）
 $rechargeOrders = $db->getUserRechargeOrders($user['id'], 10);
 
-// 获取用户可见的余额变动记录（管理员手动操作且标记为可见的）
+// 获取用户可见的账户流水记录（管理员手动操作且标记为可见的）
 $visibleBalanceLogs = $db->getUserVisibleBalanceLogs($user['id'], 10);
 
 // 合并两种记录并按时间排序
@@ -134,7 +134,7 @@ $allRecords[] = [
 ];
 }
 
-// 处理可见的余额变动记录
+// 处理可见的账户流水记录
 foreach ($visibleBalanceLogs['logs'] as $log) {
 // 只显示充值类型的记录（recharge），不显示扣款
 if ($log['type'] === 'recharge') {

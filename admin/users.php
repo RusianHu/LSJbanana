@@ -227,7 +227,7 @@ function formatTime($datetime): string {
                         <i class="fas fa-shopping-cart"></i> <?php _e('admin.users.consumption_detail'); ?>
                     </button>
                     <button class="tab-btn" data-tab="balance" onclick="switchTab('balance')">
-                        <i class="fas fa-wallet"></i> <?php _e('admin.users.balance_history'); ?>
+                        <i class="fas fa-book"></i> <?php _e('admin.users.balance_history'); ?>
                     </button>
                     <button class="tab-btn" data-tab="orders" onclick="switchTab('orders')">
                         <i class="fas fa-receipt"></i> <?php _e('admin.users.recharge_orders'); ?>
@@ -257,7 +257,7 @@ function formatTime($datetime): string {
                         </div>
                     </div>
                     
-                    <!-- 余额变动标签页 -->
+                    <!-- 账户流水标签页 -->
                     <div class="tab-pane" id="tab-balance">
                         <div id="userBalanceContent">
                             <div class="text-center"><i class="fas fa-spinner fa-spin"></i> <?php _e('form.loading'); ?></div>
@@ -574,12 +574,20 @@ function formatTime($datetime): string {
             container.innerHTML = html;
         }
         
-        // 渲染余额变动
+        // 渲染账户流水
         function renderBalanceLogs(data, container) {
             if (!data.logs || data.logs.length === 0) {
                 container.innerHTML = '<div class="text-center text-muted">' + window.i18n.t('admin.users.no_balance_records') + '</div>';
                 return;
             }
+
+            // 来源类型映射（source_type -> {label, badgeClass}）
+            const sourceTypeMap = {
+                'online_recharge': { label: window.i18n.t('admin.balance_type.online_recharge'), badgeClass: 'badge-success' },
+                'manual_recharge': { label: window.i18n.t('admin.balance_type.manual_recharge'), badgeClass: 'badge-info' },
+                'consumption':     { label: window.i18n.t('admin.balance_type.consumption'),     badgeClass: 'badge-warning' },
+                'manual_deduct':   { label: window.i18n.t('admin.balance_type.manual_deduct'),   badgeClass: 'badge-danger' }
+            };
             
             let html = `
                 <div class="admin-table compact-table">
@@ -599,10 +607,13 @@ function formatTime($datetime): string {
             
             data.logs.forEach(log => {
                 const isRecharge = log.type === 'recharge';
-                const typeLabel = isRecharge ? window.i18n.t('admin.balance_type.recharge') : window.i18n.t('admin.balance_type.deduct');
-                const typeBadge = isRecharge
-                    ? `<span class="badge badge-success">${typeLabel}</span>`
-                    : `<span class="badge badge-danger">${typeLabel}</span>`;
+                // 优先使用 source_type 标签，否则回退到旧的 type 标签
+                const sourceInfo = log.source_type && sourceTypeMap[log.source_type]
+                    ? sourceTypeMap[log.source_type]
+                    : (isRecharge
+                        ? { label: window.i18n.t('admin.balance_type.recharge'), badgeClass: 'badge-success' }
+                        : { label: window.i18n.t('admin.balance_type.deduct'), badgeClass: 'badge-danger' });
+                const typeBadge = `<span class="badge ${sourceInfo.badgeClass}">${sourceInfo.label}</span>`;
                 const amountClass = isRecharge ? 'text-success' : 'text-danger';
                 const amountSign = isRecharge ? '+' : '';
                 

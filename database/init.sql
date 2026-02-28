@@ -49,7 +49,7 @@ CREATE INDEX IF NOT EXISTS idx_recharge_status ON recharge_orders(status);
 -- 过期时间索引
 CREATE INDEX IF NOT EXISTS idx_recharge_expires_at ON recharge_orders(expires_at);
 
--- 余额变动日志表 (管理员手动充值/扣款)
+-- 账户流水表 (统一记录所有余额变动: 在线充值/人工充值/消费扣费/人工扣款)
 CREATE TABLE IF NOT EXISTS balance_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS balance_logs (
     remark TEXT,                                 -- 管理员内部备注
     visible_to_user INTEGER DEFAULT 0,           -- 是否对用户可见: 0=隐藏, 1=可见
     user_remark TEXT,                            -- 用户可见的说明
+    source_type VARCHAR(30) DEFAULT 'manual_recharge', -- 来源类型: online_recharge/manual_recharge/consumption/manual_deduct
+    source_id INTEGER,                           -- 关联来源ID: recharge_orders.id 或 consumption_logs.id
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );

@@ -147,7 +147,11 @@
     },
     "balance_type": {
       "recharge": "充值",
-      "deduct": "扣款"
+      "deduct": "扣款",
+      "online_recharge": "在线充值",
+      "manual_recharge": "人工充值",
+      "consumption": "消费扣费",
+      "manual_deduct": "人工扣款"
     },
     "balance": {
       "user_placeholder": "请输入用户名/邮箱/ID",
@@ -206,14 +210,14 @@
     "users": {
         "no_login_records": "暂无登录记录",
         "no_consumption_records": "暂无消费记录",
-        "no_balance_records": "暂无余额变动记录",
+        "no_balance_records": "暂无账户流水记录",
         "no_orders": "暂无充值订单",
         "user_id": "用户ID",
         "user_detail": "用户详情",
         "basic_info": "基本信息",
         "login_history": "登录历史",
         "consumption_detail": "消费明细",
-        "balance_history": "余额变动",
+        "balance_history": "账户流水",
         "recharge_orders": "充值订单",
         "statistics": "统计数据",
         "total_recharge": "累计充值",

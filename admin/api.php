@@ -273,44 +273,48 @@ try {
                 jsonResponse(false, __('error.user_not_found'));
             }
 
-            // 更新用户余额
+            // 使用事务保护：余额更新 + 流水写入 + 操作日志
             $newBalance = $user['balance'] + $amount;
-            $result = $db->execute(
-                "UPDATE users SET balance = :balance WHERE id = :id",
-                ['balance' => $newBalance, 'id' => $userId]
-            );
+            try {
+                $db->transaction(function ($db) use ($userId, $amount, $newBalance, $user, $remark, $visibleToUser, $userRemark) {
+                    // 更新用户余额
+                    $db->execute(
+                        "UPDATE users SET balance = :balance WHERE id = :id",
+                        ['balance' => $newBalance, 'id' => $userId]
+                    );
 
-            if ($result) {
-                // 记录充值日志（包含可见性设置）
-                $db->execute(
-                    "INSERT INTO balance_logs (user_id, type, amount, balance_before, balance_after, remark, visible_to_user, user_remark, created_at)
-                     VALUES (:user_id, 'recharge', :amount, :before, :after, :remark, :visible_to_user, :user_remark, :created_at)",
-                    [
-                        'user_id' => $userId,
+                    // 记录充值日志（包含可见性设置）
+                    $db->execute(
+                        "INSERT INTO balance_logs (user_id, type, amount, balance_before, balance_after, remark, visible_to_user, user_remark, source_type, created_at)
+                         VALUES (:user_id, 'recharge', :amount, :before, :after, :remark, :visible_to_user, :user_remark, 'manual_recharge', :created_at)",
+                        [
+                            'user_id' => $userId,
+                            'amount' => $amount,
+                            'before' => $user['balance'],
+                            'after' => $newBalance,
+                            'remark' => $remark,
+                            'visible_to_user' => $visibleToUser,
+                            'user_remark' => $userRemark ?: null,
+                            'created_at' => date('Y-m-d H:i:s')
+                        ]
+                    );
+
+                    // 记录管理操作日志
+                    $db->logAdminOperation('balance_add', $userId, [
                         'amount' => $amount,
-                        'before' => $user['balance'],
-                        'after' => $newBalance,
                         'remark' => $remark,
                         'visible_to_user' => $visibleToUser,
-                        'user_remark' => $userRemark ?: null,
-                        'created_at' => date('Y-m-d H:i:s')
-                    ]
-                );
-
-                // 记录管理操作日志
-                $db->logAdminOperation('balance_add', $userId, [
-                    'amount' => $amount,
-                    'remark' => $remark,
-                    'visible_to_user' => $visibleToUser,
-                    'user_remark' => $userRemark,
-                    'balance_before' => $user['balance'],
-                    'balance_after' => $newBalance
-                ], getClientIp());
+                        'user_remark' => $userRemark,
+                        'balance_before' => $user['balance'],
+                        'balance_after' => $newBalance
+                    ], getClientIp());
+                });
 
                 jsonResponse(true, __('admin.balance_added'), [
                     'new_balance' => $newBalance
                 ]);
-            } else {
+            } catch (Exception $e) {
+                error_log('Admin add_balance transaction failed: ' . $e->getMessage());
                 jsonResponse(false, __('error.unknown'));
             }
             break;
@@ -337,40 +341,44 @@ try {
                 jsonResponse(false, __('error.user_not_found'));
             }
 
-            // 更新用户余额(允许为负)
+            // 使用事务保护：余额更新 + 流水写入 + 操作日志
             $newBalance = $user['balance'] - $amount;
-            $result = $db->execute(
-                "UPDATE users SET balance = :balance WHERE id = :id",
-                ['balance' => $newBalance, 'id' => $userId]
-            );
+            try {
+                $db->transaction(function ($db) use ($userId, $amount, $newBalance, $user, $remark) {
+                    // 更新用户余额(允许为负)
+                    $db->execute(
+                        "UPDATE users SET balance = :balance WHERE id = :id",
+                        ['balance' => $newBalance, 'id' => $userId]
+                    );
 
-            if ($result) {
-                // 记录扣款日志
-                $db->execute(
-                    "INSERT INTO balance_logs (user_id, type, amount, balance_before, balance_after, remark, created_at)
-                     VALUES (:user_id, 'deduct', :amount, :before, :after, :remark, :created_at)",
-                    [
-                        'user_id' => $userId,
-                        'amount' => -$amount,
-                        'before' => $user['balance'],
-                        'after' => $newBalance,
-                        'remark' => __('admin.balance_deducted') . ': ' . $remark,
-                        'created_at' => date('Y-m-d H:i:s')
-                    ]
-                );
+                    // 记录扣款日志
+                    $db->execute(
+                        "INSERT INTO balance_logs (user_id, type, amount, balance_before, balance_after, remark, source_type, created_at)
+                         VALUES (:user_id, 'deduct', :amount, :before, :after, :remark, 'manual_deduct', :created_at)",
+                        [
+                            'user_id' => $userId,
+                            'amount' => -$amount,
+                            'before' => $user['balance'],
+                            'after' => $newBalance,
+                            'remark' => __('admin.balance_deducted') . ': ' . $remark,
+                            'created_at' => date('Y-m-d H:i:s')
+                        ]
+                    );
 
-                // 记录管理操作日志
-                $db->logAdminOperation('balance_deduct', $userId, [
-                    'amount' => $amount,
-                    'remark' => $remark,
-                    'balance_before' => $user['balance'],
-                    'balance_after' => $newBalance
-                ], getClientIp());
+                    // 记录管理操作日志
+                    $db->logAdminOperation('balance_deduct', $userId, [
+                        'amount' => $amount,
+                        'remark' => $remark,
+                        'balance_before' => $user['balance'],
+                        'balance_after' => $newBalance
+                    ], getClientIp());
+                });
 
                 jsonResponse(true, __('admin.balance_deducted'), [
                     'new_balance' => $newBalance
                 ]);
-            } else {
+            } catch (Exception $e) {
+                error_log('Admin deduct_balance transaction failed: ' . $e->getMessage());
                 jsonResponse(false, __('error.unknown'));
             }
             break;

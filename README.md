@@ -2,7 +2,7 @@
 
 > **[English Documentation](README.EN.md)**
 
-基于 Gemini 3 Pro Image (Nano Banana) 的 AI 图像生成与管理平台。
+基于 gemini-3.1-flash-image (Nano Banana 2) 的 AI 图像生成与管理平台。
 
 ## 核心功能
 
@@ -16,7 +16,7 @@ mindmap
         多图上传 最多14张
         文本编辑
       多模型
-        Nano Banana Pro 1K/2K/4K
+        Nano Banana 2 1K/2K/4K
         Nano Banana Flash 1K快速
       多分辨率
         9种宽高比
@@ -165,7 +165,7 @@ location ~ \.php$ {
   - **必需扩展**：`curl`, `openssl`, `mbstring`, `fileinfo`
 - **前端**：Native JS (ES6+) + CSS3 (Responsive)
 - **AI 能力**：
-  - **绘图**：Gemini 3 Pro Image (Nano Banana Pro)
+  - **绘图**：gemini-3.1-flash-image (Nano Banana 2)
   - **优化**：Gemini 2.5 Flash (Prompt Engineering)
   - **语音**：Gemini 2.5 Flash (ASR)
 - **支付集成**：[老司机易支付](https://github.com/RusianHu/LsjEpay) (MD5签名)
@@ -173,3 +173,4 @@ location ~ \.php$ {
 ## 许可证
 
 [Apache License 2.0](LICENSE)
+

@@ -19,6 +19,10 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/i18n/I18n.php';
 
+// 确保数据库迁移已执行（balance_logs 表扩展字段）
+$db = Database::getInstance();
+$db->migrateBalanceLogsVisibility();
+
 // 引入配置
 $config = require 'config.php';
 

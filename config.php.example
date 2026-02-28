@@ -174,10 +174,10 @@ $adminSetupConfig = [
 // ============================================================
 
 $imageModels = [
-    // Nano Banana Pro（默认模型）：支持 1K / 2K / 4K 与搜索接地等能力
+    // Nano Banana 2（默认模型）：支持 1K / 2K / 4K 与搜索接地等能力
     'pro' => [
         'model_name' => 'gemini-3.1-flash-image',
-        'display_name' => 'Nano Banana Pro',
+        'display_name' => 'Nano Banana 2',
         'supported_image_sizes' => ['1K', '2K', '4K'],
         'supports_google_search' => true,
     ],
@@ -348,3 +348,4 @@ return [
     'admin_setup' => $adminSetupConfig,
     'announcement' => $announcementConfig,
 ];
+

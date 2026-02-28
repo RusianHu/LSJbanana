@@ -30,7 +30,7 @@ return [
     'site' => [
         'title' => '老司机的香蕉',
         'subtitle' => 'LSJbanana',
-        'description' => '基于 gemini-3.1-flash-image (Nano Banana Pro) 的图片生成与编辑工具',
+        'description' => '基于 gemini-3.1-flash-image (Nano Banana 2) 的图片生成与编辑工具',
         'copyright' => '© :year LSJbanana Project. Powered by Gemini.',
         'github_title' => '在 GitHub 上查看源码',
         'github_text' => '源码',
@@ -615,7 +615,7 @@ return [
             'basic_info' => '基本信息',
             'login_history' => '登录历史',
             'consumption_detail' => '消费明细',
-            'balance_history' => '余额变动',
+            'balance_history' => '账户流水',
             'recharge_orders' => '充值订单',
             'statistics' => '统计数据',
             'total_recharge' => '累计充值',
@@ -627,7 +627,7 @@ return [
             'reset_password' => '重置密码',
             'no_login_records' => '暂无登录记录',
             'no_consumption_records' => '暂无消费记录',
-            'no_balance_records' => '暂无余额变动记录',
+            'no_balance_records' => '暂无账户流水记录',
             'no_orders' => '暂无充值订单',
         ],
         // 订单管理（顶层）
@@ -665,7 +665,7 @@ return [
             'remark_admin' => '管理员备注 (仅后台可见)',
             'remark_placeholder' => '请输入操作备注...',
             'visible_to_user' => '用户可见',
-            'visible_hint' => '勾选后，用户可在余额变动记录中看到该备注',
+            'visible_hint' => '勾选后，用户可在账户流水记录中看到该备注',
             'user_remark' => '用户备注 (前台显示)',
             'user_remark_placeholder' => '展示给用户的说明信息',
             'user_remark_default' => '留空则使用默认格式',
@@ -749,10 +749,14 @@ return [
             'generate' => '生成',
             'edit' => '编辑',
         ],
-        // 余额类型
+        // 余额类型（账户流水来源）
         'balance_type' => [
             'recharge' => '充值',
             'deduct' => '扣款',
+            'online_recharge' => '在线充值',
+            'manual_recharge' => '人工充值',
+            'consumption' => '消费扣费',
+            'manual_deduct' => '人工扣款',
         ],
         // 支付方式
         'pay_type' => [
