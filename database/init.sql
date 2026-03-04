@@ -115,6 +115,7 @@ CREATE TABLE IF NOT EXISTS user_sessions (
     user_id INTEGER NOT NULL,
     token_hash VARCHAR(255) NOT NULL UNIQUE,
     expires_at DATETIME NOT NULL,
+    absolute_expires_at DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     ip_address VARCHAR(45),
     user_agent TEXT,
@@ -140,6 +141,7 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
     user_agent TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     expires_at DATETIME NOT NULL,
+    absolute_expires_at DATETIME,
     last_activity DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

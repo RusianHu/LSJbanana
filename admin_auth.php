@@ -145,9 +145,9 @@ class AdminAuth {
             return false;
         }
 
-        // 检查是否过期
-        // 注意：SQLite 的 datetime() 函数返回 UTC 时间，需要在解析时明确指定时区
-        if (strtotime($session['expires_at'] . ' UTC') < time()) {
+        // 检查滑动过期（idle timeout）
+        // 注意：会话时间由 PHP date() 写入，使用本地时区（Asia/Shanghai）
+        if (strtotime($session['expires_at']) <= time()) {
             $this->db->deleteAdminSession($token);
             if ($redirect) {
                 $this->clearCookie();
@@ -156,8 +156,36 @@ class AdminAuth {
             return false;
         }
 
-        // 更新活动时间
-        $this->db->updateAdminActivity($token);
+        // 检查绝对过期上限
+        if (!empty($session['absolute_expires_at'])) {
+            if (strtotime($session['absolute_expires_at']) <= time()) {
+                $this->db->deleteAdminSession($token);
+                if ($redirect) {
+                    $this->clearCookie();
+                    $this->redirectToLogin('expired');
+                }
+                return false;
+            }
+        }
+
+        // 滑动续期：更新活动时间并延长 expires_at
+        $sessionLifetime = $this->config['session_lifetime'] ?? 3600;
+        $this->db->updateAdminActivity($token, $sessionLifetime);
+
+        // 同步重发 Cookie（滑动续期）
+        $effectiveLifetime = $sessionLifetime;
+        if (!empty($session['absolute_expires_at'])) {
+            $absoluteRemaining = strtotime($session['absolute_expires_at']) - time();
+            $effectiveLifetime = min($sessionLifetime, max(0, $absoluteRemaining));
+        }
+        $cookieSecure = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+        setcookie(self::COOKIE_ADMIN_SESSION, $token, [
+            'expires' => time() + $effectiveLifetime,
+            'path' => '/',
+            'secure' => $cookieSecure,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
 
         return true;
     }
@@ -241,12 +269,13 @@ class AdminAuth {
         // 记录成功登录
         $this->db->logAdminAttempt($ip, 1);
 
-        // 创建Session
+        // 创建Session（支持绝对过期上限）
         $token = SecurityUtils::generateSecureToken(64);
         $sessionLifetime = $this->config['session_lifetime'] ?? 3600;
+        $absoluteLifetime = $this->config['absolute_lifetime'] ?? (8 * 3600);
         $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? null;
 
-        $this->db->createAdminSession($token, $ip, $userAgent, $sessionLifetime);
+        $this->db->createAdminSession($token, $ip, $userAgent, $sessionLifetime, $absoluteLifetime);
 
         // 设置Cookie
         $cookieLifetime = time() + $sessionLifetime;
@@ -473,11 +502,12 @@ class AdminAuth {
         $ip = $this->getClientIp();
         $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? null;
 
-        // 创建Session
+        // 创建Session（支持绝对过期上限）
         $sessionToken = SecurityUtils::generateSecureToken(64);
         $sessionLifetime = $this->config['session_lifetime'] ?? 3600;
+        $absoluteLifetime = $this->config['absolute_lifetime'] ?? (8 * 3600);
 
-        $this->db->createAdminSession($sessionToken, $ip, $userAgent, $sessionLifetime);
+        $this->db->createAdminSession($sessionToken, $ip, $userAgent, $sessionLifetime, $absoluteLifetime);
 
         // 设置Cookie
         $cookieLifetime = time() + $sessionLifetime;

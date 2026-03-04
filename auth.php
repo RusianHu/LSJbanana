@@ -41,19 +41,52 @@ class Auth {
     }
 
     /**
-     * 启动会话
+     * 启动会话（支持滑动续期）
      */
     public function startSession(): void {
         if (session_status() === PHP_SESSION_NONE) {
+            $sessionLifetime = $this->config['session_lifetime'] ?? 604800;
+
+            // 同步服务端 GC 最大生存时间，避免 Cookie 还在但服务端会话已被回收
+            ini_set('session.gc_maxlifetime', (string) $sessionLifetime);
+
             // 设置会话 cookie 参数
             session_set_cookie_params([
-                'lifetime' => $this->config['session_lifetime'] ?? 604800,
+                'lifetime' => $sessionLifetime,
                 'path' => '/',
                 'secure' => isset($_SERVER['HTTPS']),
                 'httponly' => true,
                 'samesite' => 'Lax',
             ]);
             session_start();
+
+            // 滑动续期：每次活跃请求时重发 Cookie，延长到期时间
+            // 但检查绝对上限：如果超过则不续期
+            if (isset($_SESSION['user_id'])) {
+                $absoluteLifetime = $this->config['absolute_lifetime'] ?? (90 * 24 * 3600);
+                // 兼容旧会话：如果没有 login_time 则补记当前时间（升级后首次访问视为基准）
+                if (!isset($_SESSION['login_time']) || $_SESSION['login_time'] <= 0) {
+                    $_SESSION['login_time'] = time();
+                }
+                $loginTime = $_SESSION['login_time'];
+                $absoluteDeadline = $loginTime + $absoluteLifetime;
+
+                if (time() < $absoluteDeadline) {
+                    // 还在绝对上限内，滑动续期
+                    $remaining = $absoluteDeadline - time();
+                    $effectiveLifetime = min($sessionLifetime, $remaining);
+                    setcookie(session_name(), session_id(), [
+                        'expires' => time() + $effectiveLifetime,
+                        'path' => '/',
+                        'secure' => isset($_SERVER['HTTPS']),
+                        'httponly' => true,
+                        'samesite' => 'Lax',
+                    ]);
+                } else {
+                    // 超过绝对上限，强制登出
+                    $this->logout();
+                }
+            }
         }
     }
 
@@ -161,6 +194,9 @@ class Auth {
 
         // 登录成功
         $this->startSession();
+
+        // 防止会话固定攻击：重新生成会话 ID
+        session_regenerate_id(true);
 
         // 更新会话
         $_SESSION['user_id'] = $user['id'];
@@ -306,7 +342,7 @@ class Auth {
     }
 
     /**
-     * 创建"记住我" token
+     * 创建"记住我" token（支持绝对过期上限）
      */
     private function createRememberToken(int $userId): void {
         try {
@@ -317,19 +353,23 @@ class Auth {
 
         $tokenHash = hash('sha256', $token);
         $expiresIn = $this->config['remember_me_lifetime'] ?? 2592000;
+        $absoluteLifetime = $this->config['absolute_lifetime'] ?? (90 * 24 * 3600);
+        // Cookie 有效期取 idle 和 absolute 中较小值，避免 Cookie 存在但 DB 已失效
+        $cookieLifetime = min($expiresIn, $absoluteLifetime);
 
         $this->db->createSession(
             $userId,
             $tokenHash,
             $expiresIn,
             $this->getClientIp(),
-            $_SERVER['HTTP_USER_AGENT'] ?? null
+            $_SERVER['HTTP_USER_AGENT'] ?? null,
+            $absoluteLifetime
         );
 
         setcookie(
             self::COOKIE_REMEMBER,
             $token,
-            time() + $expiresIn,
+            time() + $cookieLifetime,
             '/',
             '',
             isset($_SERVER['HTTPS']),
@@ -338,30 +378,63 @@ class Auth {
     }
 
     /**
-     * 使用记住我 token 登录
+     * 使用记住我 token 登录（支持滑动续期）
      */
     private function loginWithRememberToken(string $token): bool {
         $tokenHash = hash('sha256', $token);
         $session = $this->db->getValidSession($tokenHash);
+        $isSecure = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
 
         if ($session === null) {
             // Token 无效，清除 cookie
-            setcookie(self::COOKIE_REMEMBER, '', time() - 3600, '/', '', isset($_SERVER['HTTPS']), true);
+            setcookie(self::COOKIE_REMEMBER, '', ['expires' => time() - 3600, 'path' => '/', 'secure' => $isSecure, 'httponly' => true, 'samesite' => 'Lax']);
             return false;
         }
 
         $user = $this->db->getUserById((int) $session['user_id']);
         if ($user === null || ($user['status'] ?? 0) !== 1) {
             $this->db->deleteSession($tokenHash);
-            setcookie(self::COOKIE_REMEMBER, '', time() - 3600, '/', '', isset($_SERVER['HTTPS']), true);
+            setcookie(self::COOKIE_REMEMBER, '', ['expires' => time() - 3600, 'path' => '/', 'secure' => $isSecure, 'httponly' => true, 'samesite' => 'Lax']);
+            return false;
+        }
+
+        // 绝对上限判定（策略优先：在续期/建立会话之前检查）
+        // 注意：数据库时间由 PHP date() 写入，使用本地时区
+        $createdAt = strtotime($session['created_at'] ?? '');
+        $absoluteLifetime = $this->config['absolute_lifetime'] ?? (90 * 24 * 3600);
+        $absoluteExpiresAt = !empty($session['absolute_expires_at'])
+            ? strtotime($session['absolute_expires_at'])
+            : (($createdAt ?: time()) + $absoluteLifetime);
+
+        if (time() >= $absoluteExpiresAt) {
+            // 绝对上限已到，拒绝登录并清除 token
+            $this->db->deleteSession($tokenHash);
+            setcookie(self::COOKIE_REMEMBER, '', ['expires' => time() - 3600, 'path' => '/', 'secure' => $isSecure, 'httponly' => true, 'samesite' => 'Lax']);
             return false;
         }
 
         // 恢复会话
         $this->startSession();
+        session_regenerate_id(true); // 防止会话固定攻击
         $_SESSION['user_id'] = $user['id'];
         $_SESSION['username'] = $user['username'];
-        $_SESSION['login_time'] = time();
+        // 使用原始创建时间作为绝对上限计算基准
+        $_SESSION['login_time'] = $createdAt ?: time();
+
+        // 滑动续期：延长数据库中的 expires_at 和 Cookie
+        $rememberLifetime = $this->config['remember_me_lifetime'] ?? 2592000;
+        $this->db->renewUserSession($tokenHash, $rememberLifetime);
+
+        // 重发 Cookie（剩余时间与滑动窗口取较小值）
+        $remaining = $absoluteExpiresAt - time();
+        $effectiveLifetime = min($rememberLifetime, $remaining);
+        setcookie(self::COOKIE_REMEMBER, $token, [
+            'expires' => time() + $effectiveLifetime,
+            'path' => '/',
+            'secure' => $isSecure,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
 
         // 记录登录日志
         $this->db->logLogin($user['id'], $this->getClientIp(), $_SERVER['HTTP_USER_AGENT'] ?? null, 'token', 1);

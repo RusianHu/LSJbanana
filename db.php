@@ -78,6 +78,9 @@ class Database {
             if ($isNewDb) {
                 $this->initTables();
             }
+
+            // 自动迁移：确保会话表包含 absolute_expires_at 字段
+            $this->migrateSessionAbsoluteExpiry();
         } catch (PDOException $e) {
             throw new RuntimeException('数据库连接失败: ' . $e->getMessage());
         }
@@ -248,6 +251,7 @@ class Database {
                     user_agent TEXT,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     expires_at DATETIME NOT NULL,
+                    absolute_expires_at DATETIME,
                     last_activity DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             ",
@@ -1001,18 +1005,24 @@ class Database {
 
     /**
      * 创建用户会话
+     *
+     * @param int $absoluteExpiresInSeconds 绝对过期时间(秒)，0表示不设置绝对上限
      */
-    public function createSession(int $userId, string $tokenHash, int $expiresInSeconds, ?string $ip = null, ?string $userAgent = null): int {
+    public function createSession(int $userId, string $tokenHash, int $expiresInSeconds, ?string $ip = null, ?string $userAgent = null, int $absoluteExpiresInSeconds = 0): int {
         $now = $this->now();
         $expiresAt = date('Y-m-d H:i:s', time() + $expiresInSeconds);
-        $sql = "INSERT INTO user_sessions (user_id, token_hash, expires_at, ip_address, user_agent, created_at)
-                VALUES (:user_id, :token_hash, :expires_at, :ip, :user_agent, :created_at)";
+        $absoluteExpiresAt = $absoluteExpiresInSeconds > 0
+            ? date('Y-m-d H:i:s', time() + $absoluteExpiresInSeconds)
+            : null;
+        $sql = "INSERT INTO user_sessions (user_id, token_hash, expires_at, absolute_expires_at, ip_address, user_agent, created_at)
+                VALUES (:user_id, :token_hash, :expires_at, :absolute_expires_at, :ip, :user_agent, :created_at)";
         
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
             ':user_id' => $userId,
             ':token_hash' => $tokenHash,
             ':expires_at' => $expiresAt,
+            ':absolute_expires_at' => $absoluteExpiresAt,
             ':ip' => $ip,
             ':user_agent' => $userAgent,
             ':created_at' => $now,
@@ -1022,11 +1032,13 @@ class Database {
 
     /**
      * 根据 token 哈希获取有效会话
+     * 同时检查滑动过期和绝对过期
      */
     public function getValidSession(string $tokenHash): ?array {
-        $sql = "SELECT * FROM user_sessions WHERE token_hash = :token_hash AND expires_at > :now LIMIT 1";
+        $now = $this->now();
+        $sql = "SELECT * FROM user_sessions WHERE token_hash = :token_hash AND expires_at > :now AND (absolute_expires_at IS NULL OR absolute_expires_at > :now2) LIMIT 1";
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([':token_hash' => $tokenHash, ':now' => $this->now()]);
+        $stmt->execute([':token_hash' => $tokenHash, ':now' => $now, ':now2' => $now]);
         $session = $stmt->fetch();
         return $session ?: null;
     }
@@ -1128,12 +1140,17 @@ class Database {
 
     /**
      * 创建管理员会话
+     *
+     * @param int $absoluteExpiresIn 绝对过期时间(秒)，0表示不设置绝对上限
      */
-    public function createAdminSession(string $token, string $ip, ?string $userAgent, int $expiresIn): int {
+    public function createAdminSession(string $token, string $ip, ?string $userAgent, int $expiresIn, int $absoluteExpiresIn = 0): int {
         $now = $this->now();
         $expiresAt = date('Y-m-d H:i:s', time() + $expiresIn);
-        $sql = "INSERT INTO admin_sessions (session_token, ip_address, user_agent, expires_at, created_at, last_activity)
-                VALUES (:token, :ip, :ua, :expires_at, :created_at, :last_activity)";
+        $absoluteExpiresAt = $absoluteExpiresIn > 0
+            ? date('Y-m-d H:i:s', time() + $absoluteExpiresIn)
+            : null;
+        $sql = "INSERT INTO admin_sessions (session_token, ip_address, user_agent, expires_at, absolute_expires_at, created_at, last_activity)
+                VALUES (:token, :ip, :ua, :expires_at, :absolute_expires_at, :created_at, :last_activity)";
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
@@ -1141,6 +1158,7 @@ class Database {
             ':ip' => $ip,
             ':ua' => $userAgent,
             ':expires_at' => $expiresAt,
+            ':absolute_expires_at' => $absoluteExpiresAt,
             ':created_at' => $now,
             ':last_activity' => $now,
         ]);
@@ -1159,12 +1177,31 @@ class Database {
     }
 
     /**
-     * 更新管理员活动时间
+     * 更新管理员活动时间并滑动续期
+     *
+     * @param int $renewSeconds 续期秒数，>0 时同时延长 expires_at（不超过 absolute_expires_at）
      */
-    public function updateAdminActivity(string $token): bool {
+    public function updateAdminActivity(string $token, int $renewSeconds = 0): bool {
+        $now = $this->now();
+        if ($renewSeconds > 0) {
+            $newExpiresAt = date('Y-m-d H:i:s', time() + $renewSeconds);
+            $sql = "UPDATE admin_sessions SET last_activity = :last_activity,
+                    expires_at = CASE
+                        WHEN absolute_expires_at IS NOT NULL AND :new_expires > absolute_expires_at THEN absolute_expires_at
+                        ELSE :new_expires2
+                    END
+                    WHERE session_token = :token";
+            $stmt = $this->pdo->prepare($sql);
+            return $stmt->execute([
+                ':last_activity' => $now,
+                ':new_expires' => $newExpiresAt,
+                ':new_expires2' => $newExpiresAt,
+                ':token' => $token,
+            ]);
+        }
         $sql = "UPDATE admin_sessions SET last_activity = :last_activity WHERE session_token = :token";
         $stmt = $this->pdo->prepare($sql);
-        return $stmt->execute([':token' => $token, ':last_activity' => $this->now()]);
+        return $stmt->execute([':token' => $token, ':last_activity' => $now]);
     }
 
     /**
@@ -2168,5 +2205,78 @@ class Database {
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute();
         return $stmt->rowCount();
+    }
+
+    // ============================================================
+    // 会话滑动续期
+    // ============================================================
+
+    /**
+     * 续期用户会话（Remember Me token）
+     * 延长 expires_at 但不超过 absolute_expires_at
+     *
+     * @param string $tokenHash token 哈希
+     * @param int $renewSeconds 续期秒数
+     * @return bool
+     */
+    public function renewUserSession(string $tokenHash, int $renewSeconds): bool {
+        $newExpiresAt = date('Y-m-d H:i:s', time() + $renewSeconds);
+        $sql = "UPDATE user_sessions SET expires_at = CASE
+                    WHEN absolute_expires_at IS NOT NULL AND :new_expires > absolute_expires_at THEN absolute_expires_at
+                    ELSE :new_expires2
+                END
+                WHERE token_hash = :token_hash";
+        $stmt = $this->pdo->prepare($sql);
+        return $stmt->execute([
+            ':new_expires' => $newExpiresAt,
+            ':new_expires2' => $newExpiresAt,
+            ':token_hash' => $tokenHash,
+        ]);
+    }
+
+    // ============================================================
+    // 会话表结构迁移
+    // ============================================================
+
+    /**
+     * 迁移：为 user_sessions 和 admin_sessions 表添加 absolute_expires_at 字段
+     *
+     * @return bool
+     */
+    public function migrateSessionAbsoluteExpiry(): bool {
+        try {
+            // user_sessions
+            $result = $this->pdo->query("PRAGMA table_info(user_sessions)");
+            $columns = $result->fetchAll(PDO::FETCH_ASSOC);
+            $hasAbsolute = false;
+            foreach ($columns as $col) {
+                if ($col['name'] === 'absolute_expires_at') {
+                    $hasAbsolute = true;
+                    break;
+                }
+            }
+            if (!$hasAbsolute) {
+                $this->pdo->exec("ALTER TABLE user_sessions ADD COLUMN absolute_expires_at DATETIME");
+            }
+
+            // admin_sessions
+            $result = $this->pdo->query("PRAGMA table_info(admin_sessions)");
+            $columns = $result->fetchAll(PDO::FETCH_ASSOC);
+            $hasAbsolute = false;
+            foreach ($columns as $col) {
+                if ($col['name'] === 'absolute_expires_at') {
+                    $hasAbsolute = true;
+                    break;
+                }
+            }
+            if (!$hasAbsolute) {
+                $this->pdo->exec("ALTER TABLE admin_sessions ADD COLUMN absolute_expires_at DATETIME");
+            }
+
+            return true;
+        } catch (PDOException $e) {
+            error_log('Session absolute expiry migration error: ' . $e->getMessage());
+            return false;
+        }
     }
 }
