@@ -41,6 +41,16 @@ if (!is_array($supportedResolutions) || $supportedResolutions === []) {
     $supportedResolutions = ['1K'];
 }
 
+$announcementConfig = $config ? ($config['announcement'] ?? []) : [];
+$announcementRuntimeConfig = [
+    'allow_html' => (bool)($announcementConfig['allow_html'] ?? true),
+    'sanitize_html' => (bool)($announcementConfig['sanitize_html'] ?? true),
+    'max_banners' => max(0, (int)($announcementConfig['max_banners'] ?? 3)),
+    'max_modals_per_session' => max(0, (int)($announcementConfig['max_modals_per_session'] ?? 1)),
+    'cache_ttl' => max(0, (int)($announcementConfig['cache_ttl'] ?? 300)),
+    'guest_dismissal_ttl' => max(0, (int)($announcementConfig['guest_dismissal_ttl'] ?? (7 * 24 * 3600))),
+];
+
 // 处理登出请求
 if (isset($_GET['action']) && $_GET['action'] === 'logout') {
     $auth->logout();
@@ -427,6 +437,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
             pricePerTask: <?php echo $pricePerTask; ?>,
             pricePerImage: <?php echo $pricePerTask; ?>
         };
+        window.LSJ_ANNOUNCEMENT = <?php echo json_encode($announcementRuntimeConfig, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
         // 传递当前语言给 JS
         window.LSJ_LANG = '<?php echo currentLocale(); ?>';
     </script>

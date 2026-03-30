@@ -475,9 +475,9 @@ function handleConfigAction(array $config): array {
         ];
     }
 
-    // 调试诊断配置
-    if (!empty($config['debug_diagnostic'])) {
-        $diag = $config['debug_diagnostic'];
+    // 调试诊断配置（定义在 admin 配置块内）
+    if (!empty($config['admin']['debug_diagnostic'])) {
+        $diag = $config['admin']['debug_diagnostic'];
         $result['debug_diagnostic'] = [
             'enabled' => $diag['enabled'] ?? false,
             'ip_whitelist' => $diag['ip_whitelist'] ?? [],

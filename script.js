@@ -1706,97 +1706,631 @@ function initAnnouncementSystem() {
     const BANNER_CONTAINER_ID = 'announcement-banners';
     const MODAL_OVERLAY_ID = 'announcement-modal-overlay';
     const INLINE_CONTAINER_ID = 'announcement-inlines';
-    
-    // 从 localStorage 获取已关闭的公告 ID
-    function getDismissedIds() {
+
+    const DISMISSED_KEY = 'lsj_dismissed_announcements_v2';
+    const LEGACY_DISMISSED_KEY = 'lsj_dismissed_announcements';
+    const CACHE_KEY = 'lsj_announcements_cache_v1';
+    const MODAL_COUNT_KEY = 'lsj_announcement_modal_count_v1';
+
+    const runtimeConfig = window.LSJ_ANNOUNCEMENT || {};
+
+    function toNonNegativeInt(value, fallback) {
+        const parsed = Number.parseInt(value, 10);
+        return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+    }
+
+    const configState = {
+        allowHtml: runtimeConfig.allow_html !== undefined ? Boolean(runtimeConfig.allow_html) : true,
+        sanitizeHtml: runtimeConfig.sanitize_html !== undefined ? Boolean(runtimeConfig.sanitize_html) : true,
+        cacheTtl: toNonNegativeInt(runtimeConfig.cache_ttl, 300),
+        guestDismissalTtl: toNonNegativeInt(runtimeConfig.guest_dismissal_ttl, 7 * 24 * 3600),
+        maxModalsPerSession: toNonNegativeInt(runtimeConfig.max_modals_per_session, 1),
+        maxBanners: toNonNegativeInt(runtimeConfig.max_banners, 3),
+    };
+
+    const allowedTypes = new Set(['info', 'warning', 'success', 'important']);
+
+    function applyMetaConfig(meta) {
+        if (!meta || typeof meta !== 'object') {
+            return;
+        }
+
+        if (Object.prototype.hasOwnProperty.call(meta, 'allow_html')) {
+            configState.allowHtml = Boolean(meta.allow_html);
+        }
+        if (Object.prototype.hasOwnProperty.call(meta, 'sanitize_html')) {
+            configState.sanitizeHtml = Boolean(meta.sanitize_html);
+        }
+        if (Object.prototype.hasOwnProperty.call(meta, 'cache_ttl')) {
+            configState.cacheTtl = toNonNegativeInt(meta.cache_ttl, configState.cacheTtl);
+        }
+        if (Object.prototype.hasOwnProperty.call(meta, 'guest_dismissal_ttl')) {
+            configState.guestDismissalTtl = toNonNegativeInt(meta.guest_dismissal_ttl, configState.guestDismissalTtl);
+        }
+        if (Object.prototype.hasOwnProperty.call(meta, 'max_modals_per_session')) {
+            configState.maxModalsPerSession = toNonNegativeInt(meta.max_modals_per_session, configState.maxModalsPerSession);
+        }
+        if (Object.prototype.hasOwnProperty.call(meta, 'max_banners')) {
+            configState.maxBanners = toNonNegativeInt(meta.max_banners, configState.maxBanners);
+        }
+    }
+
+    function sanitizeAndNormalizeUrl(url) {
+        if (typeof url !== 'string') {
+            return '';
+        }
+
+        const raw = url.trim();
+        if (!raw) {
+            return '';
+        }
+
         try {
-            const stored = localStorage.getItem('lsj_dismissed_announcements');
-            return stored ? JSON.parse(stored) : [];
+            const parsed = new URL(raw, window.location.origin);
+            if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+                return parsed.toString();
+            }
         } catch (e) {
-            return [];
+            return '';
         }
+
+        return '';
     }
-    
-    // 保存已关闭的公告 ID 到 localStorage
-    function saveDismissedId(id) {
-        const ids = getDismissedIds();
-        if (!ids.includes(id)) {
-            ids.push(id);
-            localStorage.setItem('lsj_dismissed_announcements', JSON.stringify(ids));
-        }
-    }
-    
-    // 获取公告数据
-    async function fetchAnnouncements() {
-        const dismissedIds = getDismissedIds();
-        const formData = new FormData();
-        formData.append('action', 'get_announcements');
-        formData.append('dismissed_ids', JSON.stringify(dismissedIds));
-        
+
+    function sanitizeHtmlFragmentToFragment(inputHtml) {
+        const fragment = document.createDocumentFragment();
+        const allowedTags = new Set(['b', 'i', 'u', 'a', 'br', 'p', 'ul', 'ol', 'li', 'strong', 'em', 'span']);
+
         try {
-            const response = await fetch('api.php', {
-                method: 'POST',
-                body: formData
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(`<div>${String(inputHtml ?? '')}</div>`, 'text/html');
+            const sourceRoot = doc.body.firstElementChild || doc.body;
+
+            const appendStrictNode = (node, parent) => {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    parent.appendChild(document.createTextNode(node.textContent || ''));
+                    return;
+                }
+
+                if (node.nodeType !== Node.ELEMENT_NODE) {
+                    return;
+                }
+
+                const tagName = node.tagName.toLowerCase();
+                if (!allowedTags.has(tagName)) {
+                    Array.from(node.childNodes).forEach((child) => appendStrictNode(child, parent));
+                    return;
+                }
+
+                const safeEl = document.createElement(tagName);
+
+                if (tagName === 'a') {
+                    const safeHref = sanitizeAndNormalizeUrl(node.getAttribute('href') || '');
+                    if (safeHref) {
+                        safeEl.setAttribute('href', safeHref);
+                        safeEl.setAttribute('target', '_blank');
+                        safeEl.setAttribute('rel', 'noopener noreferrer nofollow');
+                    }
+                }
+
+                Array.from(node.childNodes).forEach((child) => appendStrictNode(child, safeEl));
+                parent.appendChild(safeEl);
+            };
+
+            Array.from(sourceRoot.childNodes).forEach((node) => appendStrictNode(node, fragment));
+        } catch (e) {
+            fragment.appendChild(document.createTextNode(String(inputHtml ?? '')));
+        }
+
+        return fragment;
+    }
+
+    function sanitizeLooseHtmlToFragment(inputHtml) {
+        const fragment = document.createDocumentFragment();
+        const dangerousTags = new Set(['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta']);
+
+        const sanitizeLooseNode = (node) => {
+            if (node.nodeType === Node.TEXT_NODE) {
+                return document.createTextNode(node.textContent || '');
+            }
+
+            if (node.nodeType !== Node.ELEMENT_NODE) {
+                return null;
+            }
+
+            const tagName = node.tagName.toLowerCase();
+            if (dangerousTags.has(tagName)) {
+                return null;
+            }
+
+            const safeEl = document.createElement(tagName);
+
+            Array.from(node.attributes).forEach((attr) => {
+                const attrName = attr.name.toLowerCase();
+                if (attrName.startsWith('on') || attrName === 'style') {
+                    return;
+                }
+                safeEl.setAttribute(attr.name, attr.value);
             });
-            
-            // 检查 HTTP 响应状态
-            if (!response.ok) {
-                console.warn('Announcement API returned non-OK status:', response.status);
-                return;
+
+            if (tagName === 'a') {
+                const safeHref = sanitizeAndNormalizeUrl(safeEl.getAttribute('href') || '');
+                if (safeHref) {
+                    safeEl.setAttribute('href', safeHref);
+                    safeEl.setAttribute('target', '_blank');
+                    safeEl.setAttribute('rel', 'noopener noreferrer nofollow');
+                } else {
+                    safeEl.removeAttribute('href');
+                    safeEl.removeAttribute('target');
+                    safeEl.removeAttribute('rel');
+                }
             }
-            
-            const result = await response.json();
-            
-            // 验证响应结构
-            if (!result || typeof result !== 'object') {
-                console.warn('Invalid announcement response format');
-                return;
-            }
-            
-            if (result.success && result.data) {
-                renderAnnouncements(result.data);
-            }
-            // 如果 success 为 false 或没有 data，静默处理（不显示公告）
-        } catch (error) {
-            // 网络错误或 JSON 解析错误，静默处理
-            console.error('Failed to fetch announcements:', error);
+
+            Array.from(node.childNodes).forEach((child) => {
+                const safeChild = sanitizeLooseNode(child);
+                if (safeChild) {
+                    safeEl.appendChild(safeChild);
+                }
+            });
+
+            return safeEl;
+        };
+
+        try {
+            const template = document.createElement('template');
+            template.innerHTML = String(inputHtml ?? '');
+
+            Array.from(template.content.childNodes).forEach((node) => {
+                const safeNode = sanitizeLooseNode(node);
+                if (safeNode) {
+                    fragment.appendChild(safeNode);
+                }
+            });
+        } catch (e) {
+            fragment.appendChild(document.createTextNode(String(inputHtml ?? '')));
+        }
+
+        return fragment;
+    }
+
+    function buildContentNode(content) {
+        const raw = typeof content === 'string' ? content : String(content ?? '');
+
+        if (!configState.allowHtml) {
+            const textFragment = document.createDocumentFragment();
+            textFragment.appendChild(document.createTextNode(raw));
+            return textFragment;
+        }
+
+        if (configState.sanitizeHtml) {
+            return sanitizeHtmlFragmentToFragment(raw);
+        }
+
+        return sanitizeLooseHtmlToFragment(raw);
+    }
+
+    function saveDismissedMap(map) {
+        try {
+            localStorage.setItem(DISMISSED_KEY, JSON.stringify(map));
+        } catch (e) {
+            // localStorage 不可用时静默降级
         }
     }
-    
-    // 关闭公告
+
+    function getDismissedMap() {
+        const now = Date.now();
+        const ttlMs = configState.guestDismissalTtl > 0 ? configState.guestDismissalTtl * 1000 : 0;
+        let dirty = false;
+        let parsed = {};
+
+        try {
+            const raw = localStorage.getItem(DISMISSED_KEY);
+            parsed = raw ? JSON.parse(raw) : {};
+        } catch (e) {
+            parsed = {};
+            dirty = true;
+        }
+
+        const map = {};
+
+        const putRecord = (idCandidate, tsCandidate) => {
+            const id = Number.parseInt(String(idCandidate), 10);
+            if (!Number.isInteger(id) || id <= 0) {
+                dirty = true;
+                return;
+            }
+
+            let ts = Number(tsCandidate);
+            if (!Number.isFinite(ts) || ts <= 0) {
+                ts = now;
+                dirty = true;
+            }
+
+            if (ttlMs > 0 && now - ts > ttlMs) {
+                dirty = true;
+                return;
+            }
+
+            map[String(id)] = ts;
+        };
+
+        if (Array.isArray(parsed)) {
+            dirty = true;
+            parsed.forEach((id) => putRecord(id, now));
+        } else if (parsed && typeof parsed === 'object') {
+            Object.keys(parsed).forEach((id) => putRecord(id, parsed[id]));
+        }
+
+        try {
+            const legacyRaw = localStorage.getItem(LEGACY_DISMISSED_KEY);
+            if (legacyRaw) {
+                const legacyParsed = JSON.parse(legacyRaw);
+                if (Array.isArray(legacyParsed)) {
+                    dirty = true;
+                    legacyParsed.forEach((id) => putRecord(id, now));
+                }
+                localStorage.removeItem(LEGACY_DISMISSED_KEY);
+            }
+        } catch (e) {
+            // 忽略旧数据迁移错误
+        }
+
+        if (dirty) {
+            saveDismissedMap(map);
+        }
+
+        return map;
+    }
+
+    function getDismissedIdsForRequest() {
+        const map = getDismissedMap();
+        return Object.keys(map)
+            .map((id) => Number.parseInt(id, 10))
+            .filter((id) => Number.isInteger(id) && id > 0);
+    }
+
+    function saveDismissedId(id) {
+        const normalizedId = Number.parseInt(id, 10);
+        if (!Number.isInteger(normalizedId) || normalizedId <= 0) {
+            return;
+        }
+
+        const map = getDismissedMap();
+        map[String(normalizedId)] = Date.now();
+        saveDismissedMap(map);
+    }
+
+    function readAnnouncementsCache() {
+        if (configState.cacheTtl <= 0) {
+            return null;
+        }
+
+        try {
+            const raw = localStorage.getItem(CACHE_KEY);
+            if (!raw) {
+                return null;
+            }
+
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== 'object') {
+                return null;
+            }
+
+            const ts = Number(parsed.ts || 0);
+            if (!Number.isFinite(ts) || ts <= 0) {
+                return null;
+            }
+
+            if (Date.now() - ts > configState.cacheTtl * 1000) {
+                localStorage.removeItem(CACHE_KEY);
+                return null;
+            }
+
+            if (!parsed.data || typeof parsed.data !== 'object') {
+                return null;
+            }
+
+            return parsed;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function writeAnnouncementsCache(payload) {
+        if (configState.cacheTtl <= 0) {
+            return;
+        }
+
+        if (!payload || typeof payload !== 'object' || !payload.data || typeof payload.data !== 'object') {
+            return;
+        }
+
+        try {
+            localStorage.setItem(CACHE_KEY, JSON.stringify({
+                ts: Date.now(),
+                data: payload.data,
+                meta: payload.meta || null
+            }));
+        } catch (e) {
+            // localStorage 不可用时静默降级
+        }
+    }
+
+    function clearAnnouncementsCache() {
+        try {
+            localStorage.removeItem(CACHE_KEY);
+        } catch (e) {
+            // 忽略
+        }
+    }
+
+    function getModalShownCount() {
+        try {
+            const raw = sessionStorage.getItem(MODAL_COUNT_KEY);
+            const count = Number.parseInt(raw || '0', 10);
+            return Number.isFinite(count) && count > 0 ? count : 0;
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    function setModalShownCount(count) {
+        try {
+            const safeCount = Math.max(0, Number.parseInt(count, 10) || 0);
+            sessionStorage.setItem(MODAL_COUNT_KEY, String(safeCount));
+        } catch (e) {
+            // sessionStorage 不可用时静默降级
+        }
+    }
+
+    function normalizeAnnouncementItem(item) {
+        if (!item || typeof item !== 'object') {
+            return null;
+        }
+
+        const id = Number.parseInt(item.id, 10);
+        if (!Number.isInteger(id) || id <= 0) {
+            return null;
+        }
+
+        const type = typeof item.type === 'string' && allowedTypes.has(item.type) ? item.type : 'info';
+
+        return {
+            id,
+            title: typeof item.title === 'string' ? item.title : String(item.title ?? ''),
+            content: typeof item.content === 'string' ? item.content : String(item.content ?? ''),
+            type,
+            is_dismissible: Boolean(item.is_dismissible),
+        };
+    }
+
+    function createIcon(type, extraClass = '') {
+        const icon = document.createElement('i');
+        icon.className = `fas ${getIconClass(type)}${extraClass ? ` ${extraClass}` : ''}`;
+        return icon;
+    }
+
+    function removeBannerOffset() {
+        document.body.classList.remove('has-announcement-banners');
+        document.body.style.removeProperty('--announcement-banners-height');
+    }
+
+    function syncBannerOffset(container) {
+        if (!container || container.children.length === 0) {
+            removeBannerOffset();
+            return;
+        }
+
+        document.body.classList.add('has-announcement-banners');
+        document.body.style.setProperty('--announcement-banners-height', `${container.offsetHeight}px`);
+    }
+
+    function renderBanners(items) {
+        let container = document.getElementById(BANNER_CONTAINER_ID);
+
+        if (!items.length) {
+            if (container) {
+                container.remove();
+            }
+            removeBannerOffset();
+            return;
+        }
+
+        if (!container) {
+            container = document.createElement('div');
+            container.id = BANNER_CONTAINER_ID;
+            container.className = 'announcement-banners';
+            document.body.prepend(container);
+        }
+
+        container.textContent = '';
+
+        items.forEach((item) => {
+            const banner = document.createElement('div');
+            banner.className = `announcement-banner ${item.type}`;
+
+            const contentWrap = document.createElement('div');
+            contentWrap.className = 'announcement-banner__content';
+
+            const icon = createIcon(item.type, 'announcement-banner__icon');
+            contentWrap.appendChild(icon);
+
+            const text = document.createElement('span');
+            text.className = 'announcement-banner__text';
+            text.appendChild(buildContentNode(item.content));
+            contentWrap.appendChild(text);
+
+            banner.appendChild(contentWrap);
+
+            if (item.is_dismissible) {
+                const closeBtn = document.createElement('button');
+                closeBtn.className = 'announcement-banner__close';
+                closeBtn.setAttribute('aria-label', window.i18n.t('announcement.dismiss'));
+                const closeIcon = document.createElement('i');
+                closeIcon.className = 'fas fa-times';
+                closeBtn.appendChild(closeIcon);
+                closeBtn.addEventListener('click', () => dismissAnnouncement(item.id, banner, 'banner'));
+                banner.appendChild(closeBtn);
+            }
+
+            container.appendChild(banner);
+        });
+
+        syncBannerOffset(container);
+    }
+
+    function renderModal(items) {
+        let overlay = document.getElementById(MODAL_OVERLAY_ID);
+
+        if (!items.length || configState.maxModalsPerSession <= 0 || getModalShownCount() >= configState.maxModalsPerSession) {
+            if (overlay) {
+                overlay.classList.remove('active');
+            }
+            return;
+        }
+
+        const item = items[0];
+        if (!item) {
+            return;
+        }
+
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = MODAL_OVERLAY_ID;
+            overlay.className = 'announcement-modal-overlay';
+            document.body.appendChild(overlay);
+        }
+
+        overlay.textContent = '';
+
+        const modal = document.createElement('div');
+        modal.className = `announcement-modal ${item.type}`;
+
+        const header = document.createElement('div');
+        header.className = 'announcement-modal__header';
+        header.appendChild(createIcon(item.type, 'announcement-modal__icon'));
+
+        const title = document.createElement('h3');
+        title.className = 'announcement-modal__title';
+        title.textContent = item.title;
+        header.appendChild(title);
+
+        const body = document.createElement('div');
+        body.className = 'announcement-modal__body';
+        body.appendChild(buildContentNode(item.content));
+
+        const footer = document.createElement('div');
+        footer.className = 'announcement-modal__footer';
+
+        const btn = document.createElement('button');
+        btn.className = 'announcement-modal__btn';
+        btn.textContent = window.i18n.t('announcement.i_know');
+        btn.addEventListener('click', () => {
+            if (item.is_dismissible) {
+                dismissAnnouncement(item.id, overlay, 'modal');
+            } else {
+                overlay.classList.remove('active');
+            }
+        });
+
+        footer.appendChild(btn);
+
+        modal.appendChild(header);
+        modal.appendChild(body);
+        modal.appendChild(footer);
+        overlay.appendChild(modal);
+
+        setModalShownCount(getModalShownCount() + 1);
+        setTimeout(() => overlay.classList.add('active'), 500);
+    }
+
+    function renderInlines(items) {
+        const mainContent = document.querySelector('main');
+        let container = document.getElementById(INLINE_CONTAINER_ID);
+
+        if (!items.length || !mainContent) {
+            if (container) {
+                container.remove();
+            }
+            return;
+        }
+
+        if (!container) {
+            container = document.createElement('div');
+            container.id = INLINE_CONTAINER_ID;
+            container.className = 'announcement-inlines';
+            mainContent.prepend(container);
+        }
+
+        container.textContent = '';
+
+        items.forEach((item) => {
+            const card = document.createElement('div');
+            card.className = `announcement-inline ${item.type}`;
+
+            const header = document.createElement('div');
+            header.className = 'announcement-inline__header';
+
+            const titleWrap = document.createElement('div');
+            titleWrap.className = 'announcement-inline__title';
+            titleWrap.appendChild(createIcon(item.type));
+
+            const titleText = document.createElement('span');
+            titleText.textContent = item.title;
+            titleWrap.appendChild(titleText);
+            header.appendChild(titleWrap);
+
+            if (item.is_dismissible) {
+                const closeBtn = document.createElement('button');
+                closeBtn.className = 'announcement-inline__close';
+                closeBtn.setAttribute('aria-label', window.i18n.t('announcement.dismiss'));
+                const closeIcon = document.createElement('i');
+                closeIcon.className = 'fas fa-times';
+                closeBtn.appendChild(closeIcon);
+                closeBtn.addEventListener('click', () => dismissAnnouncement(item.id, card, 'inline'));
+                header.appendChild(closeBtn);
+            }
+
+            const body = document.createElement('div');
+            body.className = 'announcement-inline__body';
+            body.appendChild(buildContentNode(item.content));
+
+            card.appendChild(header);
+            card.appendChild(body);
+            container.appendChild(card);
+        });
+    }
+
     async function dismissAnnouncement(id, element, type) {
-        // 视觉移除
+        const normalizedId = Number.parseInt(id, 10);
+        if (!Number.isInteger(normalizedId) || normalizedId <= 0) {
+            return;
+        }
+
         if (type === 'modal') {
             const overlay = document.getElementById(MODAL_OVERLAY_ID);
-            if (overlay) overlay.classList.remove('active');
-        } else {
+            if (overlay) {
+                overlay.classList.remove('active');
+            }
+        } else if (element) {
             element.classList.add('closing');
             setTimeout(() => {
                 element.remove();
-                // 检查是否还有 banner，如果没有则移除 body 的 class
                 if (type === 'banner') {
                     const container = document.getElementById(BANNER_CONTAINER_ID);
-                    if (!container || container.children.length === 0) {
-                        document.body.classList.remove('has-announcement-banners');
-                        document.body.style.removeProperty('--announcement-banners-height');
-                    } else {
-                        // 更新剩余 banner 的高度
-                        const height = container.offsetHeight;
-                        document.body.style.setProperty('--announcement-banners-height', height + 'px');
-                    }
+                    syncBannerOffset(container);
                 }
             }, 300);
         }
-        
-        // 本地存储
-        saveDismissedId(id);
-        
-        // 如果已登录，同步到服务器
+
+        saveDismissedId(normalizedId);
+        clearAnnouncementsCache();
+
         if (window.LSJ_USER && window.LSJ_USER.loggedIn) {
             const formData = new FormData();
             formData.append('action', 'dismiss_announcement');
-            formData.append('announcement_id', id);
-            
+            formData.append('announcement_id', normalizedId);
+
             try {
                 await fetch('api.php', {
                     method: 'POST',
@@ -1807,149 +2341,84 @@ function initAnnouncementSystem() {
             }
         }
     }
-    
-    // 渲染公告
+
     function renderAnnouncements(data) {
-        // 数据验证：确保 data 对象有效
         if (!data || typeof data !== 'object') {
             console.warn('renderAnnouncements: invalid data');
             return;
         }
-        
-        // 初始化默认空数组
-        const banners = Array.isArray(data.banners) ? data.banners : [];
-        const modals = Array.isArray(data.modals) ? data.modals : [];
-        const inlines = Array.isArray(data.inlines) ? data.inlines : [];
-        
-        // 渲染 Banners
-        if (banners.length > 0) {
-            let container = document.getElementById(BANNER_CONTAINER_ID);
-            if (!container) {
-                container = document.createElement('div');
-                container.id = BANNER_CONTAINER_ID;
-                container.className = 'announcement-banners';
-                document.body.prepend(container);
-            }
-            
-            container.innerHTML = '';
-            banners.forEach(item => {
-                // 验证必要字段
-                if (!item || typeof item.id === 'undefined' || !item.content) {
-                    return;
+
+        const rawBanners = Array.isArray(data.banners) ? data.banners : [];
+        const rawModals = Array.isArray(data.modals) ? data.modals : [];
+        const rawInlines = Array.isArray(data.inlines) ? data.inlines : [];
+
+        const banners = rawBanners
+            .map(normalizeAnnouncementItem)
+            .filter(Boolean)
+            .slice(0, configState.maxBanners);
+
+        const modals = rawModals
+            .map(normalizeAnnouncementItem)
+            .filter(Boolean);
+
+        const inlines = rawInlines
+            .map(normalizeAnnouncementItem)
+            .filter(Boolean);
+
+        renderBanners(banners);
+        renderModal(modals);
+        renderInlines(inlines);
+    }
+
+    async function fetchAnnouncements(options = { forceRefresh: false }) {
+        const forceRefresh = Boolean(options && options.forceRefresh);
+
+        if (!forceRefresh) {
+            const cached = readAnnouncementsCache();
+            if (cached && cached.data) {
+                if (cached.meta) {
+                    applyMetaConfig(cached.meta);
                 }
-                const banner = document.createElement('div');
-                banner.className = `announcement-banner ${item.type}`;
-                banner.innerHTML = `
-                    <div class="announcement-banner__content">
-                        <i class="fas ${getIconClass(item.type)} announcement-banner__icon"></i>
-                        <span class="announcement-banner__text">${item.content}</span>
-                    </div>
-                    ${item.is_dismissible ? `
-                    <button class="announcement-banner__close" aria-label="${window.i18n.t('announcement.dismiss')}">
-                        <i class="fas fa-times"></i>
-                    </button>` : ''}
-                `;
-                
-                if (item.is_dismissible) {
-                    const closeBtn = banner.querySelector('.announcement-banner__close');
-                    closeBtn.addEventListener('click', () => dismissAnnouncement(item.id, banner, 'banner'));
-                }
-                
-                container.appendChild(banner);
-            });
-            
-            // 设置 body class 和高度变量，用于调整顶部固定元素位置
-            document.body.classList.add('has-announcement-banners');
-            const height = container.offsetHeight;
-            document.body.style.setProperty('--announcement-banners-height', height + 'px');
-        }
-        
-        // 渲染 Modals (一次只显示一个)
-        if (modals.length > 0) {
-            const item = modals[0]; // 优先级最高的
-            
-            // 验证必要字段
-            if (!item || typeof item.id === 'undefined' || !item.title || !item.content) {
+                renderAnnouncements(cached.data);
                 return;
             }
-            let overlay = document.getElementById(MODAL_OVERLAY_ID);
-            
-            if (!overlay) {
-                overlay = document.createElement('div');
-                overlay.id = MODAL_OVERLAY_ID;
-                overlay.className = 'announcement-modal-overlay';
-                document.body.appendChild(overlay);
-            }
-            
-            overlay.innerHTML = `
-                <div class="announcement-modal ${item.type}">
-                    <div class="announcement-modal__header">
-                        <i class="fas ${getIconClass(item.type)} announcement-modal__icon"></i>
-                        <h3 class="announcement-modal__title">${item.title}</h3>
-                    </div>
-                    <div class="announcement-modal__body">
-                        ${item.content}
-                    </div>
-                    <div class="announcement-modal__footer">
-                        <button class="announcement-modal__btn">${window.i18n.t('announcement.i_know')}</button>
-                    </div>
-                </div>
-            `;
-            
-            const btn = overlay.querySelector('.announcement-modal__btn');
-            btn.addEventListener('click', () => dismissAnnouncement(item.id, overlay, 'modal'));
-            
-            // 显示模态框
-            setTimeout(() => overlay.classList.add('active'), 500);
         }
-        
-        // 渲染 Inlines (插入到主内容区域顶部)
-        if (inlines.length > 0) {
-            const mainContent = document.querySelector('main');
-            if (mainContent) {
-                let container = document.getElementById(INLINE_CONTAINER_ID);
-                if (!container) {
-                    container = document.createElement('div');
-                    container.id = INLINE_CONTAINER_ID;
-                    container.className = 'announcement-inlines';
-                    mainContent.prepend(container);
-                }
-                
-                container.innerHTML = '';
-                inlines.forEach(item => {
-                    // 验证必要字段
-                    if (!item || typeof item.id === 'undefined' || !item.title || !item.content) {
-                        return;
-                    }
-                    const card = document.createElement('div');
-                    card.className = `announcement-inline ${item.type}`;
-                    card.innerHTML = `
-                        <div class="announcement-inline__header">
-                            <div class="announcement-inline__title">
-                                <i class="fas ${getIconClass(item.type)}"></i>
-                                <span>${item.title}</span>
-                            </div>
-                            ${item.is_dismissible ? `
-                            <button class="announcement-inline__close" aria-label="${window.i18n.t('announcement.dismiss')}">
-                                <i class="fas fa-times"></i>
-                            </button>` : ''}
-                        </div>
-                        <div class="announcement-inline__body">
-                            ${item.content}
-                        </div>
-                    `;
-                    
-                    if (item.is_dismissible) {
-                        const closeBtn = card.querySelector('.announcement-inline__close');
-                        closeBtn.addEventListener('click', () => dismissAnnouncement(item.id, card, 'inline'));
-                    }
-                    
-                    container.appendChild(card);
-                });
+
+        const dismissedIds = getDismissedIdsForRequest();
+        const formData = new FormData();
+        formData.append('action', 'get_announcements');
+        formData.append('dismissed_ids', JSON.stringify(dismissedIds));
+
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                console.warn('Announcement API returned non-OK status:', response.status);
+                return;
             }
+
+            const result = await response.json();
+            if (!result || typeof result !== 'object') {
+                console.warn('Invalid announcement response format');
+                return;
+            }
+
+            if (result.meta && typeof result.meta === 'object') {
+                applyMetaConfig(result.meta);
+            }
+
+            if (result.success && result.data) {
+                writeAnnouncementsCache(result);
+                renderAnnouncements(result.data);
+            }
+        } catch (error) {
+            console.error('Failed to fetch announcements:', error);
         }
     }
-    
+
     function getIconClass(type) {
         switch (type) {
             case 'info': return 'fa-info-circle';
@@ -1959,10 +2428,12 @@ function initAnnouncementSystem() {
             default: return 'fa-info-circle';
         }
     }
-    
-    // 初始化
+
     fetchAnnouncements();
 }
 
+
+
 // 在 i18nReady 事件中初始化公告系统
 window.addEventListener('i18nReady', initAnnouncementSystem);
+
