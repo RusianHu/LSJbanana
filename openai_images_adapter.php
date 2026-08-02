@@ -41,6 +41,7 @@ class OpenAIImagesAdapter
     private int $downloadTimeout;
     private int $maxDownloadBytes;
     private string $quality;
+    private string $sizeMode;
     private bool $verifySsl;
     private bool $forceHttp1;
 
@@ -60,6 +61,9 @@ class OpenAIImagesAdapter
 
         $quality = strtolower((string)($provider['quality'] ?? 'low'));
         $this->quality = in_array($quality, ['auto', 'low', 'medium', 'high'], true) ? $quality : 'low';
+
+        $sizeMode = strtolower(trim((string)($provider['size_mode'] ?? 'dimensions')));
+        $this->sizeMode = in_array($sizeMode, ['dimensions', 'tier'], true) ? $sizeMode : 'dimensions';
 
         $configuredDir = (string)($provider['temporary_image_dir'] ?? ($config['output_dir'] ?? 'images/'));
         $this->temporaryImageDir = $this->resolveProjectPath($configuredDir);
@@ -188,10 +192,21 @@ class OpenAIImagesAdapter
             $imageConfig = [];
         }
 
-        $aspectRatio = (string)($imageConfig['aspectRatio'] ?? '');
-        $size = $this->mapAspectRatioToSize($aspectRatio);
-        if ($size !== '') {
-            $request['size'] = $size;
+        $aspectRatio = trim((string)($imageConfig['aspectRatio'] ?? ''));
+        $imageSize = strtoupper(trim((string)($imageConfig['imageSize'] ?? '')));
+
+        if ($this->sizeMode === 'tier') {
+            if (in_array($imageSize, ['1K', '2K', '4K'], true)) {
+                $request['size'] = $imageSize;
+            }
+            if ($this->isSupportedAspectRatio($aspectRatio)) {
+                $request['aspect_ratio'] = $aspectRatio;
+            }
+        } else {
+            $size = $this->mapAspectRatioToSize($aspectRatio);
+            if ($size !== '') {
+                $request['size'] = $size;
+            }
         }
 
         if ($this->quality !== 'auto') {
@@ -215,6 +230,11 @@ class OpenAIImagesAdapter
         }
 
         return '';
+    }
+
+    private function isSupportedAspectRatio(string $aspectRatio): bool
+    {
+        return in_array($aspectRatio, ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'], true);
     }
 
     /**
