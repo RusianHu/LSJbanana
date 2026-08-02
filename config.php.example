@@ -217,17 +217,17 @@ $imageModels = [
         'supports_google_search' => false,
     ],
 
-    // OpenAI Images API：支持文生图与图片编辑，宽高比映射到官方常用尺寸
+    // OpenAI Images API：具体分辨率能力由上游渠道决定
     'gpt_image_2' => [
         'model_name' => 'gpt-image-2',
         'display_name' => 'GPT Image 2',
-        'supported_image_sizes' => ['1K'],
+        'supported_image_sizes' => ['1K', '2K', '4K'],
         'supports_google_search' => false,
         'is_basic' => false,
     ],
 ];
 
-// 开发者快捷切换：默认 'pro' (gemini-3.1-flash-image)，改为 'flash' 可切换到 gemini-2.5-flash-image
+// 开发者快捷切换：可选 'pro'、'flash' 或 'gpt_image_2'
 $activeImageModelKey = 'pro';
 $activeImageModel = $imageModels[$activeImageModelKey] ?? $imageModels['pro'];
 
@@ -285,6 +285,8 @@ return [
         'connect_timeout' => 30,
         'download_timeout' => 120,
         'quality' => 'low',                 // auto | low | medium | high
+        // dimensions：按宽高比发送 OpenAI 常用像素尺寸；tier：直接发送 1K / 2K / 4K，并附带 aspect_ratio
+        'size_mode' => 'dimensions',
         'verify_ssl' => true,
         'force_http1' => true,              // 部分中转站的编辑接口在 HTTP/2 下会断流
         'max_download_bytes' => 32 * 1024 * 1024,
