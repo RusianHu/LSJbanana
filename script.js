@@ -1709,7 +1709,7 @@ function initAnnouncementSystem() {
 
     const DISMISSED_KEY = 'lsj_dismissed_announcements_v2';
     const LEGACY_DISMISSED_KEY = 'lsj_dismissed_announcements';
-    const CACHE_KEY = 'lsj_announcements_cache_v1';
+    const CACHE_KEY = 'lsj_announcements_cache_v2';
     const MODAL_COUNT_KEY = 'lsj_announcement_modal_count_v1';
 
     const runtimeConfig = window.LSJ_ANNOUNCEMENT || {};
