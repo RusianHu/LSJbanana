@@ -104,8 +104,8 @@ class AdminAuth {
             return 0;
         }
 
-        // SQLite 的 datetime() 返回 UTC 时间，需要明确指定时区
-        $lastAttemptTime = strtotime($result['attempt_time'] . ' UTC');
+        // 登录尝试时间由应用按当前配置时区写入，SQLite/MySQL 保持一致。
+        $lastAttemptTime = strtotime($result['attempt_time']);
         $unlockTime = $lastAttemptTime + $lockoutDuration;
         $remaining = $unlockTime - time();
 

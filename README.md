@@ -2,7 +2,7 @@
 
 > **[English Documentation](README.EN.md)**
 
-基于 gemini-3.1-flash-image (Nano Banana 2) 的 AI 图像生成与管理平台。
+支持可切换 AI 图片渠道与模型的图像生成、编辑及管理平台。
 
 ## 核心功能
 
@@ -54,10 +54,12 @@ mindmap
         自动修复 核心表重建
     技术架构
       数据库
-        SQLite3单文件
+        MySQL/MariaDB生产持久化
+        SQLite兼容回退
       API路由
         Gemini原生
         OpenAI兼容
+        OpenAI Images
         Gemini Proxy SSE
       安全防护
         CSRF令牌
@@ -70,19 +72,49 @@ mindmap
 
 ## 快速开始
 
+### Windows 便携式 MariaDB 调试
+
+```powershell
+# 1. 下载、校验、初始化并启动仅监听 127.0.0.1:3307 的 MariaDB
+.\portable_mariadb.ps1 install
+
+# 2. 已有 SQLite 数据时执行一次迁移；新项目可跳过
+.\php\php.exe .\migrate_sqlite_to_mysql.php
+
+# 3. 启动 PHP
+.\php\php.exe -S 127.0.0.1:8000
+```
+
+常用管理命令：
+
+```powershell
+.\portable_mariadb.ps1 status
+.\portable_mariadb.ps1 stop
+.\portable_mariadb.ps1 start
+```
+
+便携运行时位于 `database/.mariadb/`，下载缓存位于 `database/.mariadb-download/`，均不会提交到 Git。默认口令仅用于本机调试，不可用于 VPS。
+
+### 常规部署
+
 ```bash
 # 1. 复制配置文件
 cp config.php.example config.php
 
-# 2. 编辑 config.php 填写 API 密钥与支付配置
+# 2. 创建 MySQL 数据库和最小权限用户，编辑 config.php 的 database.mysql
 
-# 3. 启动服务
+# 3. 从旧版升级时先备份 SQLite 文件，再迁移数据
+php migrate_sqlite_to_mysql.php
+
+# 4. 填写 API 密钥与支付配置并启动服务
 php -S 127.0.0.1:8000
 
-# 4. 访问应用
+# 5. 访问应用
 # 前台: http://127.0.0.1:8000
 # 后台: http://127.0.0.1:8000/admin
 ```
+
+迁移器默认只允许写入空目标库；如需清空项目管理的目标表后重迁，必须显式添加 `--force`。SQLite 源文件保持只读，便于随时回退。
 
 ## 核心配置
 
@@ -92,13 +124,17 @@ php -S 127.0.0.1:8000
 | 配置项 | 说明 |
 |--------|------|
 | `api_provider` | `native` (直连) / `openai_compatible` (中转) / `gemini_proxy` (SSE代理) |
-| `active_image_model` | `pro` (1K/2K/4K, 搜索接地) / `flash` (1K 快速) |
+| `image_api_provider` | 独立图片渠道；可设置为 `openai_images`，不影响提示词优化等文本调用 |
+| `openai_images` | OpenAI `/v1/images/generations` 与 `/v1/images/edits` 配置，支持 URL 型编辑输入 |
+| `active_image_model` | `pro` / `flash` / `gpt_image_2`，由部署配置选择 |
 | `thinking_config` | 思考模式配置，支持 `reasoning_content` 透传 |
 | `speech_to_text` | 语音转文字配置，默认使用 `gemini-2.5-flash` |
 
 ### 支付与用户
 | 配置项 | 说明 |
 |--------|------|
+| `database.driver` | `mysql`（生产推荐）或 `sqlite`（兼容回退） |
+| `database.mysql` | 主机、端口、库名、用户名、密码、字符集及可选 TLS 配置 |
 | `payment.channels` | 支付渠道开关 (`alipay`/`wxpay`/`cashier`) |
 | `billing.price_per_task` | 单次生成价格 (RMB) |
 | `user.lockout_duration` | 登录失败锁定时间 |
@@ -145,8 +181,17 @@ extension=curl
 extension=openssl
 extension=mbstring
 extension=fileinfo
+extension=pdo_mysql
+# 仅在迁移或 SQLite 回退时需要
 extension=pdo_sqlite
 ```
+
+### MySQL/MariaDB 安全建议
+
+- 数据库与 PHP 位于同一台 VPS 时，仅监听 `127.0.0.1` 或使用 Unix socket，不开放公网 3306。
+- 为应用创建仅限 `lsjbanana` 数据库的独立账号，不使用 `root`。
+- 生产密码通过环境变量或受限权限的 `config.php` 提供，并定期备份数据库。
+- 跨主机连接时开启 `database.mysql.ssl` 并校验证书。
 
 ### Nginx 配置
 ```nginx
@@ -161,13 +206,13 @@ location ~ \.php$ {
 ## 技术栈细节
 
 - **后端**：PHP 8.x
-  - **数据库**：SQLite3 (PDO模式, 原子事务)
-  - **必需扩展**：`curl`, `openssl`, `mbstring`, `fileinfo`
+  - **数据库**：MySQL 8.0+ / MariaDB 10.6+ 推荐，兼容旧版 MySQL 5.5 与 SQLite
+  - **必需扩展**：`curl`, `openssl`, `mbstring`, `fileinfo`, `pdo_mysql`
 - **前端**：Native JS (ES6+) + CSS3 (Responsive)
 - **AI 能力**：
-  - **绘图**：gemini-3.1-flash-image (Nano Banana 2)
-  - **优化**：Gemini 2.5 Flash (Prompt Engineering)
-  - **语音**：Gemini 2.5 Flash (ASR)
+  - **绘图**：Gemini 图片模型或 OpenAI Images API（包括 `gpt-image-2`）
+  - **优化**：由 `api_provider` 与 `prompt_optimize_model` 动态配置
+  - **语音**：由 `speech_to_text` 动态配置
 - **支付集成**：[老司机易支付](https://github.com/RusianHu/LsjEpay) (MD5签名)
 
 ## 许可证

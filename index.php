@@ -40,6 +40,11 @@ $supportedResolutions = $config ? ($config['image_model_supported_sizes'] ?? ['1
 if (!is_array($supportedResolutions) || $supportedResolutions === []) {
     $supportedResolutions = ['1K'];
 }
+$supportsGoogleSearch = (bool)($config['image_model_supports_google_search'] ?? false);
+$imageModelDisplayName = trim((string)($config['image_model_display_name'] ?? $config['model_name'] ?? 'AI'));
+if ($imageModelDisplayName === '') {
+    $imageModelDisplayName = 'AI';
+}
 
 $announcementConfig = $config ? ($config['announcement'] ?? []) : [];
 $announcementRuntimeConfig = [
@@ -145,7 +150,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
     <div class="container">
         <header>
             <h1><?php _e('site.title'); ?> <small><?php _e('site.subtitle'); ?></small></h1>
-            <p><?php _e('site.description'); ?></p>
+            <p><?php _e('site.description', ['model' => $imageModelDisplayName]); ?></p>
         </header>
 
         <?php if ($initError): ?>
@@ -231,12 +236,14 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
                         </div>
                     </div>
 
+                    <?php if ($supportsGoogleSearch): ?>
                     <div class="form-group">
                         <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: normal;">
                             <input type="checkbox" name="use_search" style="width: auto;">
                             <span><i class="fab fa-google"></i> <?php _e('index.use_google_search'); ?> - <small style="color: #666;"><?php _e('index.use_google_search_hint'); ?></small></span>
                         </label>
                     </div>
+                    <?php endif; ?>
 
                     <button type="submit" class="btn-primary"><i class="fas fa-magic"></i> <?php _e('index.btn_generate'); ?></button>
                     <div class="cost-hint">
@@ -319,12 +326,14 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
                         </div>
                     </div>
 
+                    <?php if ($supportsGoogleSearch): ?>
                     <div class="form-group">
                         <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: normal;">
                             <input type="checkbox" name="use_search" style="width: auto;">
                             <span><i class="fab fa-google"></i> <?php _e('index.use_google_search'); ?></span>
                         </label>
                     </div>
+                    <?php endif; ?>
 
                     <button type="submit" class="btn-primary"><i class="fas fa-paint-brush"></i> <?php _e('index.btn_edit'); ?></button>
                     <div class="cost-hint">
