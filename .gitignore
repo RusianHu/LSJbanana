@@ -27,6 +27,7 @@ database/.mariadb-download/
 # 日志文件（保留 .gitkeep）
 logs/*.log
 logs/*.json
+logs/*.lock
 
 # 缓存与临时文件
 cache/
