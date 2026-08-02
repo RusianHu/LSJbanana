@@ -62,8 +62,6 @@ class OpenAIImagesAdapter
     private string $gatewayTimeoutFallbackTier;
     private int $highResolutionTimeout;
     private int $gatewayTimeoutFallbackTimeout;
-    private int $gatewayTimeoutCircuitTtl;
-    private string $gatewayTimeoutCircuitFile;
     /** @var array<int,int> */
     private array $gatewayTimeoutHttpCodes;
 
@@ -96,16 +94,8 @@ class OpenAIImagesAdapter
         );
         $this->gatewayTimeoutFallbackTimeout = max(
             30,
-            min($this->timeout, (int)($provider['gateway_timeout_fallback_timeout'] ?? 120))
+            min($this->timeout, (int)($provider['gateway_timeout_fallback_timeout'] ?? 60))
         );
-        $this->gatewayTimeoutCircuitTtl = max(
-            0,
-            min(86400, (int)($provider['gateway_timeout_circuit_ttl'] ?? 600))
-        );
-        $configuredCircuitFile = trim((string)($provider['gateway_timeout_circuit_file'] ?? ''));
-        $this->gatewayTimeoutCircuitFile = $configuredCircuitFile !== ''
-            ? $this->resolveProjectPath($configuredCircuitFile)
-            : __DIR__ . DIRECTORY_SEPARATOR . 'logs' . DIRECTORY_SEPARATOR . 'openai_images_gateway_timeout.json';
         $configuredGatewayCodes = $provider['gateway_timeout_http_codes'] ?? [502, 504, 524];
         $this->gatewayTimeoutHttpCodes = array_values(array_unique(array_filter(
             array_map('intval', is_array($configuredGatewayCodes) ? $configuredGatewayCodes : []),
@@ -302,20 +292,7 @@ class OpenAIImagesAdapter
         string $requestedTier,
         ?array $expectedDimensions
     ): array {
-        $shouldBoundRequest = $this->shouldBoundHighResolutionRequest($requestedTier);
-        if ($shouldBoundRequest && $this->isGatewayTimeoutCircuitOpen()) {
-            return $this->sendLowerResolutionFallback(
-                $path,
-                $request,
-                $modelName,
-                $aspectRatio,
-                $requestedTier,
-                null,
-                'gateway_circuit_open'
-            );
-        }
-
-        $primaryTimeout = $shouldBoundRequest
+        $primaryTimeout = $this->shouldBoundHighResolutionRequest($requestedTier)
             ? $this->highResolutionTimeout
             : null;
 
@@ -330,108 +307,72 @@ class OpenAIImagesAdapter
                 throw $primaryError;
             }
 
-            $this->openGatewayTimeoutCircuit($primaryError);
-
-            return $this->sendLowerResolutionFallback(
-                $path,
-                $request,
-                $modelName,
+            $fallbackSize = $this->mapAspectRatioToSize(
                 $aspectRatio,
-                $requestedTier,
-                $primaryError,
-                'gateway_timeout'
+                $this->gatewayTimeoutFallbackTier,
+                $modelName
             );
-        }
-    }
-
-    /**
-     * @param array<string,mixed> $request
-     * @return array{0:array,1:array{width:int,height:int}|null,2:array<string,string>}
-     */
-    private function sendLowerResolutionFallback(
-        string $path,
-        array $request,
-        string $modelName,
-        string $aspectRatio,
-        string $requestedTier,
-        ?OpenAIImagesAdapterException $primaryError,
-        string $reason
-    ): array {
-        $fallbackSize = $this->mapAspectRatioToSize(
-            $aspectRatio,
-            $this->gatewayTimeoutFallbackTier,
-            $modelName
-        );
-        $primarySize = trim((string)($request['size'] ?? ''));
-        if ($fallbackSize === '' || $fallbackSize === $primarySize) {
-            if ($primaryError !== null) {
+            $primarySize = trim((string)($request['size'] ?? ''));
+            if ($fallbackSize === '' || $fallbackSize === $primarySize) {
                 throw $primaryError;
             }
-            throw new OpenAIImagesAdapterException(
-                '无法为网关超时熔断请求计算较低分辨率',
-                500,
-                null,
-                'fallback_configuration'
-            );
-        }
 
-        $fallbackRequest = $request;
-        $fallbackRequest['size'] = $fallbackSize;
-        $fallbackDimensions = $this->parseDimensions($fallbackSize);
+            $fallbackRequest = $request;
+            $fallbackRequest['size'] = $fallbackSize;
+            $fallbackDimensions = $this->parseDimensions($fallbackSize);
 
-        error_log('[OpenAIImagesAdapter] Sending lower-resolution gateway fallback: '
-            . json_encode([
-                'path' => $path,
-                'model' => $modelName,
-                'reason' => $reason,
-                'requested_tier' => $requestedTier,
-                'requested_size' => $primarySize,
-                'fallback_tier' => $this->gatewayTimeoutFallbackTier,
-                'fallback_size' => $fallbackSize,
-                'primary_http_code' => $primaryError?->getHttpCode(),
-                'primary_error_type' => $primaryError?->getErrorType(),
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-
-        try {
-            $response = $this->sendJsonRequest(
-                $path,
-                $fallbackRequest,
-                $this->gatewayTimeoutFallbackTimeout
-            );
-        } catch (OpenAIImagesAdapterException $fallbackError) {
-            error_log('[OpenAIImagesAdapter] Lower-resolution gateway fallback failed: '
+            error_log('[OpenAIImagesAdapter] High-resolution request timed out; retrying once at lower resolution: '
                 . json_encode([
                     'path' => $path,
                     'model' => $modelName,
-                    'reason' => $reason,
+                    'requested_tier' => $requestedTier,
                     'requested_size' => $primarySize,
+                    'fallback_tier' => $this->gatewayTimeoutFallbackTier,
                     'fallback_size' => $fallbackSize,
-                    'fallback_http_code' => $fallbackError->getHttpCode(),
-                    'fallback_error_type' => $fallbackError->getErrorType(),
+                    'primary_http_code' => $primaryError->getHttpCode(),
+                    'primary_error_type' => $primaryError->getErrorType(),
                 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
-            throw new OpenAIImagesAdapterException(
-                __('adapter.openai_images.error.gateway_timeout_fallback_failed', [
-                    'actual' => $fallbackSize,
-                    'message' => $fallbackError->getMessage(),
-                ]),
-                $fallbackError->getHttpCode(),
-                $fallbackError,
-                $fallbackError->getErrorType()
-            );
-        }
+            try {
+                $response = $this->sendJsonRequest(
+                    $path,
+                    $fallbackRequest,
+                    $this->gatewayTimeoutFallbackTimeout
+                );
+            } catch (OpenAIImagesAdapterException $fallbackError) {
+                error_log('[OpenAIImagesAdapter] Lower-resolution gateway fallback failed: '
+                    . json_encode([
+                        'path' => $path,
+                        'model' => $modelName,
+                        'requested_size' => $primarySize,
+                        'fallback_size' => $fallbackSize,
+                        'fallback_http_code' => $fallbackError->getHttpCode(),
+                        'fallback_error_type' => $fallbackError->getErrorType(),
+                    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
-        return [
-            $response,
-            $fallbackDimensions,
-            [
-                'reason' => $reason,
-                'requested_tier' => $requestedTier,
-                'requested_size' => $primarySize,
-                'actual_tier' => $this->gatewayTimeoutFallbackTier,
-                'actual_size' => $fallbackSize,
-            ],
-        ];
+                throw new OpenAIImagesAdapterException(
+                    __('adapter.openai_images.error.gateway_timeout_fallback_failed', [
+                        'actual' => $fallbackSize,
+                        'message' => $fallbackError->getMessage(),
+                    ]),
+                    $fallbackError->getHttpCode(),
+                    $fallbackError,
+                    $fallbackError->getErrorType()
+                );
+            }
+
+            return [
+                $response,
+                $fallbackDimensions,
+                [
+                    'reason' => 'gateway_timeout',
+                    'requested_tier' => $requestedTier,
+                    'requested_size' => $primarySize,
+                    'actual_tier' => $this->gatewayTimeoutFallbackTier,
+                    'actual_size' => $fallbackSize,
+                ],
+            ];
+        }
     }
 
     private function shouldBoundHighResolutionRequest(string $requestedTier): bool
@@ -454,46 +395,6 @@ class OpenAIImagesAdapter
 
         return in_array($error->getHttpCode(), $this->gatewayTimeoutHttpCodes, true)
             && preg_match('/(?:timed?\s*out|timeout|HTTP\s*(?:502|504|524))/i', $error->getMessage()) === 1;
-    }
-
-    private function isGatewayTimeoutCircuitOpen(): bool
-    {
-        if ($this->gatewayTimeoutCircuitTtl <= 0 || !is_file($this->gatewayTimeoutCircuitFile)) {
-            return false;
-        }
-
-        $raw = @file_get_contents($this->gatewayTimeoutCircuitFile);
-        $data = is_string($raw) ? json_decode($raw, true) : null;
-        $expiresAt = is_array($data) ? (int)($data['expires_at'] ?? 0) : 0;
-        if ($expiresAt > time()) {
-            return true;
-        }
-
-        @unlink($this->gatewayTimeoutCircuitFile);
-        return false;
-    }
-
-    private function openGatewayTimeoutCircuit(OpenAIImagesAdapterException $error): void
-    {
-        if ($this->gatewayTimeoutCircuitTtl <= 0) {
-            return;
-        }
-
-        $directory = dirname($this->gatewayTimeoutCircuitFile);
-        if (!is_dir($directory) && !@mkdir($directory, 0755, true) && !is_dir($directory)) {
-            error_log('[OpenAIImagesAdapter] Unable to create gateway timeout circuit directory: ' . $directory);
-            return;
-        }
-
-        $payload = json_encode([
-            'opened_at' => time(),
-            'expires_at' => time() + $this->gatewayTimeoutCircuitTtl,
-            'http_code' => $error->getHttpCode(),
-            'error_type' => $error->getErrorType(),
-        ], JSON_UNESCAPED_SLASHES);
-        if (!is_string($payload) || @file_put_contents($this->gatewayTimeoutCircuitFile, $payload, LOCK_EX) === false) {
-            error_log('[OpenAIImagesAdapter] Unable to persist gateway timeout circuit state');
-        }
     }
 
     private function mapAspectRatioToSize(string $aspectRatio, string $imageSize, string $modelName = ''): string
@@ -1077,11 +978,8 @@ class OpenAIImagesAdapter
 
         $parts = [];
         if ($fallbackInfo !== null) {
-            $warningKey = ($fallbackInfo['reason'] ?? '') === 'gateway_circuit_open'
-                ? 'adapter.openai_images.warning.gateway_circuit_fallback'
-                : 'adapter.openai_images.warning.gateway_timeout_fallback';
             $parts[] = [
-                'text' => __($warningKey, [
+                'text' => __('adapter.openai_images.warning.gateway_timeout_fallback', [
                     'requested' => $fallbackInfo['requested_size'] ?? '',
                     'actual' => $fallbackInfo['actual_size'] ?? '',
                 ]),

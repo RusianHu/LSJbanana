@@ -14,7 +14,6 @@ class GatewayFallbackTestAdapter extends OpenAIImagesAdapter
 {
     /** @var array<int,array{path:string,payload:array,timeout:?int}> */
     public array $requests = [];
-    public bool $failFirstRequest = true;
 
     protected function sendJsonRequest(string $path, array $payload, ?int $timeoutOverride = null): array
     {
@@ -24,7 +23,7 @@ class GatewayFallbackTestAdapter extends OpenAIImagesAdapter
             'timeout' => $timeoutOverride,
         ];
 
-        if ($this->failFirstRequest && count($this->requests) === 1) {
+        if (count($this->requests) === 1) {
             throw new OpenAIImagesAdapterException(
                 'Operation timed out after test timeout',
                 502,
@@ -153,8 +152,7 @@ $fallbackAdapter = new GatewayFallbackTestAdapter([
         'log_response_errors' => false,
         'gateway_timeout_fallback_enabled' => true,
         'high_resolution_timeout' => 110,
-        'gateway_timeout_fallback_timeout' => 120,
-        'gateway_timeout_circuit_ttl' => 0,
+        'gateway_timeout_fallback_timeout' => 60,
     ],
 ]);
 $fallbackResult = $fallbackAdapter->generateContent('gpt-image-2', [
@@ -174,7 +172,7 @@ $assert(
 );
 $assert(
     ($fallbackAdapter->requests[1]['payload']['size'] ?? '') === '1280x720'
-        && $fallbackAdapter->requests[1]['timeout'] === 120,
+        && $fallbackAdapter->requests[1]['timeout'] === 60,
     '网关超时后降级为同宽高比 1K 并使用独立超时'
 );
 $assert(
@@ -195,7 +193,6 @@ $disabledFallbackAdapter = new GatewayFallbackTestAdapter([
         'verify_output_size' => false,
         'log_response_errors' => false,
         'gateway_timeout_fallback_enabled' => false,
-        'gateway_timeout_circuit_ttl' => 0,
     ],
 ]);
 try {
@@ -208,44 +205,6 @@ try {
     $assert(false, '关闭降级策略后主请求错误应直接抛出');
 } catch (OpenAIImagesAdapterException $e) {
     $assert(count($disabledFallbackAdapter->requests) === 1, '关闭降级策略后不发送第二次请求');
-}
-
-$circuitFile = tempnam(sys_get_temp_dir(), 'lsjbanana_circuit_');
-if (is_string($circuitFile)) {
-    file_put_contents($circuitFile, json_encode(['expires_at' => time() + 600]), LOCK_EX);
-    $circuitAdapter = new GatewayFallbackTestAdapter([
-        'openai_images' => [
-            'base_url' => 'https://example.invalid',
-            'api_key' => 'test-key',
-            'public_base_url' => 'https://example.invalid/LSJbanana',
-            'verify_output_size' => false,
-            'log_response_errors' => false,
-            'gateway_timeout_fallback_enabled' => true,
-            'gateway_timeout_fallback_timeout' => 120,
-            'gateway_timeout_circuit_ttl' => 600,
-            'gateway_timeout_circuit_file' => $circuitFile,
-        ],
-    ]);
-    $circuitAdapter->failFirstRequest = false;
-    $circuitResult = $circuitAdapter->generateContent('gpt-image-2', [
-        'contents' => [['parts' => [['text' => 'test image']]]],
-        'generationConfig' => [
-            'imageConfig' => ['aspectRatio' => '16:9', 'imageSize' => '2K'],
-        ],
-    ]);
-    $assert(count($circuitAdapter->requests) === 1, '熔断期间直接发送一次低分辨率请求');
-    $assert(
-        ($circuitAdapter->requests[0]['payload']['size'] ?? '') === '1280x720'
-            && $circuitAdapter->requests[0]['timeout'] === 120,
-        '熔断期间跳过高分辨率主请求'
-    );
-    $assert(
-        ($circuitResult['_lsjbanana']['resolution_fallback']['reason'] ?? '') === 'gateway_circuit_open',
-        '熔断降级结果包含独立原因标记'
-    );
-    @unlink($circuitFile);
-} else {
-    $assert(false, '创建网关熔断测试文件');
 }
 
 $convertMethod = new ReflectionMethod(OpenAIImagesAdapter::class, 'convertToGeminiFormat');

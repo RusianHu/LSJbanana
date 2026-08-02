@@ -853,7 +853,6 @@ return [
             ],
             'warning' => [
                 'gateway_timeout_fallback' => 'The upstream high-resolution request timed out. Generation completed after automatically reducing :requested to :actual.',
-                'gateway_circuit_fallback' => 'The upstream high-resolution route timed out recently. This request completed after directly reducing :requested to :actual.',
             ],
         ],
     ],
