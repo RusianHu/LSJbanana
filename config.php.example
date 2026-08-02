@@ -292,6 +292,9 @@ return [
         'force_http1' => true,              // 部分中转站的编辑接口在 HTTP/2 下会断流
         'log_response_errors' => true,       // 非 JSON/截断响应写入 PHP 错误日志（不记录请求正文或密钥）
         'response_preview_bytes' => 256,     // 错误响应预览长度；设为 0 可关闭正文预览
+        // 唯一图片渠道使用非阻塞全站锁；忙时立即返回 429，不扣费、不重试、不降级。
+        'request_lock_file' => __DIR__ . '/logs/openai_images_channel.lock',
+        'request_lock_retry_after' => 30,
         'max_download_bytes' => 32 * 1024 * 1024,
         'temporary_image_dir' => __DIR__ . '/images',
         'temporary_public_path' => 'images',

@@ -166,8 +166,7 @@ try {
     $assert(false, '非 JSON 网关错误应抛出异常');
 } catch (OpenAIImagesAdapterException $e) {
     $assert($e->getHttpCode() === 524, '保留非 JSON 网关错误的 HTTP 状态');
-    $assert(str_contains($e->getMessage(), 'HTTP 524'), '错误消息包含上游 HTTP 状态');
-    $assert(str_contains($e->getMessage(), 'text/html'), '错误消息包含 Content-Type');
+    $assert(str_contains($e->getMessage(), '唯一图片渠道'), '网关超时返回简洁明确的用户提示');
     $assert(str_contains($e->getMessage(), 'cf=test-cf-ray'), '错误消息包含 Cloudflare 追踪 ID');
 }
 
@@ -210,7 +209,7 @@ try {
     $invoke('<html><title>Bad Gateway</title></html>', 502, 'text/html');
     $assert(false, '英文非 JSON 错误应抛出异常');
 } catch (OpenAIImagesAdapterException $e) {
-    $assert(str_contains($e->getMessage(), 'Image upstream request failed'), '英文错误文案可用');
+    $assert(str_contains($e->getMessage(), 'only image channel'), '英文网关超时文案可用');
     $assert(str_contains($e->getMessage(), 'trace ID'), '英文错误包含追踪 ID');
 }
 $assert(
@@ -241,7 +240,8 @@ if (is_string($logFile)) {
             502,
             'text/html',
             ['cf-ray' => 'redaction-test'],
-            'lsjbanana-log-test'
+            'lsjbanana-log-test',
+            ['elapsed_ms' => 125000, 'curl_errno' => 0]
         );
     } catch (OpenAIImagesAdapterException) {
         // 预期异常，仅检查诊断日志。
@@ -250,6 +250,8 @@ if (is_string($logFile)) {
     $assert(is_string($logContent) && str_contains($logContent, '[redacted]'), '诊断日志脱敏常见 API Key');
     $assert(is_string($logContent) && !str_contains($logContent, 'sk-supersecret123456789'), '诊断日志不保留原始 API Key');
     $assert(is_string($logContent) && str_contains($logContent, 'response_sha256'), '诊断日志包含响应指纹');
+    $assert(is_string($logContent) && str_contains($logContent, '"elapsed_ms":125000'), '诊断日志包含上游等待耗时');
+    $assert(is_string($logContent) && str_contains($logContent, '"curl_errno":0'), '诊断日志包含 cURL 错误码');
     @unlink($logFile);
     ini_set('error_log', is_string($previousErrorLog) ? $previousErrorLog : '');
 } else {

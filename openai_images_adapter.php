@@ -435,14 +435,22 @@ class OpenAIImagesAdapter
         }
         curl_setopt_array($ch, $options);
 
+        $startedAt = microtime(true);
         $response = curl_exec($ch);
+        $elapsedMs = (int)round((microtime(true) - $startedAt) * 1000);
         $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $contentType = (string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
         if ($contentType === '') {
             $contentType = (string)($responseHeaders['content-type'] ?? '');
         }
+        $curlErrno = curl_errno($ch);
         $error = curl_error($ch);
         curl_close($ch);
+
+        $diagnostics = [
+            'elapsed_ms' => $elapsedMs,
+            'curl_errno' => $curlErrno,
+        ];
 
         if ($response === false || $error !== '') {
             $errorMessage = $error !== '' ? $error : 'empty response';
@@ -453,7 +461,8 @@ class OpenAIImagesAdapter
                 $responseHeaders,
                 is_string($response) ? $response : '',
                 $errorMessage,
-                $clientRequestId
+                $clientRequestId,
+                $diagnostics
             );
             throw new OpenAIImagesAdapterException(
                 __('adapter.openai_images.error.request_failed', [
@@ -470,7 +479,8 @@ class OpenAIImagesAdapter
             $httpCode,
             $contentType,
             $responseHeaders,
-            $clientRequestId
+            $clientRequestId,
+            $diagnostics
         );
     }
 
@@ -480,7 +490,8 @@ class OpenAIImagesAdapter
         int $httpCode,
         string $contentType,
         array $responseHeaders,
-        string $clientRequestId
+        string $clientRequestId,
+        array $diagnostics = []
     ): array {
         $data = null;
         $decodeError = null;
@@ -492,6 +503,25 @@ class OpenAIImagesAdapter
         }
 
         if ($httpCode < 200 || $httpCode >= 300) {
+            if (in_array($httpCode, [502, 504, 524], true)) {
+                $this->logInvalidResponse(
+                    $path,
+                    $httpCode,
+                    $contentType,
+                    $responseHeaders,
+                    $response,
+                    'gateway timeout',
+                    $clientRequestId,
+                    $diagnostics
+                );
+                throw new OpenAIImagesAdapterException(
+                    __('adapter.openai_images.error.gateway_timeout', [
+                        'trace' => $this->formatTraceSuffix($responseHeaders, $clientRequestId),
+                    ]),
+                    $this->normalizeHttpCode($httpCode)
+                );
+            }
+
             if ($this->isJsonObject($data)) {
                 $message = $this->extractUpstreamErrorMessage($data);
                 throw new OpenAIImagesAdapterException(
@@ -511,7 +541,8 @@ class OpenAIImagesAdapter
                 $responseHeaders,
                 $response,
                 $decodeError ?? 'JSON root is not an object',
-                $clientRequestId
+                $clientRequestId,
+                $diagnostics
             );
             throw new OpenAIImagesAdapterException(
                 __('adapter.openai_images.error.non_json_status', [
@@ -533,7 +564,8 @@ class OpenAIImagesAdapter
                 $responseHeaders,
                 $response,
                 $failureReason,
-                $clientRequestId
+                $clientRequestId,
+                $diagnostics
             );
 
             $translationKey = $decodeError === null
@@ -678,7 +710,8 @@ class OpenAIImagesAdapter
         array $responseHeaders,
         string $response,
         string $failureReason,
-        string $clientRequestId
+        string $clientRequestId,
+        array $diagnostics = []
     ): void {
         if (!$this->logResponseErrors) {
             return;
@@ -696,6 +729,8 @@ class OpenAIImagesAdapter
             'server' => $responseHeaders['server'] ?? null,
             'retry_after' => $responseHeaders['retry-after'] ?? null,
             'client_request_id' => $clientRequestId,
+            'elapsed_ms' => isset($diagnostics['elapsed_ms']) ? (int)$diagnostics['elapsed_ms'] : null,
+            'curl_errno' => isset($diagnostics['curl_errno']) ? (int)$diagnostics['curl_errno'] : null,
         ];
 
         if ($this->responsePreviewBytes > 0 && $response !== '') {

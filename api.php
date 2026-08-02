@@ -15,6 +15,7 @@ require_once __DIR__ . '/prompt_optimizer.php';
 require_once __DIR__ . '/speech_to_text.php';
 require_once __DIR__ . '/openai_adapter.php';
 require_once __DIR__ . '/openai_images_adapter.php';
+require_once __DIR__ . '/image_channel_lock.php';
 require_once __DIR__ . '/gemini_proxy_adapter.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/db.php';
@@ -969,6 +970,32 @@ if ($action === 'generate') {
     sendError(__('api.unknown_action'), 400);
 }
 
+// 当前只有一个可用图片渠道。请求参数验证完成后、预扣费之前尝试获取全站独占锁：
+// 渠道忙时立即返回 429，不等待、不扣费，也不会向上游发出第二次请求。
+$imageChannelLock = null;
+if ($imageApiProvider === 'openai_images') {
+    $openaiImagesConfig = is_array($config['openai_images'] ?? null) ? $config['openai_images'] : [];
+    $lockFile = trim((string)($openaiImagesConfig['request_lock_file'] ?? ''));
+    $retryAfter = max(1, min(300, (int)($openaiImagesConfig['request_lock_retry_after'] ?? 30)));
+
+    try {
+        $imageChannelLock = ImageChannelLock::tryAcquire($lockFile !== '' ? $lockFile : null);
+    } catch (RuntimeException $e) {
+        error_log('Image channel lock unavailable: ' . $e->getMessage());
+        sendError(__('api.image_queue_unavailable'), 503, 'IMAGE_QUEUE_UNAVAILABLE');
+    }
+
+    if ($imageChannelLock === null) {
+        header('Retry-After: ' . $retryAfter);
+        sendError(__('api.image_queue_busy'), 429, 'IMAGE_QUEUE_BUSY');
+    }
+
+    // 即使后续出现 fatal error 或提前 exit，也显式释放锁；flock 还会在进程结束时兜底释放。
+    register_shutdown_function(static function () use ($imageChannelLock): void {
+        $imageChannelLock->release();
+    });
+}
+
 // === 预扣费机制：在调用 API 前使用原子操作扣除余额 ===
 // 这可以防止并发请求导致的余额透支问题（竞态条件）
 $db = Database::getInstance();
@@ -1006,12 +1033,19 @@ $balanceAfterDeduct = $preDeductResult['balance_after'];
 try {
     $responseData = callGeminiApiSafe($modelName, $requestData, 300, 30, $imageApiProvider);
 } catch (GeminiApiException $e) {
+    if ($imageChannelLock instanceof ImageChannelLock) {
+        $imageChannelLock->release();
+    }
     // API 调用失败，退还余额
     $refundSuccess = refundPreDeductedBalance($db, $userId, $pricePerTask, 'API call failure');
     error_log('Image API call failed: ' . $e->getMessage());
     $messageKey = $refundSuccess ? 'api.upstream_error_refunded' : 'api.upstream_error_refund_failed';
     $errorCode = $refundSuccess ? 'UPSTREAM_ERROR_REFUNDED' : 'UPSTREAM_ERROR_REFUND_FAILED';
     sendError(__($messageKey, ['message' => $e->getMessage()]), $e->getHttpCode(), $errorCode);
+}
+
+if ($imageChannelLock instanceof ImageChannelLock) {
+    $imageChannelLock->release();
 }
 
 if (!isset($responseData['candidates'][0])) {
