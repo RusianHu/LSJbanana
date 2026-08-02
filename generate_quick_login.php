@@ -202,7 +202,7 @@ try {
         echo "----------------------------------------\n";
         echo "WARNING:\n";
         echo "  1. Debug feature only - disable in production\n";
-        echo "  2. Set debug_diagnostic.enabled = false\n";
+        echo "  2. Set admin.debug_diagnostic.enabled = false\n";
         echo "----------------------------------------\n";
         echo "\n";
     }

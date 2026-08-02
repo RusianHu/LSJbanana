@@ -15,10 +15,35 @@ date_default_timezone_set('Asia/Shanghai');
 // 用户系统与支付配置
 // ============================================================
 
-// 数据库配置 (SQLite)
+// 数据库配置（生产环境推荐 MySQL/MariaDB；保留 SQLite 作为兼容回退）
 $databaseConfig = [
-    'driver' => 'sqlite',
-    'path' => __DIR__ . '/database/lsjbanana.db',  // SQLite 数据库文件路径
+    'driver' => 'mysql',                           // mysql | sqlite
+
+    // SQLite 回退配置
+    'path' => __DIR__ . '/database/lsjbanana.db', // 兼容旧配置与迁移工具
+    'sqlite' => [
+        'path' => __DIR__ . '/database/lsjbanana.db',
+        'busy_timeout_ms' => 5000,
+    ],
+
+    // 生产推荐 MySQL 8.0+ / MariaDB 10.6+；兼容旧版 MySQL 5.5
+    'mysql' => [
+        'host' => getenv('LSJBANANA_DB_HOST') ?: '127.0.0.1',
+        'port' => (int) (getenv('LSJBANANA_DB_PORT') ?: 3306),
+        'database' => getenv('LSJBANANA_DB_NAME') ?: 'lsjbanana',
+        'username' => getenv('LSJBANANA_DB_USER') ?: 'lsjbanana',
+        'password' => getenv('LSJBANANA_DB_PASSWORD') ?: 'change-this-password',
+        'charset' => 'utf8mb4',
+        'connect_timeout' => 5,
+        'unix_socket' => '',                       // 同机部署可填写 socket 路径并忽略 host/port
+        'ssl' => [
+            'enabled' => false,                    // 跨主机连接时建议开启
+            'ca' => '',
+            'cert' => '',
+            'key' => '',
+            'verify_server_cert' => true,
+        ],
+    ],
 ];
 
 // 支付配置 (老司机聚合支付)
@@ -148,21 +173,21 @@ $adminConfig = [
 
 // 公告系统配置
 $announcementConfig = [
-    'enabled' => true,                          // 是否启用公告系统
-    'max_banners' => 3,                         // 最多同时显示的横幅数量
-    'max_modals_per_session' => 1,              // 每次会话最多显示的弹窗数量
-    'cache_ttl' => 300,                         // 公告缓存时间 (秒)
-    'allow_html' => true,                       // 是否允许 HTML 内容
-    'sanitize_html' => true,                    // 是否过滤危险 HTML 标签
+    'enabled' => true,                                      // 是否启用公告系统
+    'max_banners' => 3,                                     // 最多同时显示的横幅数量
+    'max_modals_per_session' => 1,                          // 每次会话最多显示的弹窗数量
+    'cache_ttl' => 300,                                     // 公告缓存时间 (秒)
+    'allow_html' => true,                                   // 是否允许 HTML 内容
+    'sanitize_html' => true,                                // 是否过滤危险 HTML 标签
     'allowed_tags' => '<b><i><u><a><br><p><ul><ol><li><strong><em><span>',  // 允许的 HTML 标签
-    'guest_dismissal_ttl' => 7 * 24 * 3600,     // 访客关闭记录保留时间 (秒，默认7天)
+    'guest_dismissal_ttl' => 7 * 24 * 3600,                 // 访客关闭记录保留时间 (秒，默认7天)
 ];
 
 // 管理员初始化引导配置
 $adminSetupConfig = [
     'enabled' => false,                                     // 是否启用初始化引导页
     'require_admin_key' => true,                            // 是否要求管理员密钥
-    'ip_whitelist' => ['127.0.0.1', '::1'],                // IP 白名单 (空数组表示不限制IP)
+    'ip_whitelist' => ['127.0.0.1', '::1'],                 // IP 白名单 (空数组表示不限制IP)
     'csrf_ttl' => 600,                                      // CSRF 令牌有效期 (秒)
 ];
 
@@ -191,6 +216,15 @@ $imageModels = [
         'supported_image_sizes' => ['1K'],
         'supports_google_search' => false,
     ],
+
+    // OpenAI Images API：支持文生图与图片编辑，宽高比映射到官方常用尺寸
+    'gpt_image_2' => [
+        'model_name' => 'gpt-image-2',
+        'display_name' => 'GPT Image 2',
+        'supported_image_sizes' => ['1K'],
+        'supports_google_search' => false,
+        'is_basic' => false,
+    ],
 ];
 
 // 开发者快捷切换：默认 'pro' (gemini-3.1-flash-image)，改为 'flash' 可切换到 gemini-2.5-flash-image
@@ -207,6 +241,10 @@ return [
     //   'openai_compatible' - OpenAI 兼容中转站
     //   'gemini_proxy' - Gemini 原生格式代理 (SSE 流式响应)
     'api_provider' => 'native',
+
+    // 图片渠道可与文本/提示词优化渠道分开；留空时跟随 api_provider
+    // 可选值增加 'openai_images'，对应 OpenAI /v1/images/* 接口
+    'image_api_provider' => null,
 
     // Gemini 原生 API 配置
     'api_key' => 'your-gemini-api-key',
@@ -238,6 +276,22 @@ return [
         ],
     ],
 
+    // OpenAI Images API 配置（当 image_api_provider 为 'openai_images' 时使用）
+    'openai_images' => [
+        'base_url' => 'https://your-openai-images-endpoint.com',
+        'api_key' => 'your-openai-images-key',
+        'public_base_url' => 'https://example.com/LSJbanana',
+        'timeout' => 420,
+        'connect_timeout' => 30,
+        'download_timeout' => 120,
+        'quality' => 'low',                 // auto | low | medium | high
+        'verify_ssl' => true,
+        'force_http1' => true,              // 部分中转站的编辑接口在 HTTP/2 下会断流
+        'max_download_bytes' => 32 * 1024 * 1024,
+        'temporary_image_dir' => __DIR__ . '/images',
+        'temporary_public_path' => 'images',
+    ],
+
     // Gemini 原生格式代理配置 (当 api_provider 为 'gemini_proxy' 时使用) 适用于国内代理站点，NewAPI 类中转站
     // 支持 SSE 流式响应
     'gemini_proxy' => [
@@ -255,6 +309,8 @@ return [
     'image_model_display_name' => $activeImageModel['display_name'],
     'image_model_supported_sizes' => $activeImageModel['supported_image_sizes'],
     'image_model_supports_google_search' => $activeImageModel['supports_google_search'],
+    'image_model_is_basic' => $activeImageModel['is_basic']
+        ?? (count($activeImageModel['supported_image_sizes']) === 1 && $activeImageModel['supported_image_sizes'][0] === '1K'),
 
     // 模型名称
     'model_name' => $activeImageModel['model_name'],

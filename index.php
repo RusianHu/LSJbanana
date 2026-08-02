@@ -40,6 +40,21 @@ $supportedResolutions = $config ? ($config['image_model_supported_sizes'] ?? ['1
 if (!is_array($supportedResolutions) || $supportedResolutions === []) {
     $supportedResolutions = ['1K'];
 }
+$supportsGoogleSearch = (bool)($config['image_model_supports_google_search'] ?? false);
+$imageModelDisplayName = trim((string)($config['image_model_display_name'] ?? $config['model_name'] ?? 'AI'));
+if ($imageModelDisplayName === '') {
+    $imageModelDisplayName = 'AI';
+}
+
+$announcementConfig = $config ? ($config['announcement'] ?? []) : [];
+$announcementRuntimeConfig = [
+    'allow_html' => (bool)($announcementConfig['allow_html'] ?? true),
+    'sanitize_html' => (bool)($announcementConfig['sanitize_html'] ?? true),
+    'max_banners' => max(0, (int)($announcementConfig['max_banners'] ?? 3)),
+    'max_modals_per_session' => max(0, (int)($announcementConfig['max_modals_per_session'] ?? 1)),
+    'cache_ttl' => max(0, (int)($announcementConfig['cache_ttl'] ?? 300)),
+    'guest_dismissal_ttl' => max(0, (int)($announcementConfig['guest_dismissal_ttl'] ?? (7 * 24 * 3600))),
+];
 
 // 处理登出请求
 if (isset($_GET['action']) && $_GET['action'] === 'logout') {
@@ -135,7 +150,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
     <div class="container">
         <header>
             <h1><?php _e('site.title'); ?> <small><?php _e('site.subtitle'); ?></small></h1>
-            <p><?php _e('site.description'); ?></p>
+            <p><?php _e('site.description', ['model' => $imageModelDisplayName]); ?></p>
         </header>
 
         <?php if ($initError): ?>
@@ -221,12 +236,14 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
                         </div>
                     </div>
 
+                    <?php if ($supportsGoogleSearch): ?>
                     <div class="form-group">
                         <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: normal;">
                             <input type="checkbox" name="use_search" style="width: auto;">
                             <span><i class="fab fa-google"></i> <?php _e('index.use_google_search'); ?> - <small style="color: #666;"><?php _e('index.use_google_search_hint'); ?></small></span>
                         </label>
                     </div>
+                    <?php endif; ?>
 
                     <button type="submit" class="btn-primary"><i class="fas fa-magic"></i> <?php _e('index.btn_generate'); ?></button>
                     <div class="cost-hint">
@@ -309,12 +326,14 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
                         </div>
                     </div>
 
+                    <?php if ($supportsGoogleSearch): ?>
                     <div class="form-group">
                         <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: normal;">
                             <input type="checkbox" name="use_search" style="width: auto;">
                             <span><i class="fab fa-google"></i> <?php _e('index.use_google_search'); ?></span>
                         </label>
                     </div>
+                    <?php endif; ?>
 
                     <button type="submit" class="btn-primary"><i class="fas fa-paint-brush"></i> <?php _e('index.btn_edit'); ?></button>
                     <div class="cost-hint">
@@ -427,6 +446,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
             pricePerTask: <?php echo $pricePerTask; ?>,
             pricePerImage: <?php echo $pricePerTask; ?>
         };
+        window.LSJ_ANNOUNCEMENT = <?php echo json_encode($announcementRuntimeConfig, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
         // 传递当前语言给 JS
         window.LSJ_LANG = '<?php echo currentLocale(); ?>';
     </script>

@@ -844,7 +844,7 @@ $totalPages = ceil($totalCount / $perPage);
             const previewEl = document.getElementById('previewAnnouncement');
             previewEl.className = 'preview-announcement ' + type;
             document.getElementById('previewTitle').textContent = title;
-            document.getElementById('previewContent').innerHTML = content;
+            document.getElementById('previewContent').textContent = content;
         }
         
         // 监听表单变化
