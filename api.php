@@ -29,7 +29,7 @@ $config = require 'config.php';
 
 // 获取计费配置
 $billingConfig = $config['billing'] ?? [];
-$pricePerTask = (float) ($billingConfig['price_per_task'] ?? $billingConfig['price_per_image'] ?? 0.20);
+$pricePerTask = (float) ($billingConfig['price_per_task'] ?? $billingConfig['price_per_image'] ?? 0.01);
 
 // 初始化认证
 $auth = getAuth();

@@ -18,7 +18,7 @@ $auth->requireLogin(true);
 $config = require __DIR__ . '/config.php';
 $billingConfig = $config['billing'] ?? [];
 $paymentConfig = $config['payment'] ?? [];
-$pricePerTask = (float) ($billingConfig['price_per_task'] ?? $billingConfig['price_per_image'] ?? 0.20);
+$pricePerTask = (float) ($billingConfig['price_per_task'] ?? $billingConfig['price_per_image'] ?? 0.01);
 $orderExpireMinutes = (int) ($billingConfig['order_expire_minutes'] ?? 5);
 $user = $auth->getCurrentUser();
 

@@ -34,7 +34,7 @@ try {
 $isLoggedIn = $auth && $auth->isLoggedIn();
 $currentUser = $isLoggedIn ? $auth->getCurrentUser() : null;
 $billingConfig = $config ? ($config['billing'] ?? []) : [];
-$pricePerTask = (float) ($billingConfig['price_per_task'] ?? $billingConfig['price_per_image'] ?? 0.20);
+$pricePerTask = (float) ($billingConfig['price_per_task'] ?? $billingConfig['price_per_image'] ?? 0.01);
 
 $supportedResolutions = $config ? ($config['image_model_supported_sizes'] ?? ['1K']) : ['1K'];
 if (!is_array($supportedResolutions) || $supportedResolutions === []) {
