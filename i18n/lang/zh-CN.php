@@ -853,6 +853,7 @@ return [
             ],
             'warning' => [
                 'gateway_timeout_fallback' => '上游高分辨率请求超时，已自动从 :requested 降级为 :actual 完成生成。',
+                'gateway_circuit_fallback' => '检测到上游高分辨率通道近期超时，本次已直接从 :requested 降级为 :actual 完成生成。',
             ],
         ],
     ],

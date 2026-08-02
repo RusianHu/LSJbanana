@@ -295,9 +295,10 @@ return [
         // 获得无 Cloudflare 的直连端点后可关闭此策略。
         'gateway_timeout_fallback_enabled' => true,
         'high_resolution_timeout' => 110,
-        'gateway_timeout_fallback_timeout' => 60,
+        'gateway_timeout_fallback_timeout' => 120,
         'gateway_timeout_fallback_tier' => '1K',
         'gateway_timeout_http_codes' => [502, 504, 524],
+        'gateway_timeout_circuit_ttl' => 600, // 触发后 10 分钟内直接走 1K，减少重复等待和上游费用
         'log_response_errors' => true,       // 非 JSON/截断响应写入 PHP 错误日志（不记录请求正文或密钥）
         'response_preview_bytes' => 256,     // 错误响应预览长度；设为 0 可关闭正文预览
         'max_download_bytes' => 32 * 1024 * 1024,
