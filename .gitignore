@@ -21,6 +21,8 @@ config.php
 database/*.db
 database/*.sqlite
 database/*.sqlite3
+database/.mariadb/
+database/.mariadb-download/
 
 # 日志文件（保留 .gitkeep）
 logs/*.log

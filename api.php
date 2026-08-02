@@ -14,6 +14,7 @@ require_once __DIR__ . '/security_utils.php';
 require_once __DIR__ . '/prompt_optimizer.php';
 require_once __DIR__ . '/speech_to_text.php';
 require_once __DIR__ . '/openai_adapter.php';
+require_once __DIR__ . '/openai_images_adapter.php';
 require_once __DIR__ . '/gemini_proxy_adapter.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/db.php';
@@ -35,25 +36,45 @@ $auth = getAuth();
 
 // 核心配置
 $apiKey = $config['api_key'];
-$apiProvider = $config['api_provider'] ?? 'native';  // 默认使用原生 API
+$apiProvider = $config['api_provider'] ?? 'native';  // 文本/通用调用提供商
+$imageApiProvider = $config['image_api_provider'] ?? $apiProvider; // 图片生成与编辑提供商
 
 // 初始化 OpenAI 适配器（如果使用中转站）
 $openaiAdapter = null;
-if ($apiProvider === 'openai_compatible') {
+if ($apiProvider === 'openai_compatible' || $imageApiProvider === 'openai_compatible') {
     $openaiAdapter = new GeminiOpenAIAdapter($config);
     if (!$openaiAdapter->isAvailable()) {
         $openaiAdapter = null;
-        $apiProvider = 'native';  // 回退到原生 API
+        if ($apiProvider === 'openai_compatible') {
+            $apiProvider = 'native';
+        }
+        if ($imageApiProvider === 'openai_compatible') {
+            $imageApiProvider = 'native';
+        }
+    }
+}
+
+// 初始化 OpenAI Images API 适配器（图片专用渠道）
+$openaiImagesAdapter = null;
+if ($imageApiProvider === 'openai_images') {
+    $openaiImagesAdapter = new OpenAIImagesAdapter($config);
+    if (!$openaiImagesAdapter->isAvailable()) {
+        $openaiImagesAdapter = null;
     }
 }
 
 // 初始化 Gemini 代理适配器（如果使用 SSE 代理）
 $geminiProxyAdapter = null;
-if ($apiProvider === 'gemini_proxy') {
+if ($apiProvider === 'gemini_proxy' || $imageApiProvider === 'gemini_proxy') {
     $geminiProxyAdapter = new GeminiProxyAdapter($config);
     if (!$geminiProxyAdapter->isAvailable()) {
         $geminiProxyAdapter = null;
-        $apiProvider = 'native';  // 回退到原生 API
+        if ($apiProvider === 'gemini_proxy') {
+            $apiProvider = 'native';
+        }
+        if ($imageApiProvider === 'gemini_proxy') {
+            $imageApiProvider = 'native';
+        }
     }
 }
 
@@ -88,20 +109,35 @@ class GeminiApiException extends Exception {
 /**
  * 安全版本的 Gemini API 调用（抛出异常而非直接退出）
  * 供工具类使用，支持错误捕获和回退机制
- * 根据配置自动选择使用原生 API 或 OpenAI 兼容中转站
+ * 根据配置自动选择使用原生 API、OpenAI 兼容中转站或 OpenAI Images API
  *
  * @param string $modelName 模型名称
  * @param array $payload 请求体
  * @param int $timeout 超时时间
  * @param int $connectTimeout 连接超时
+ * @param string|null $providerOverride 可选的提供商覆盖（图片请求使用）
  * @return array 解析后的响应数组
  * @throws GeminiApiException 当请求失败时抛出
  */
-function callGeminiApiSafe($modelName, array $payload, $timeout = 120, $connectTimeout = 20): array {
-    global $apiKey, $apiProvider, $openaiAdapter, $geminiProxyAdapter;
+function callGeminiApiSafe($modelName, array $payload, $timeout = 120, $connectTimeout = 20, ?string $providerOverride = null): array {
+    global $apiKey, $apiProvider, $openaiAdapter, $openaiImagesAdapter, $geminiProxyAdapter;
+
+    $provider = $providerOverride ?? $apiProvider;
+
+    // 使用 OpenAI Images API（图片生成/编辑专用）
+    if ($provider === 'openai_images') {
+        if ($openaiImagesAdapter === null) {
+            throw new GeminiApiException('OpenAI Images API 配置不完整', 500);
+        }
+        try {
+            return $openaiImagesAdapter->generateContent($modelName, $payload);
+        } catch (OpenAIImagesAdapterException $e) {
+            throw new GeminiApiException($e->getMessage(), $e->getHttpCode());
+        }
+    }
 
     // 使用 Gemini 代理站（SSE 流式响应）
-    if ($apiProvider === 'gemini_proxy' && $geminiProxyAdapter !== null) {
+    if ($provider === 'gemini_proxy' && $geminiProxyAdapter !== null) {
         try {
             return $geminiProxyAdapter->generateContent($modelName, $payload);
         } catch (GeminiProxyAdapterException $e) {
@@ -110,12 +146,16 @@ function callGeminiApiSafe($modelName, array $payload, $timeout = 120, $connectT
     }
 
     // 使用 OpenAI 兼容中转站
-    if ($apiProvider === 'openai_compatible' && $openaiAdapter !== null) {
+    if ($provider === 'openai_compatible' && $openaiAdapter !== null) {
         try {
             return $openaiAdapter->generateContent($modelName, $payload);
         } catch (OpenAIAdapterException $e) {
             throw new GeminiApiException($e->getMessage(), $e->getHttpCode());
         }
+    }
+
+    if ($provider !== 'native') {
+        throw new GeminiApiException('未知的 API 提供商: ' . $provider, 500);
     }
 
     // 原生 Gemini API 调用
@@ -750,7 +790,9 @@ $supportedSizes = $config['image_model_supported_sizes'] ?? ['1K'];
 if (!is_array($supportedSizes) || $supportedSizes === []) {
     $supportedSizes = ['1K'];
 }
-$isBasicImageModel = (count($supportedSizes) === 1 && $supportedSizes[0] === '1K');
+$isBasicImageModel = array_key_exists('image_model_is_basic', $config)
+    ? (bool)$config['image_model_is_basic']
+    : (count($supportedSizes) === 1 && $supportedSizes[0] === '1K');
 // 构建请求体
 $requestData = [
     'contents' => [],
@@ -936,7 +978,7 @@ $balanceAfterDeduct = $preDeductResult['balance_after'];
 // 调用 Gemini 生成/编辑
 // 注意：如果 API 调用失败，需要退还已扣除的余额
 try {
-    $responseData = callGeminiApiSafe($modelName, $requestData, 300, 30);
+    $responseData = callGeminiApiSafe($modelName, $requestData, 300, 30, $imageApiProvider);
 } catch (GeminiApiException $e) {
     // API 调用失败，退还余额
     $db->atomicRefundBalance($userId, $pricePerTask);
@@ -972,12 +1014,18 @@ if (isset($responseData['candidates'][0]['content']['parts'])) {
             $resultText .= SecurityUtils::sanitizeHtml($part['text']) . "\n";
         } elseif (isset($part['inlineData'])) {
             $imageBytes = base64_decode($part['inlineData']['data']);
+            $mimeType = strtolower((string)($part['inlineData']['mimeType'] ?? 'image/png'));
+            $extension = match ($mimeType) {
+                'image/jpeg' => 'jpg',
+                'image/webp' => 'webp',
+                default => 'png',
+            };
             try {
                 $token = SecurityUtils::generateSecureToken(16);
             } catch (\Exception $e) {
                 $token = uniqid();
             }
-            $fileName = 'gen_' . date('Ymd_His') . '_' . $token . '.png';
+            $fileName = 'gen_' . date('Ymd_His') . '_' . $token . '.' . $extension;
             $filePath = $config['output_dir'] . $fileName;
             
             if (file_put_contents($filePath, $imageBytes)) {

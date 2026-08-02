@@ -30,8 +30,8 @@ return [
     'site' => [
         'title' => 'LSJbanana',
         'subtitle' => 'LSJbanana',
-        'description' => 'AI Image Generation & Editing Tool powered by gemini-3.1-flash-image (Nano Banana 2)',
-        'copyright' => '© :year LSJbanana Project. Powered by Gemini.',
+        'description' => 'AI image generation and editing powered by :model',
+        'copyright' => '© :year LSJbanana Project. Powered by configured AI services.',
         'github_title' => 'View Source on GitHub',
         'github_text' => 'Source',
         'sponsor_title' => 'Support This Project',
@@ -292,7 +292,7 @@ return [
         'btn_edit' => 'Start Editing',
         // Prompt Optimization
         'prompt_optimize' => 'Prompt Optimization',
-        'prompt_optimize_tip' => 'Use gemini-2.5-flash to automatically enhance prompts, polish or add details before generation.',
+        'prompt_optimize_tip' => 'Use the configured prompt service to enhance prompts, polish wording, or add details before generation.',
         'optimize_mode_enhance' => 'Enhance Mode',
         'optimize_mode_detail' => 'Detail Mode',
         'btn_optimize' => 'Optimize',

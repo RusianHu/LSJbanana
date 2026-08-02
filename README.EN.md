@@ -2,7 +2,7 @@
 
 > **[中文文档](README.md)**
 
-AI Image Generation and Management Platform based on gemini-3.1-flash-image (Nano Banana 2).
+An image generation, editing, and management platform with switchable AI providers and models.
 
 ## Core Features
 
@@ -54,10 +54,12 @@ mindmap
         Auto repair core table rebuild
     Technical Architecture
       Database
-        SQLite3 single file
+        MySQL/MariaDB production persistence
+        SQLite compatibility fallback
       API Routing
         Gemini Native
         OpenAI Compatible
+        OpenAI Images
         Gemini Proxy SSE
       Security Protection
         CSRF tokens
@@ -70,19 +72,49 @@ mindmap
 
 ## Quick Start
 
+### Portable MariaDB for Windows Development
+
+```powershell
+# 1. Download, verify, initialize, and start MariaDB on 127.0.0.1:3307
+.\portable_mariadb.ps1 install
+
+# 2. Run once when upgrading from an existing SQLite database; skip for a fresh install
+.\php\php.exe .\migrate_sqlite_to_mysql.php
+
+# 3. Start PHP
+.\php\php.exe -S 127.0.0.1:8000
+```
+
+Common management commands:
+
+```powershell
+.\portable_mariadb.ps1 status
+.\portable_mariadb.ps1 stop
+.\portable_mariadb.ps1 start
+```
+
+The portable runtime lives in `database/.mariadb/`, while downloads are cached in `database/.mariadb-download/`; both are ignored by Git. The default passwords are for local development only and must never be reused on a VPS.
+
+### Standard Deployment
+
 ```bash
 # 1. Copy configuration file
 cp config.php.example config.php
 
-# 2. Edit config.php to fill in API keys and payment configuration
+# 2. Create a MySQL database and least-privilege user, then edit database.mysql in config.php
 
-# 3. Start the server
+# 3. When upgrading, back up the SQLite file and migrate its data
+php migrate_sqlite_to_mysql.php
+
+# 4. Fill in API/payment settings and start the server
 php -S 127.0.0.1:8000
 
-# 4. Access the application
+# 5. Access the application
 # Frontend: http://127.0.0.1:8000
 # Admin: http://127.0.0.1:8000/admin
 ```
+
+The migration tool refuses to write to a non-empty target by default. Clearing the managed target tables and importing again requires the explicit `--force` flag. The SQLite source remains unchanged for rollback.
 
 ## Core Configuration
 
@@ -92,13 +124,17 @@ Edit `config.php`, the system provides fine-grained feature control:
 | Configuration | Description |
 |---------------|-------------|
 | `api_provider` | `native` (direct) / `openai_compatible` (relay) / `gemini_proxy` (SSE proxy) |
-| `active_image_model` | `pro` (1K/2K/4K, search grounding) / `flash` (1K fast) |
+| `image_api_provider` | Dedicated image route; may use `openai_images` without changing prompt-optimization/text calls |
+| `openai_images` | OpenAI `/v1/images/generations` and `/v1/images/edits` settings, including URL-based edit inputs |
+| `active_image_model` | `pro` / `flash` / `gpt_image_2`, selected by deployment configuration |
 | `thinking_config` | Thinking mode config, supports `reasoning_content` passthrough |
 | `speech_to_text` | Speech-to-text config, defaults to `gemini-2.5-flash` |
 
 ### Payment & Users
 | Configuration | Description |
 |---------------|-------------|
+| `database.driver` | `mysql` (recommended for production) or `sqlite` (compatibility fallback) |
+| `database.mysql` | Host, port, database, credentials, charset, and optional TLS settings |
 | `payment.channels` | Payment channel switches (`alipay`/`wxpay`/`cashier`) |
 | `billing.price_per_task` | Price per generation (RMB) |
 | `user.lockout_duration` | Login failure lockout duration |
@@ -145,8 +181,17 @@ extension=curl
 extension=openssl
 extension=mbstring
 extension=fileinfo
+extension=pdo_mysql
+# Required only for migration or SQLite fallback
 extension=pdo_sqlite
 ```
+
+### MySQL/MariaDB Security Recommendations
+
+- When PHP and the database share a VPS, bind only to `127.0.0.1` or use a Unix socket; do not expose port 3306 publicly.
+- Create a dedicated application account restricted to the `lsjbanana` database; never use `root`.
+- Supply production credentials through environment variables or a permission-restricted `config.php`, and back up the database regularly.
+- Enable `database.mysql.ssl` with certificate verification for cross-host connections.
 
 ### Nginx Configuration
 ```nginx
@@ -161,13 +206,13 @@ location ~ \.php$ {
 ## Tech Stack Details
 
 - **Backend**: PHP 8.x
-  - **Database**: SQLite3 (PDO mode, atomic transactions)
-  - **Required Extensions**: `curl`, `openssl`, `mbstring`, `fileinfo`
+  - **Database**: MySQL 8.0+ / MariaDB 10.6+ recommended, with legacy MySQL 5.5 and SQLite compatibility
+  - **Required Extensions**: `curl`, `openssl`, `mbstring`, `fileinfo`, `pdo_mysql`
 - **Frontend**: Native JS (ES6+) + CSS3 (Responsive)
 - **AI Capabilities**:
-  - **Drawing**: gemini-3.1-flash-image (Nano Banana 2)
-  - **Optimization**: Gemini 2.5 Flash (Prompt Engineering)
-  - **Speech**: Gemini 2.5 Flash (ASR)
+  - **Drawing**: Gemini image models or the OpenAI Images API, including `gpt-image-2`
+  - **Optimization**: Dynamically configured by `api_provider` and `prompt_optimize_model`
+  - **Speech**: Dynamically configured by `speech_to_text`
 - **Payment Integration**: [LSJ Easy Pay](https://github.com/RusianHu/LsjEpay) (MD5 signature)
 
 ## License

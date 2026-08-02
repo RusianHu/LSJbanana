@@ -93,11 +93,11 @@ try {
             break;
 
         case 'db_health':
-            $data = handleDbHealthAction();
+            $data = handleDbHealthAction($config);
             break;
 
         case 'env':
-            $data = handleEnvAction();
+            $data = handleEnvAction($config);
             break;
 
         default:
@@ -363,6 +363,24 @@ function handleConfigAction(array $config): array {
 
     // API 提供商
     $result['api_provider'] = $config['api_provider'] ?? 'native';
+    $result['image_api_provider'] = $config['image_api_provider'] ?? $result['api_provider'];
+
+    // 数据库配置（不返回密码、证书私钥或 SQLite 绝对路径）
+    $database = is_array($config['database'] ?? null) ? $config['database'] : [];
+    $driver = strtolower((string) ($database['driver'] ?? 'sqlite'));
+    $result['database'] = ['driver' => $driver];
+    if ($driver === 'mysql') {
+        $mysql = array_merge($database, is_array($database['mysql'] ?? null) ? $database['mysql'] : []);
+        $result['database'] += [
+            'host' => $mysql['host'] ?? '127.0.0.1',
+            'port' => (int) ($mysql['port'] ?? 3306),
+            'database' => $mysql['database'] ?? $mysql['dbname'] ?? '',
+            'username' => $mysql['username'] ?? $mysql['user'] ?? '',
+            'charset' => $mysql['charset'] ?? 'utf8mb4',
+            'unix_socket_configured' => !empty($mysql['unix_socket']),
+            'ssl_enabled' => !empty($mysql['ssl']['enabled']),
+        ];
+    }
 
     // Gemini 原生 API Key（脱敏）
     if (!empty($config['api_key'])) {
@@ -387,6 +405,24 @@ function handleConfigAction(array $config): array {
         ];
     }
 
+    // OpenAI Images API 配置（脱敏）
+    if (!empty($config['openai_images'])) {
+        $oi = $config['openai_images'];
+        $result['openai_images'] = [
+            'base_url' => $oi['base_url'] ?? '',
+            'api_key' => !empty($oi['api_key']) ? maskApiKey($oi['api_key']) : '',
+            'public_base_url' => $oi['public_base_url'] ?? '',
+            'timeout' => $oi['timeout'] ?? 420,
+            'connect_timeout' => $oi['connect_timeout'] ?? 30,
+            'download_timeout' => $oi['download_timeout'] ?? 120,
+            'quality' => $oi['quality'] ?? 'low',
+            'verify_ssl' => $oi['verify_ssl'] ?? true,
+            'force_http1' => $oi['force_http1'] ?? true,
+            'max_download_bytes' => $oi['max_download_bytes'] ?? (32 * 1024 * 1024),
+            'temporary_public_path' => $oi['temporary_public_path'] ?? 'images',
+        ];
+    }
+
     // Gemini 代理配置（脱敏）
     if (!empty($config['gemini_proxy'])) {
         $gp = $config['gemini_proxy'];
@@ -404,6 +440,7 @@ function handleConfigAction(array $config): array {
         'display_name' => $config['image_model_display_name'] ?? '',
         'supported_sizes' => $config['image_model_supported_sizes'] ?? [],
         'supports_google_search' => $config['image_model_supports_google_search'] ?? false,
+        'is_basic' => $config['image_model_is_basic'] ?? false,
     ];
 
     // 提示词优化模型
@@ -501,7 +538,9 @@ function handleStatusAction(array $config): array {
     $result['php_version'] = PHP_VERSION;
 
     // 必需扩展状态
-    $requiredExtensions = ['curl', 'openssl', 'mbstring', 'fileinfo', 'pdo_sqlite'];
+    $databaseDriver = strtolower((string) ($config['database']['driver'] ?? 'sqlite'));
+    $databaseExtension = $databaseDriver === 'mysql' ? 'pdo_mysql' : 'pdo_sqlite';
+    $requiredExtensions = ['curl', 'openssl', 'mbstring', 'fileinfo', $databaseExtension];
     $result['extensions'] = [];
     foreach ($requiredExtensions as $ext) {
         $result['extensions'][$ext] = extension_loaded($ext);
@@ -535,18 +574,19 @@ function handleStatusAction(array $config): array {
         $db = Database::getInstance();
         $result['database'] = [
             'connected' => true,
-            'type' => 'sqlite',
+            'type' => $db->getDriver(),
         ];
     } catch (Throwable $e) {
         $result['database'] = [
             'connected' => false,
-            'type' => 'sqlite',
+            'type' => $databaseDriver,
             'error' => $e->getMessage(),
         ];
     }
 
     // API 提供商配置
     $result['api_provider'] = $config['api_provider'] ?? 'native';
+    $result['image_api_provider'] = $config['image_api_provider'] ?? $result['api_provider'];
 
     // 当前时间和时区
     $result['server_time'] = date('c');
@@ -632,9 +672,10 @@ function handleStatsAction(): array {
 /**
  * 处理 db_health action - 数据库健康检查
  *
+ * @param array $config 完整配置
  * @return array 健康检查结果
  */
-function handleDbHealthAction(): array {
+function handleDbHealthAction(array $config): array {
     $result = [
         'healthy' => true,
         'core_tables' => [],
@@ -644,6 +685,8 @@ function handleDbHealthAction(): array {
 
     try {
         $db = Database::getInstance();
+        $result['driver'] = $db->getDriver();
+        $result['connected'] = true;
 
         // 检查核心表
         $missingCoreTables = $db->checkCoreTables();
@@ -671,21 +714,27 @@ function handleDbHealthAction(): array {
             $result['issues'][] = '缺失管理员表: ' . implode(', ', $missingAdminTables);
         }
 
-        // 数据库文件信息
-        $dbPath = __DIR__ . '/database/lsjbanana.db';
-        if (file_exists($dbPath)) {
-            $result['database_file'] = [
-                'exists' => true,
-                'size' => filesize($dbPath),
-                'size_human' => formatBytes(filesize($dbPath)),
-                'writable' => is_writable($dbPath),
-            ];
+        if ($db->getDriver() === 'mysql') {
+            $server = $db->getPdo()->query(
+                'SELECT VERSION() AS version, DATABASE() AS database_name, @@character_set_database AS charset, @@collation_database AS collation'
+            )->fetch();
+            $result['server'] = $server ?: [];
         } else {
-            $result['database_file'] = [
-                'exists' => false,
-            ];
-            $result['healthy'] = false;
-            $result['issues'][] = '数据库文件不存在';
+            $databaseConfig = is_array($config['database'] ?? null) ? $config['database'] : [];
+            $sqliteConfig = is_array($databaseConfig['sqlite'] ?? null) ? $databaseConfig['sqlite'] : [];
+            $dbPath = $sqliteConfig['path'] ?? $databaseConfig['path'] ?? __DIR__ . '/database/lsjbanana.db';
+            if (file_exists($dbPath)) {
+                $result['database_file'] = [
+                    'exists' => true,
+                    'size' => filesize($dbPath),
+                    'size_human' => formatBytes(filesize($dbPath)),
+                    'writable' => is_writable($dbPath),
+                ];
+            } else {
+                $result['database_file'] = ['exists' => false];
+                $result['healthy'] = false;
+                $result['issues'][] = '数据库文件不存在';
+            }
         }
 
     } catch (Throwable $e) {
@@ -699,9 +748,10 @@ function handleDbHealthAction(): array {
 /**
  * 处理 env action - 环境诊断
  *
+ * @param array $config 完整配置
  * @return array 环境信息
  */
-function handleEnvAction(): array {
+function handleEnvAction(array $config): array {
     $result = [];
 
     // PHP 配置
@@ -718,12 +768,14 @@ function handleEnvAction(): array {
     ];
 
     // 必需扩展检查
+    $databaseDriver = strtolower((string) ($config['database']['driver'] ?? 'sqlite'));
+    $databaseExtension = $databaseDriver === 'mysql' ? 'pdo_mysql' : 'pdo_sqlite';
     $requiredExtensions = [
         'curl' => 'HTTP 请求（api.php）',
         'openssl' => '安全连接与令牌生成（security_utils.php）',
         'mbstring' => 'UTF-8 处理（security_utils.php）',
         'fileinfo' => 'MIME 检测（api.php, security_utils.php）',
-        'pdo_sqlite' => 'SQLite 数据库（db.php）',
+        $databaseExtension => strtoupper($databaseDriver) . ' 数据库（db.php）',
     ];
 
     $result['required_extensions'] = [];
