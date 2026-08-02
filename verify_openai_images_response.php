@@ -10,36 +10,6 @@ $_GET['lang'] = 'zh-CN';
 
 require_once __DIR__ . '/openai_images_adapter.php';
 
-class GatewayFallbackTestAdapter extends OpenAIImagesAdapter
-{
-    /** @var array<int,array{path:string,payload:array,timeout:?int}> */
-    public array $requests = [];
-
-    protected function sendJsonRequest(string $path, array $payload, ?int $timeoutOverride = null): array
-    {
-        $this->requests[] = [
-            'path' => $path,
-            'payload' => $payload,
-            'timeout' => $timeoutOverride,
-        ];
-
-        if (count($this->requests) === 1) {
-            throw new OpenAIImagesAdapterException(
-                'Operation timed out after test timeout',
-                502,
-                null,
-                'timeout'
-            );
-        }
-
-        return [
-            'data' => [[
-                'b64_json' => 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZqKQAAAAASUVORK5CYII=',
-            ]],
-        ];
-    }
-}
-
 $adapter = new OpenAIImagesAdapter([
     'openai_images' => [
         'base_url' => 'https://example.invalid',
@@ -142,70 +112,6 @@ $assert(($legacyTier2K['size'] ?? '') === '2048x1152', '旧 tier 配置对 GPT I
 
 [$legacyModel] = $applyImageConfig($adapter, 'gpt-image-1', '16:9', '2K');
 $assert(($legacyModel['size'] ?? '') === '1536x1024', '旧图片模型继续使用兼容尺寸');
-
-$fallbackAdapter = new GatewayFallbackTestAdapter([
-    'openai_images' => [
-        'base_url' => 'https://example.invalid',
-        'api_key' => 'test-key',
-        'public_base_url' => 'https://example.invalid/LSJbanana',
-        'verify_output_size' => false,
-        'log_response_errors' => false,
-        'gateway_timeout_fallback_enabled' => true,
-        'high_resolution_timeout' => 110,
-        'gateway_timeout_fallback_timeout' => 60,
-    ],
-]);
-$fallbackResult = $fallbackAdapter->generateContent('gpt-image-2', [
-    'contents' => [[
-        'role' => 'user',
-        'parts' => [['text' => 'test image']],
-    ]],
-    'generationConfig' => [
-        'imageConfig' => ['aspectRatio' => '16:9', 'imageSize' => '2K'],
-    ],
-]);
-$assert(count($fallbackAdapter->requests) === 2, '高分辨率传输超时后只重试一次');
-$assert(
-    ($fallbackAdapter->requests[0]['payload']['size'] ?? '') === '2048x1152'
-        && $fallbackAdapter->requests[0]['timeout'] === 110,
-    '高分辨率主请求使用 2K 尺寸和有界超时'
-);
-$assert(
-    ($fallbackAdapter->requests[1]['payload']['size'] ?? '') === '1280x720'
-        && $fallbackAdapter->requests[1]['timeout'] === 60,
-    '网关超时后降级为同宽高比 1K 并使用独立超时'
-);
-$assert(
-    ($fallbackResult['_lsjbanana']['resolution_fallback']['actual_size'] ?? '') === '1280x720',
-    '降级结果包含实际尺寸元数据'
-);
-$fallbackParts = $fallbackResult['candidates'][0]['content']['parts'] ?? [];
-$assert(
-    isset($fallbackParts[0]['text']) && str_contains($fallbackParts[0]['text'], '2048x1152'),
-    '降级结果向用户返回明确提示'
-);
-
-$disabledFallbackAdapter = new GatewayFallbackTestAdapter([
-    'openai_images' => [
-        'base_url' => 'https://example.invalid',
-        'api_key' => 'test-key',
-        'public_base_url' => 'https://example.invalid/LSJbanana',
-        'verify_output_size' => false,
-        'log_response_errors' => false,
-        'gateway_timeout_fallback_enabled' => false,
-    ],
-]);
-try {
-    $disabledFallbackAdapter->generateContent('gpt-image-2', [
-        'contents' => [['parts' => [['text' => 'test image']]]],
-        'generationConfig' => [
-            'imageConfig' => ['aspectRatio' => '16:9', 'imageSize' => '2K'],
-        ],
-    ]);
-    $assert(false, '关闭降级策略后主请求错误应直接抛出');
-} catch (OpenAIImagesAdapterException $e) {
-    $assert(count($disabledFallbackAdapter->requests) === 1, '关闭降级策略后不发送第二次请求');
-}
 
 $convertMethod = new ReflectionMethod(OpenAIImagesAdapter::class, 'convertToGeminiFormat');
 $convertMethod->setAccessible(true);

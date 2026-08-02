@@ -16,28 +16,16 @@ require_once __DIR__ . '/i18n/I18n.php';
 class OpenAIImagesAdapterException extends Exception
 {
     private int $httpCode;
-    private string $errorType;
 
-    public function __construct(
-        string $message,
-        int $httpCode = 500,
-        ?Throwable $previous = null,
-        string $errorType = ''
-    )
+    public function __construct(string $message, int $httpCode = 500, ?Throwable $previous = null)
     {
         parent::__construct($message, $httpCode, $previous);
         $this->httpCode = $httpCode;
-        $this->errorType = $errorType;
     }
 
     public function getHttpCode(): int
     {
         return $this->httpCode;
-    }
-
-    public function getErrorType(): string
-    {
-        return $this->errorType;
     }
 }
 
@@ -58,12 +46,6 @@ class OpenAIImagesAdapter
     private bool $logResponseErrors;
     private bool $verifyOutputSize;
     private int $responsePreviewBytes;
-    private bool $gatewayTimeoutFallbackEnabled;
-    private string $gatewayTimeoutFallbackTier;
-    private int $highResolutionTimeout;
-    private int $gatewayTimeoutFallbackTimeout;
-    /** @var array<int,int> */
-    private array $gatewayTimeoutHttpCodes;
 
     public function __construct(array $config)
     {
@@ -83,27 +65,6 @@ class OpenAIImagesAdapter
             ? (bool)$provider['verify_output_size']
             : true;
         $this->responsePreviewBytes = max(0, min(2048, (int)($provider['response_preview_bytes'] ?? 256)));
-        $this->gatewayTimeoutFallbackEnabled = array_key_exists('gateway_timeout_fallback_enabled', $provider)
-            ? (bool)$provider['gateway_timeout_fallback_enabled']
-            : true;
-        $fallbackTier = strtoupper(trim((string)($provider['gateway_timeout_fallback_tier'] ?? '1K')));
-        $this->gatewayTimeoutFallbackTier = $fallbackTier === '1K' ? $fallbackTier : '1K';
-        $this->highResolutionTimeout = max(
-            30,
-            min($this->timeout, (int)($provider['high_resolution_timeout'] ?? 110))
-        );
-        $this->gatewayTimeoutFallbackTimeout = max(
-            30,
-            min($this->timeout, (int)($provider['gateway_timeout_fallback_timeout'] ?? 60))
-        );
-        $configuredGatewayCodes = $provider['gateway_timeout_http_codes'] ?? [502, 504, 524];
-        $this->gatewayTimeoutHttpCodes = array_values(array_unique(array_filter(
-            array_map('intval', is_array($configuredGatewayCodes) ? $configuredGatewayCodes : []),
-            static fn(int $code): bool => $code >= 500 && $code <= 599
-        )));
-        if ($this->gatewayTimeoutHttpCodes === []) {
-            $this->gatewayTimeoutHttpCodes = [502, 504, 524];
-        }
 
         $quality = strtolower((string)($provider['quality'] ?? 'low'));
         $this->quality = in_array($quality, ['auto', 'low', 'medium', 'high'], true) ? $quality : 'low';
@@ -138,23 +99,16 @@ class OpenAIImagesAdapter
             'prompt' => $prompt,
         ];
 
-        $imageConfig = $payload['generationConfig']['imageConfig'] ?? [];
         $expectedDimensions = $this->applyImageConfig(
             $request,
             $modelName,
-            $imageConfig
+            $payload['generationConfig']['imageConfig'] ?? []
         );
-        $requestedTier = is_array($imageConfig)
-            ? strtoupper(trim((string)($imageConfig['imageSize'] ?? '')))
-            : '';
-        $requestedAspectRatio = is_array($imageConfig)
-            ? trim((string)($imageConfig['aspectRatio'] ?? ''))
-            : '';
 
         $temporaryFiles = [];
         try {
             if ($sourceImages === []) {
-                $path = '/v1/images/generations';
+                $response = $this->sendJsonRequest('/v1/images/generations', $request);
             } else {
                 $publicImages = [];
                 foreach ($sourceImages as $image) {
@@ -165,19 +119,10 @@ class OpenAIImagesAdapter
 
                 // aihub.top 实测要求 JSON images[].image_url，而不是 multipart。
                 $request['images'] = $publicImages;
-                $path = '/v1/images/edits';
+                $response = $this->sendJsonRequest('/v1/images/edits', $request);
             }
 
-            [$response, $effectiveDimensions, $fallbackInfo] = $this->sendWithGatewayTimeoutFallback(
-                $path,
-                $request,
-                $modelName,
-                $requestedAspectRatio,
-                $requestedTier,
-                $expectedDimensions
-            );
-
-            return $this->convertToGeminiFormat($response, $effectiveDimensions, $fallbackInfo);
+            return $this->convertToGeminiFormat($response, $expectedDimensions);
         } finally {
             foreach ($temporaryFiles as $temporaryFile) {
                 if (is_file($temporaryFile)) {
@@ -274,127 +219,6 @@ class OpenAIImagesAdapter
         }
 
         return $this->parseDimensions($size);
-    }
-
-    /**
-     * 高分辨率图片在 Cloudflare 类网关后可能先于模型完成而超时。
-     * 对明确的网关超时，仅降级到 1K 重试一次，并把降级信息返回给前端。
-     *
-     * @param array<string,mixed> $request
-     * @param array{width:int,height:int}|null $expectedDimensions
-     * @return array{0:array,1:array{width:int,height:int}|null,2:array<string,string>|null}
-     */
-    private function sendWithGatewayTimeoutFallback(
-        string $path,
-        array $request,
-        string $modelName,
-        string $aspectRatio,
-        string $requestedTier,
-        ?array $expectedDimensions
-    ): array {
-        $primaryTimeout = $this->shouldBoundHighResolutionRequest($requestedTier)
-            ? $this->highResolutionTimeout
-            : null;
-
-        try {
-            return [
-                $this->sendJsonRequest($path, $request, $primaryTimeout),
-                $expectedDimensions,
-                null,
-            ];
-        } catch (OpenAIImagesAdapterException $primaryError) {
-            if (!$this->shouldUseGatewayTimeoutFallback($primaryError, $requestedTier)) {
-                throw $primaryError;
-            }
-
-            $fallbackSize = $this->mapAspectRatioToSize(
-                $aspectRatio,
-                $this->gatewayTimeoutFallbackTier,
-                $modelName
-            );
-            $primarySize = trim((string)($request['size'] ?? ''));
-            if ($fallbackSize === '' || $fallbackSize === $primarySize) {
-                throw $primaryError;
-            }
-
-            $fallbackRequest = $request;
-            $fallbackRequest['size'] = $fallbackSize;
-            $fallbackDimensions = $this->parseDimensions($fallbackSize);
-
-            error_log('[OpenAIImagesAdapter] High-resolution request timed out; retrying once at lower resolution: '
-                . json_encode([
-                    'path' => $path,
-                    'model' => $modelName,
-                    'requested_tier' => $requestedTier,
-                    'requested_size' => $primarySize,
-                    'fallback_tier' => $this->gatewayTimeoutFallbackTier,
-                    'fallback_size' => $fallbackSize,
-                    'primary_http_code' => $primaryError->getHttpCode(),
-                    'primary_error_type' => $primaryError->getErrorType(),
-                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-
-            try {
-                $response = $this->sendJsonRequest(
-                    $path,
-                    $fallbackRequest,
-                    $this->gatewayTimeoutFallbackTimeout
-                );
-            } catch (OpenAIImagesAdapterException $fallbackError) {
-                error_log('[OpenAIImagesAdapter] Lower-resolution gateway fallback failed: '
-                    . json_encode([
-                        'path' => $path,
-                        'model' => $modelName,
-                        'requested_size' => $primarySize,
-                        'fallback_size' => $fallbackSize,
-                        'fallback_http_code' => $fallbackError->getHttpCode(),
-                        'fallback_error_type' => $fallbackError->getErrorType(),
-                    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-
-                throw new OpenAIImagesAdapterException(
-                    __('adapter.openai_images.error.gateway_timeout_fallback_failed', [
-                        'actual' => $fallbackSize,
-                        'message' => $fallbackError->getMessage(),
-                    ]),
-                    $fallbackError->getHttpCode(),
-                    $fallbackError,
-                    $fallbackError->getErrorType()
-                );
-            }
-
-            return [
-                $response,
-                $fallbackDimensions,
-                [
-                    'reason' => 'gateway_timeout',
-                    'requested_tier' => $requestedTier,
-                    'requested_size' => $primarySize,
-                    'actual_tier' => $this->gatewayTimeoutFallbackTier,
-                    'actual_size' => $fallbackSize,
-                ],
-            ];
-        }
-    }
-
-    private function shouldBoundHighResolutionRequest(string $requestedTier): bool
-    {
-        return $this->gatewayTimeoutFallbackEnabled
-            && in_array($requestedTier, ['2K', '4K'], true);
-    }
-
-    private function shouldUseGatewayTimeoutFallback(
-        OpenAIImagesAdapterException $error,
-        string $requestedTier
-    ): bool {
-        if (!$this->shouldBoundHighResolutionRequest($requestedTier)) {
-            return false;
-        }
-
-        if (in_array($error->getErrorType(), ['timeout', 'gateway_timeout'], true)) {
-            return true;
-        }
-
-        return in_array($error->getHttpCode(), $this->gatewayTimeoutHttpCodes, true)
-            && preg_match('/(?:timed?\s*out|timeout|HTTP\s*(?:502|504|524))/i', $error->getMessage()) === 1;
     }
 
     private function mapAspectRatioToSize(string $aspectRatio, string $imageSize, string $modelName = ''): string
@@ -548,7 +372,7 @@ class OpenAIImagesAdapter
         return [$this->publicBaseUrl . '/' . $publicPath, $filePath];
     }
 
-    protected function sendJsonRequest(string $path, array $payload, ?int $timeoutOverride = null): array
+    private function sendJsonRequest(string $path, array $payload): array
     {
         try {
             $body = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
@@ -562,13 +386,9 @@ class OpenAIImagesAdapter
 
         $clientRequestId = $this->createClientRequestId();
         $responseHeaders = [];
-        $requestTimeout = $timeoutOverride === null
-            ? $this->timeout
-            : max(1, min($this->timeout, $timeoutOverride));
-        $startedAt = microtime(true);
 
-        // 普通图片 POST 不做同参数重试，避免网关超时后重复生成和重复计费。
-        // 唯一例外是在上层明确启用的高分辨率 -> 1K 有界降级，两次请求参数不同且会记录日志。
+        // 图片 POST 在网关超时后可能已被上游受理并计费，因此这里不自动重试，
+        // 避免因不确定结果重复生成和重复扣费。
         $ch = curl_init($this->baseUrl . $path);
         $options = [
             CURLOPT_RETURNTRANSFER => true,
@@ -581,7 +401,7 @@ class OpenAIImagesAdapter
                 'X-Client-Request-Id: ' . $clientRequestId,
             ],
             CURLOPT_POSTFIELDS => $body,
-            CURLOPT_TIMEOUT => $requestTimeout,
+            CURLOPT_TIMEOUT => $this->timeout,
             CURLOPT_CONNECTTIMEOUT => $this->connectTimeout,
             CURLOPT_SSL_VERIFYPEER => $this->verifySsl,
             CURLOPT_SSL_VERIFYHOST => $this->verifySsl ? 2 : 0,
@@ -622,8 +442,6 @@ class OpenAIImagesAdapter
             $contentType = (string)($responseHeaders['content-type'] ?? '');
         }
         $error = curl_error($ch);
-        $curlErrno = curl_errno($ch);
-        $elapsedMs = (int)round((microtime(true) - $startedAt) * 1000);
         curl_close($ch);
 
         if ($response === false || $error !== '') {
@@ -635,18 +453,14 @@ class OpenAIImagesAdapter
                 $responseHeaders,
                 is_string($response) ? $response : '',
                 $errorMessage,
-                $clientRequestId,
-                $elapsedMs,
-                $curlErrno
+                $clientRequestId
             );
             throw new OpenAIImagesAdapterException(
                 __('adapter.openai_images.error.request_failed', [
                     'error' => $errorMessage,
                     'trace' => $this->formatTraceSuffix($responseHeaders, $clientRequestId),
                 ]),
-                502,
-                null,
-                $curlErrno === 28 ? 'timeout' : 'transport'
+                502
             );
         }
 
@@ -656,8 +470,7 @@ class OpenAIImagesAdapter
             $httpCode,
             $contentType,
             $responseHeaders,
-            $clientRequestId,
-            $elapsedMs
+            $clientRequestId
         );
     }
 
@@ -667,8 +480,7 @@ class OpenAIImagesAdapter
         int $httpCode,
         string $contentType,
         array $responseHeaders,
-        string $clientRequestId,
-        int $elapsedMs = 0
+        string $clientRequestId
     ): array {
         $data = null;
         $decodeError = null;
@@ -688,9 +500,7 @@ class OpenAIImagesAdapter
                         'message' => $message,
                         'trace' => $this->formatTraceSuffix($responseHeaders, $clientRequestId),
                     ]),
-                    $this->normalizeHttpCode($httpCode),
-                    null,
-                    $this->classifyHttpErrorType($httpCode)
+                    $this->normalizeHttpCode($httpCode)
                 );
             }
 
@@ -701,8 +511,7 @@ class OpenAIImagesAdapter
                 $responseHeaders,
                 $response,
                 $decodeError ?? 'JSON root is not an object',
-                $clientRequestId,
-                $elapsedMs
+                $clientRequestId
             );
             throw new OpenAIImagesAdapterException(
                 __('adapter.openai_images.error.non_json_status', [
@@ -711,9 +520,7 @@ class OpenAIImagesAdapter
                     'bytes' => strlen($response),
                     'trace' => $this->formatTraceSuffix($responseHeaders, $clientRequestId),
                 ]),
-                $this->normalizeHttpCode($httpCode),
-                null,
-                $this->classifyHttpErrorType($httpCode)
+                $this->normalizeHttpCode($httpCode)
             );
         }
 
@@ -726,8 +533,7 @@ class OpenAIImagesAdapter
                 $responseHeaders,
                 $response,
                 $failureReason,
-                $clientRequestId,
-                $elapsedMs
+                $clientRequestId
             );
 
             $translationKey = $decodeError === null
@@ -836,13 +642,6 @@ class OpenAIImagesAdapter
         return $httpCode >= 400 && $httpCode <= 599 ? $httpCode : 502;
     }
 
-    private function classifyHttpErrorType(int $httpCode): string
-    {
-        return in_array($httpCode, $this->gatewayTimeoutHttpCodes, true)
-            ? 'gateway_timeout'
-            : 'http';
-    }
-
     private function normalizeContentType(string $contentType): string
     {
         $contentType = trim($contentType);
@@ -879,9 +678,7 @@ class OpenAIImagesAdapter
         array $responseHeaders,
         string $response,
         string $failureReason,
-        string $clientRequestId,
-        int $elapsedMs = 0,
-        int $curlErrno = 0
+        string $clientRequestId
     ): void {
         if (!$this->logResponseErrors) {
             return;
@@ -899,8 +696,6 @@ class OpenAIImagesAdapter
             'server' => $responseHeaders['server'] ?? null,
             'retry_after' => $responseHeaders['retry-after'] ?? null,
             'client_request_id' => $clientRequestId,
-            'elapsed_ms' => $elapsedMs,
-            'curl_errno' => $curlErrno,
         ];
 
         if ($this->responsePreviewBytes > 0 && $response !== '') {
@@ -920,11 +715,7 @@ class OpenAIImagesAdapter
     /**
      * @param array{width:int,height:int}|null $expectedDimensions
      */
-    private function convertToGeminiFormat(
-        array $response,
-        ?array $expectedDimensions = null,
-        ?array $fallbackInfo = null
-    ): array
+    private function convertToGeminiFormat(array $response, ?array $expectedDimensions = null): array
     {
         $item = $response['data'][0] ?? null;
         if (!is_array($item)) {
@@ -977,14 +768,6 @@ class OpenAIImagesAdapter
         }
 
         $parts = [];
-        if ($fallbackInfo !== null) {
-            $parts[] = [
-                'text' => __('adapter.openai_images.warning.gateway_timeout_fallback', [
-                    'requested' => $fallbackInfo['requested_size'] ?? '',
-                    'actual' => $fallbackInfo['actual_size'] ?? '',
-                ]),
-            ];
-        }
         if (isset($item['revised_prompt']) && is_string($item['revised_prompt']) && trim($item['revised_prompt']) !== '') {
             $parts[] = ['text' => trim($item['revised_prompt'])];
         }
@@ -995,7 +778,7 @@ class OpenAIImagesAdapter
             ],
         ];
 
-        $result = [
+        return [
             'candidates' => [[
                 'content' => [
                     'role' => 'model',
@@ -1005,14 +788,6 @@ class OpenAIImagesAdapter
             ]],
             'usageMetadata' => $response['usage'] ?? null,
         ];
-
-        if ($fallbackInfo !== null) {
-            $result['_lsjbanana'] = [
-                'resolution_fallback' => $fallbackInfo,
-            ];
-        }
-
-        return $result;
     }
 
     /**

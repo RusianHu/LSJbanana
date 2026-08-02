@@ -1014,10 +1014,6 @@ try {
     sendError(__($messageKey, ['message' => $e->getMessage()]), $e->getHttpCode(), $errorCode);
 }
 
-$generationMetadata = is_array($responseData['_lsjbanana'] ?? null)
-    ? $responseData['_lsjbanana']
-    : null;
-
 if (!isset($responseData['candidates'][0])) {
     $refundSuccess = refundPreDeductedBalance($db, $userId, $pricePerTask, 'missing API candidate');
     $messageKey = $refundSuccess ? 'api.upstream_error_refunded' : 'api.upstream_error_refund_failed';
@@ -1128,7 +1124,6 @@ echo json_encode([
     'text' => trim($resultText),
     'thoughts' => $resultThoughts,
     'groundingMetadata' => $groundingMetadata,
-    'generation' => $generationMetadata,
     'billing' => $billingResult ? [
         'charged' => $billingResult['success'],
         'amount' => $billingResult['amount'] ?? 0,
