@@ -44,6 +44,8 @@ class OpenAIImagesAdapter
     private string $sizeMode;
     private bool $verifySsl;
     private bool $forceHttp1;
+    private bool $logResponseErrors;
+    private int $responsePreviewBytes;
 
     public function __construct(array $config)
     {
@@ -58,6 +60,8 @@ class OpenAIImagesAdapter
         $this->maxDownloadBytes = max(1024 * 1024, (int)($provider['max_download_bytes'] ?? 32 * 1024 * 1024));
         $this->verifySsl = (bool)($provider['verify_ssl'] ?? true);
         $this->forceHttp1 = (bool)($provider['force_http1'] ?? true);
+        $this->logResponseErrors = (bool)($provider['log_response_errors'] ?? true);
+        $this->responsePreviewBytes = max(0, min(2048, (int)($provider['response_preview_bytes'] ?? 256)));
 
         $quality = strtolower((string)($provider['quality'] ?? 'low'));
         $this->quality = in_array($quality, ['auto', 'low', 'medium', 'high'], true) ? $quality : 'low';
@@ -290,9 +294,18 @@ class OpenAIImagesAdapter
         try {
             $body = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
         } catch (JsonException $e) {
-            throw new OpenAIImagesAdapterException(__('adapter.openai.error.parse_failed', ['error' => $e->getMessage()]), 500, $e);
+            throw new OpenAIImagesAdapterException(
+                __('adapter.openai_images.error.request_encoding_failed', ['error' => $e->getMessage()]),
+                500,
+                $e
+            );
         }
 
+        $clientRequestId = $this->createClientRequestId();
+        $responseHeaders = [];
+
+        // 图片 POST 在网关超时后可能已被上游受理并计费，因此这里不自动重试，
+        // 避免因不确定结果重复生成和重复扣费。
         $ch = curl_init($this->baseUrl . $path);
         $options = [
             CURLOPT_RETURNTRANSFER => true,
@@ -302,12 +315,37 @@ class OpenAIImagesAdapter
                 'Content-Type: application/json',
                 'Authorization: Bearer ' . $this->apiKey,
                 'Expect:',
+                'X-Client-Request-Id: ' . $clientRequestId,
             ],
             CURLOPT_POSTFIELDS => $body,
             CURLOPT_TIMEOUT => $this->timeout,
             CURLOPT_CONNECTTIMEOUT => $this->connectTimeout,
             CURLOPT_SSL_VERIFYPEER => $this->verifySsl,
             CURLOPT_SSL_VERIFYHOST => $this->verifySsl ? 2 : 0,
+            CURLOPT_HEADERFUNCTION => function ($ch, string $line) use (&$responseHeaders): int {
+                $lineLength = strlen($line);
+                $trimmed = trim($line);
+                if ($trimmed === '' || !str_contains($trimmed, ':')) {
+                    return $lineLength;
+                }
+
+                [$name, $value] = explode(':', $trimmed, 2);
+                $name = strtolower(trim($name));
+                if (in_array($name, [
+                    'content-type',
+                    'content-length',
+                    'content-encoding',
+                    'transfer-encoding',
+                    'server',
+                    'x-request-id',
+                    'cf-ray',
+                    'retry-after',
+                ], true)) {
+                    $responseHeaders[$name] = trim($value);
+                }
+
+                return $lineLength;
+            },
         ];
         if ($this->forceHttp1 && defined('CURL_HTTP_VERSION_1_1')) {
             $options[CURLOPT_HTTP_VERSION] = CURL_HTTP_VERSION_1_1;
@@ -316,30 +354,279 @@ class OpenAIImagesAdapter
 
         $response = curl_exec($ch);
         $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $contentType = (string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+        if ($contentType === '') {
+            $contentType = (string)($responseHeaders['content-type'] ?? '');
+        }
         $error = curl_error($ch);
         curl_close($ch);
 
         if ($response === false || $error !== '') {
-            throw new OpenAIImagesAdapterException(__('adapter.openai.error.request_failed', ['error' => $error ?: 'empty response']), 502);
+            $errorMessage = $error !== '' ? $error : 'empty response';
+            $this->logInvalidResponse(
+                $path,
+                $httpCode,
+                $contentType,
+                $responseHeaders,
+                is_string($response) ? $response : '',
+                $errorMessage,
+                $clientRequestId
+            );
+            throw new OpenAIImagesAdapterException(
+                __('adapter.openai_images.error.request_failed', [
+                    'error' => $errorMessage,
+                    'trace' => $this->formatTraceSuffix($responseHeaders, $clientRequestId),
+                ]),
+                502
+            );
         }
 
-        $data = json_decode($response, true);
-        if (!is_array($data)) {
-            throw new OpenAIImagesAdapterException(__('adapter.openai.error.parse_failed', ['error' => json_last_error_msg()]), 502);
+        return $this->interpretHttpResponse(
+            $path,
+            $response,
+            $httpCode,
+            $contentType,
+            $responseHeaders,
+            $clientRequestId
+        );
+    }
+
+    private function interpretHttpResponse(
+        string $path,
+        string $response,
+        int $httpCode,
+        string $contentType,
+        array $responseHeaders,
+        string $clientRequestId
+    ): array {
+        $data = null;
+        $decodeError = null;
+
+        try {
+            $data = $this->decodeResponseBody($response, $contentType);
+        } catch (JsonException $e) {
+            $decodeError = $e->getMessage();
         }
 
         if ($httpCode < 200 || $httpCode >= 300) {
-            $message = $data['error']['message'] ?? $data['message'] ?? __('adapter.openai.error.api_error');
-            if (is_array($message)) {
-                $message = json_encode($message, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if ($this->isJsonObject($data)) {
+                $message = $this->extractUpstreamErrorMessage($data);
+                throw new OpenAIImagesAdapterException(
+                    __('adapter.openai_images.error.request_failed_status', [
+                        'code' => $httpCode,
+                        'message' => $message,
+                        'trace' => $this->formatTraceSuffix($responseHeaders, $clientRequestId),
+                    ]),
+                    $this->normalizeHttpCode($httpCode)
+                );
             }
+
+            $this->logInvalidResponse(
+                $path,
+                $httpCode,
+                $contentType,
+                $responseHeaders,
+                $response,
+                $decodeError ?? 'JSON root is not an object',
+                $clientRequestId
+            );
             throw new OpenAIImagesAdapterException(
-                __('adapter.openai.error.request_failed_status', ['code' => $httpCode, 'message' => (string)$message]),
-                $httpCode
+                __('adapter.openai_images.error.non_json_status', [
+                    'code' => $httpCode,
+                    'content_type' => $this->normalizeContentType($contentType),
+                    'bytes' => strlen($response),
+                    'trace' => $this->formatTraceSuffix($responseHeaders, $clientRequestId),
+                ]),
+                $this->normalizeHttpCode($httpCode)
+            );
+        }
+
+        if (!$this->isJsonObject($data)) {
+            $failureReason = $decodeError ?? 'JSON root is not an object';
+            $this->logInvalidResponse(
+                $path,
+                $httpCode,
+                $contentType,
+                $responseHeaders,
+                $response,
+                $failureReason,
+                $clientRequestId
+            );
+
+            $translationKey = $decodeError === null
+                ? 'adapter.openai_images.error.invalid_shape'
+                : 'adapter.openai_images.error.invalid_json';
+            throw new OpenAIImagesAdapterException(
+                __($translationKey, [
+                    'code' => $httpCode,
+                    'content_type' => $this->normalizeContentType($contentType),
+                    'bytes' => strlen($response),
+                    'error' => $failureReason,
+                    'trace' => $this->formatTraceSuffix($responseHeaders, $clientRequestId),
+                ]),
+                502
             );
         }
 
         return $data;
+    }
+
+    private function decodeResponseBody(string $response, string $contentType): mixed
+    {
+        $normalized = trim($response);
+        if (str_starts_with($normalized, "\xEF\xBB\xBF")) {
+            $normalized = substr($normalized, 3);
+        }
+
+        try {
+            return json_decode($normalized, true, 512, JSON_THROW_ON_ERROR);
+        } catch (JsonException $jsonException) {
+            $sseData = $this->decodeSingleSseResponse($normalized, $contentType);
+            if ($sseData !== null) {
+                return $sseData;
+            }
+            throw $jsonException;
+        }
+    }
+
+    private function decodeSingleSseResponse(string $response, string $contentType): mixed
+    {
+        $isEventStream = str_contains(strtolower($contentType), 'text/event-stream')
+            || preg_match('/^(?:event:[^\r\n]*\R)?data:/mi', $response) === 1;
+        if (!$isEventStream) {
+            return null;
+        }
+
+        $decodedEvents = [];
+        $eventBlocks = preg_split('/\R{2,}/', trim($response)) ?: [];
+        foreach ($eventBlocks as $eventBlock) {
+            $dataLines = [];
+            foreach (preg_split('/\R/', $eventBlock) ?: [] as $line) {
+                if (str_starts_with($line, 'data:')) {
+                    $dataLines[] = ltrim(substr($line, 5));
+                }
+            }
+
+            if ($dataLines === []) {
+                continue;
+            }
+
+            $eventData = trim(implode("\n", $dataLines));
+            if ($eventData === '' || $eventData === '[DONE]') {
+                continue;
+            }
+
+            try {
+                $decodedEvents[] = json_decode($eventData, true, 512, JSON_THROW_ON_ERROR);
+            } catch (JsonException) {
+                return null;
+            }
+        }
+
+        if (count($decodedEvents) === 1) {
+            return $decodedEvents[0];
+        }
+
+        for ($i = count($decodedEvents) - 1; $i >= 0; $i--) {
+            $event = $decodedEvents[$i];
+            if ($this->isJsonObject($event) && (isset($event['data']) || isset($event['error']))) {
+                return $event;
+            }
+        }
+
+        return null;
+    }
+
+    private function isJsonObject(mixed $data): bool
+    {
+        return is_array($data) && $data !== [] && !array_is_list($data);
+    }
+
+    private function extractUpstreamErrorMessage(array $data): string
+    {
+        $message = $data['error']['message'] ?? $data['message'] ?? __('adapter.openai_images.error.api_error');
+        if (is_array($message) || is_object($message)) {
+            $encoded = json_encode($message, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            return is_string($encoded) ? $encoded : __('adapter.openai_images.error.api_error');
+        }
+
+        $message = trim((string)$message);
+        return $message !== '' ? $message : __('adapter.openai_images.error.api_error');
+    }
+
+    private function normalizeHttpCode(int $httpCode): int
+    {
+        return $httpCode >= 400 && $httpCode <= 599 ? $httpCode : 502;
+    }
+
+    private function normalizeContentType(string $contentType): string
+    {
+        $contentType = trim($contentType);
+        return $contentType !== '' ? $contentType : 'unknown';
+    }
+
+    private function createClientRequestId(): string
+    {
+        try {
+            return 'lsjbanana-' . bin2hex(random_bytes(12));
+        } catch (Throwable) {
+            return 'lsjbanana-' . str_replace('.', '', uniqid('', true));
+        }
+    }
+
+    private function formatTraceSuffix(array $responseHeaders, string $clientRequestId): string
+    {
+        $traceParts = [];
+        foreach (['x-request-id' => 'request', 'cf-ray' => 'cf'] as $header => $label) {
+            $value = trim((string)($responseHeaders[$header] ?? ''));
+            if ($value !== '') {
+                $traceParts[] = $label . '=' . $value;
+            }
+        }
+        $traceParts[] = 'client=' . $clientRequestId;
+
+        return __('adapter.openai_images.error.trace_suffix', ['id' => implode(', ', $traceParts)]);
+    }
+
+    private function logInvalidResponse(
+        string $path,
+        int $httpCode,
+        string $contentType,
+        array $responseHeaders,
+        string $response,
+        string $failureReason,
+        string $clientRequestId
+    ): void {
+        if (!$this->logResponseErrors) {
+            return;
+        }
+
+        $context = [
+            'path' => $path,
+            'http_code' => $httpCode,
+            'content_type' => $this->normalizeContentType($contentType),
+            'response_bytes' => strlen($response),
+            'response_sha256' => hash('sha256', $response),
+            'failure_reason' => $failureReason,
+            'x_request_id' => $responseHeaders['x-request-id'] ?? null,
+            'cf_ray' => $responseHeaders['cf-ray'] ?? null,
+            'server' => $responseHeaders['server'] ?? null,
+            'retry_after' => $responseHeaders['retry-after'] ?? null,
+            'client_request_id' => $clientRequestId,
+        ];
+
+        if ($this->responsePreviewBytes > 0 && $response !== '') {
+            $preview = substr($response, 0, $this->responsePreviewBytes);
+            $preview = html_entity_decode(strip_tags($preview), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $preview = preg_replace('/\s+/u', ' ', $preview) ?? '';
+            $preview = preg_replace('/\b(?:sk-[A-Za-z0-9_-]{8,}|AIza[A-Za-z0-9_-]{12,})\b/u', '[redacted]', $preview) ?? '';
+            $context['body_preview'] = trim($preview);
+        }
+
+        error_log(
+            '[OpenAIImagesAdapter] Invalid upstream response: '
+            . json_encode($context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE)
+        );
     }
 
     private function convertToGeminiFormat(array $response): array
