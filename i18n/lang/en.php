@@ -848,7 +848,11 @@ return [
                 'invalid_shape' => 'Image upstream returned an unexpected JSON structure (HTTP :code, :content_type, :bytes bytes):trace',
                 'api_error' => 'Image upstream API returned an error',
                 'output_size_mismatch' => 'The image upstream returned :actual instead of :expected. It may have ignored the size parameter; with sub2api, check whether the group is actually routed through OpenAI OAuth/Codex.',
+                'gateway_timeout_fallback_failed' => 'The high-resolution image request timed out, and the automatic fallback to :actual also failed: :message',
                 'trace_suffix' => '; trace ID: :id',
+            ],
+            'warning' => [
+                'gateway_timeout_fallback' => 'The upstream high-resolution request timed out. Generation completed after automatically reducing :requested to :actual.',
             ],
         ],
     ],

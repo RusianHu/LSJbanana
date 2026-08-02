@@ -848,7 +848,11 @@ return [
                 'invalid_shape' => '图片上游返回了异常 JSON 结构（HTTP :code，:content_type，:bytes 字节）:trace',
                 'api_error' => '图片上游接口返回异常',
                 'output_size_mismatch' => '图片上游返回了 :actual，期望 :expected。上游可能忽略了 size 参数；使用 sub2api 时请检查账号组是否实际走 OpenAI OAuth/Codex 路由。',
+                'gateway_timeout_fallback_failed' => '高分辨率图片请求超时，自动降级到 :actual 后仍失败：:message',
                 'trace_suffix' => '；追踪 ID: :id',
+            ],
+            'warning' => [
+                'gateway_timeout_fallback' => '上游高分辨率请求超时，已自动从 :requested 降级为 :actual 完成生成。',
             ],
         ],
     ],
