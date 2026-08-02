@@ -24,7 +24,10 @@
                     baseUrl = '../';
                 }
 
-                const langFile = `${baseUrl}i18n/lang/js/${this.locale}.json`;
+                const assetVersion = window.LSJ_ASSET_VERSION
+                    ? `?v=${encodeURIComponent(window.LSJ_ASSET_VERSION)}`
+                    : '';
+                const langFile = `${baseUrl}i18n/lang/js/${this.locale}.json${assetVersion}`;
                 const response = await fetch(langFile);
                 if (response.ok) {
                     this.translations = await response.json();

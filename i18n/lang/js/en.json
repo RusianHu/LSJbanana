@@ -36,9 +36,11 @@
     "loading": "Loading",
     "unknown": "Unknown",
     "load_failed": "Load failed",
+    "4k": "4K Ultra HD",
     "2k": "2K HD",
     "1k": "1K SD",
-    "sd": "Standard"
+    "sd": "Standard",
+    "details": "{tier}, {width} × {height} pixels"
   },
   "voice": {
     "not_supported": "Voice input is not supported in this browser",

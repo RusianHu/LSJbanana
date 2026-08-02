@@ -1,4 +1,49 @@
 // 等待 i18n 就绪后再初始化
+const IMAGE_RESOLUTION_TIERS = Object.freeze([
+    Object.freeze({minDimension: 3840, label: '4K', className: 'resolution-4k', descriptionKey: 'resolution.4k'}),
+    Object.freeze({minDimension: 2000, label: '2K', className: 'resolution-2k', descriptionKey: 'resolution.2k'}),
+    Object.freeze({minDimension: 1000, label: '1K', className: 'resolution-1k', descriptionKey: 'resolution.1k'}),
+    Object.freeze({minDimension: 0, label: 'SD', className: 'resolution-low', descriptionKey: 'resolution.sd'})
+]);
+
+/**
+ * 根据图片实际像素尺寸判断显示档位。
+ *
+ * 图片接口的 1K / 2K / 4K 是近似档位，不同宽高比的精确长边并不相同，
+ * 因此这里按最长边自高到低匹配，并兼容常见的 3840 像素 4K 输出。
+ */
+function classifyImageResolution(width, height) {
+    const normalizedWidth = Number(width);
+    const normalizedHeight = Number(height);
+
+    if (!Number.isInteger(normalizedWidth)
+        || !Number.isInteger(normalizedHeight)
+        || normalizedWidth <= 0
+        || normalizedHeight <= 0) {
+        return null;
+    }
+
+    const maxDimension = Math.max(normalizedWidth, normalizedHeight);
+    const tier = IMAGE_RESOLUTION_TIERS.find(item => maxDimension >= item.minDimension);
+
+    return {
+        width: normalizedWidth,
+        height: normalizedHeight,
+        maxDimension,
+        label: tier.label,
+        className: tier.className,
+        descriptionKey: tier.descriptionKey
+    };
+}
+
+// 暴露纯函数，便于浏览器诊断和 Node.js 回归测试。
+if (typeof window !== 'undefined') {
+    window.LSJBananaResolution = Object.freeze({classify: classifyImageResolution});
+}
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {classifyImageResolution, IMAGE_RESOLUTION_TIERS};
+}
+
 window.addEventListener('i18nReady', () => {
     // 初始化用户菜单
     initUserMenu();
@@ -618,7 +663,6 @@ window.addEventListener('i18nReady', () => {
                         
                         // 创建图片元素
                         const img = document.createElement('img');
-                        img.src = imgUrl;
                         img.alt = `Generated Image ${index + 1}`;
                         
                         // 创建分辨率标签（初始加载状态）
@@ -626,55 +670,43 @@ window.addEventListener('i18nReady', () => {
                         resLabel.className = 'resolution-label resolution-loading';
                         resLabel.setAttribute('aria-label', window.i18n.t('resolution.loading'));
                         resLabel.setAttribute('role', 'status');
+                        resLabel.setAttribute('aria-live', 'polite');
                         resLabel.innerHTML = '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i><span class="sr-only">' + window.i18n.t('resolution.loading') + '</span>';
-                        
-                        // 分辨率阈值常量
-                        const RESOLUTION_THRESHOLD_2K = 2000;
-                        const RESOLUTION_THRESHOLD_1K = 1000;
                         
                         // 图片加载完成后读取尺寸
                         img.onload = function() {
                             const w = img.naturalWidth;
                             const h = img.naturalHeight;
-                            
-                            // 边界检查：确保尺寸有效
-                            if (!w || !h || w <= 0 || h <= 0) {
+
+                            const resolutionInfo = classifyImageResolution(w, h);
+                            if (!resolutionInfo) {
                                 resLabel.className = 'resolution-label resolution-error';
                                 resLabel.setAttribute('aria-label', window.i18n.t('resolution.unknown'));
+                                resLabel.removeAttribute('data-resolution-tier');
                                 resLabel.innerHTML = '<i class="fas fa-question-circle" aria-hidden="true"></i> ' + window.i18n.t('resolution.unknown');
                                 return;
                             }
-                            
-                            const maxDim = Math.max(w, h);
-                            
-                            // 判断分辨率档位
-                            let tierClass = 'resolution-low';
-                            let tierLabel = '';
-                            let tierDescription = '';
-                            
-                            if (maxDim >= RESOLUTION_THRESHOLD_2K) {
-                                tierClass = 'resolution-2k';
-                                tierLabel = '2K';
-                                tierDescription = window.i18n.t('resolution.2k');
-                            } else if (maxDim >= RESOLUTION_THRESHOLD_1K) {
-                                tierClass = 'resolution-1k';
-                                tierLabel = '1K';
-                                tierDescription = window.i18n.t('resolution.1k');
-                            } else {
-                                tierClass = 'resolution-low';
-                                tierLabel = 'SD';
-                                tierDescription = window.i18n.t('resolution.sd');
-                            }
-                            
-                            const ariaText = window.i18n.t('lightbox.image_info', {width: w, height: h});
-                            resLabel.className = `resolution-label ${tierClass}`;
+
+                            const tierDescription = window.i18n.t(resolutionInfo.descriptionKey);
+                            const ariaText = window.i18n.t('resolution.details', {
+                                tier: tierDescription,
+                                width: resolutionInfo.width,
+                                height: resolutionInfo.height
+                            });
+                            resLabel.className = `resolution-label ${resolutionInfo.className}`;
+                            resLabel.setAttribute('role', 'button');
+                            resLabel.setAttribute('tabindex', '0');
+                            resLabel.setAttribute('data-resolution-tier', resolutionInfo.label);
                             resLabel.setAttribute('aria-label', ariaText);
-                            resLabel.setAttribute('title', `${tierLabel} ${w}×${h}`);
-                            resLabel.innerHTML = `<span class="resolution-tier" aria-hidden="true">${tierLabel}</span><span class="resolution-size" aria-hidden="true">${w} × ${h}</span>`;
+                            resLabel.setAttribute('title', `${resolutionInfo.label} ${resolutionInfo.width}×${resolutionInfo.height}`);
+                            resLabel.innerHTML = `<span class="resolution-tier" aria-hidden="true">${resolutionInfo.label}</span><span class="resolution-size" aria-hidden="true">${resolutionInfo.width} × ${resolutionInfo.height}</span>`;
                         };
                         
                         img.onerror = function() {
                             resLabel.className = 'resolution-label resolution-error';
+                            resLabel.setAttribute('role', 'status');
+                            resLabel.removeAttribute('tabindex');
+                            resLabel.removeAttribute('data-resolution-tier');
                             resLabel.setAttribute('aria-label', window.i18n.t('resolution.load_failed'));
                             resLabel.innerHTML = '<i class="fas fa-exclamation-circle" aria-hidden="true"></i> ' + window.i18n.t('resolution.load_failed');
                         };
@@ -686,6 +718,16 @@ window.addEventListener('i18nReady', () => {
                             // 触发图片的点击事件以打开预览
                             img.click();
                         });
+
+                        resLabel.addEventListener('keydown', function(e) {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                img.click();
+                            }
+                        });
+
+                        // 先绑定加载事件再设置 src，避免缓存图片过快完成而漏掉尺寸读取。
+                        img.src = imgUrl;
                         
                         imgWrapper.appendChild(img);
                         imgWrapper.appendChild(resLabel);

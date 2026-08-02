@@ -36,9 +36,11 @@
     "loading": "加载中",
     "unknown": "未知",
     "load_failed": "加载失败",
+    "4k": "4K 超高清",
     "2k": "2K 高清",
     "1k": "1K 标清",
-    "sd": "标准分辨率"
+    "sd": "标准分辨率",
+    "details": "{tier}，{width} × {height} 像素"
   },
   "voice": {
     "not_supported": "当前浏览器不支持语音录入功能",

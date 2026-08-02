@@ -46,6 +46,21 @@ if ($imageModelDisplayName === '') {
     $imageModelDisplayName = 'AI';
 }
 
+// 静态资源版本号：任一前端资源更新后自动变化，避免浏览器继续使用旧缓存。
+$assetVersion = 1;
+foreach ([
+    __DIR__ . '/style.css',
+    __DIR__ . '/script.js',
+    __DIR__ . '/i18n/i18n.js',
+    __DIR__ . '/i18n/lang/js/zh-CN.json',
+    __DIR__ . '/i18n/lang/js/en.json',
+] as $assetFile) {
+    $modifiedAt = @filemtime($assetFile);
+    if ($modifiedAt !== false) {
+        $assetVersion = max($assetVersion, $modifiedAt);
+    }
+}
+
 $announcementConfig = $config ? ($config['announcement'] ?? []) : [];
 $announcementRuntimeConfig = [
     'allow_html' => (bool)($announcementConfig['allow_html'] ?? true),
@@ -82,7 +97,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php _e('site.title'); ?></title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=<?php echo $assetVersion; ?>">
     <!-- 引入一些基础图标库，例如 FontAwesome 的 CDN，或者使用简单的 SVG -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -449,8 +464,9 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
         window.LSJ_ANNOUNCEMENT = <?php echo json_encode($announcementRuntimeConfig, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
         // 传递当前语言给 JS
         window.LSJ_LANG = '<?php echo currentLocale(); ?>';
+        window.LSJ_ASSET_VERSION = '<?php echo $assetVersion; ?>';
     </script>
-    <script src="i18n/i18n.js"></script>
-    <script src="script.js"></script>
+    <script src="i18n/i18n.js?v=<?php echo $assetVersion; ?>"></script>
+    <script src="script.js?v=<?php echo $assetVersion; ?>"></script>
 </body>
 </html>
