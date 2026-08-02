@@ -289,6 +289,8 @@ return [
         'size_mode' => 'dimensions',
         'verify_ssl' => true,
         'force_http1' => true,              // 部分中转站的编辑接口在 HTTP/2 下会断流
+        'log_response_errors' => true,       // 非 JSON/截断响应写入 PHP 错误日志（不记录请求正文或密钥）
+        'response_preview_bytes' => 256,     // 错误响应预览长度；设为 0 可关闭正文预览
         'max_download_bytes' => 32 * 1024 * 1024,
         'temporary_image_dir' => __DIR__ . '/images',
         'temporary_public_path' => 'images',
