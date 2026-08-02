@@ -95,7 +95,7 @@ $paymentConfig = [
 
 // 计费配置
 $billingConfig = [
-    'price_per_task' => 0.20,                               // 每次任务价格 (RMB)
+    'price_per_task' => 0.01,                               // 每次任务价格 (RMB)
     // 兼容旧配置: 若未设置 price_per_task，系统会读取 price_per_image
     'min_recharge' => 1.00,                                 // 最低充值金额 (RMB)
     'max_recharge' => 1000.00,                              // 最高充值金额 (RMB)
