@@ -90,6 +90,32 @@ function sendError($message, $httpCode = 500, $errorCode = null) {
 }
 
 /**
+ * 安全退还图片任务的预扣费用，并准确记录退款结果。
+ */
+function refundPreDeductedBalance(Database $db, int $userId, float $amount, string $context): bool {
+    try {
+        $success = $db->atomicRefundBalance($userId, $amount);
+    } catch (Throwable $e) {
+        error_log(sprintf(
+            'Failed to refund %.2f to user %d after %s: %s',
+            $amount,
+            $userId,
+            $context,
+            $e->getMessage()
+        ));
+        return false;
+    }
+
+    if ($success) {
+        error_log(sprintf('Refunded %.2f to user %d after %s', $amount, $userId, $context));
+    } else {
+        error_log(sprintf('Failed to refund %.2f to user %d after %s', $amount, $userId, $context));
+    }
+
+    return $success;
+}
+
+/**
  * Gemini API 异常类
  * 用于在工具类中捕获和处理 API 错误，支持回退机制
  */
@@ -981,13 +1007,18 @@ try {
     $responseData = callGeminiApiSafe($modelName, $requestData, 300, 30, $imageApiProvider);
 } catch (GeminiApiException $e) {
     // API 调用失败，退还余额
-    $db->atomicRefundBalance($userId, $pricePerTask);
-    error_log("API call failed, refunded {$pricePerTask} to user {$userId}: " . $e->getMessage());
-    sendError($e->getMessage(), $e->getHttpCode());
+    $refundSuccess = refundPreDeductedBalance($db, $userId, $pricePerTask, 'API call failure');
+    error_log('Image API call failed: ' . $e->getMessage());
+    $messageKey = $refundSuccess ? 'api.upstream_error_refunded' : 'api.upstream_error_refund_failed';
+    $errorCode = $refundSuccess ? 'UPSTREAM_ERROR_REFUNDED' : 'UPSTREAM_ERROR_REFUND_FAILED';
+    sendError(__($messageKey, ['message' => $e->getMessage()]), $e->getHttpCode(), $errorCode);
 }
 
 if (!isset($responseData['candidates'][0])) {
-    sendError(__('api.no_result'), 502);
+    $refundSuccess = refundPreDeductedBalance($db, $userId, $pricePerTask, 'missing API candidate');
+    $messageKey = $refundSuccess ? 'api.upstream_error_refunded' : 'api.upstream_error_refund_failed';
+    $errorCode = $refundSuccess ? 'UPSTREAM_ERROR_REFUNDED' : 'UPSTREAM_ERROR_REFUND_FAILED';
+    sendError(__($messageKey, ['message' => __('api.no_result')]), 502, $errorCode);
 }
 $resultImages = [];
 $resultText = '';
@@ -1072,12 +1103,7 @@ if (!empty($resultImages)) {
     ];
 } else {
     // 没有生成任何图片，退还预扣的余额
-    $refundSuccess = $db->atomicRefundBalance($userId, $pricePerTask);
-    if ($refundSuccess) {
-        error_log("No images generated, refunded {$pricePerTask} to user {$userId}");
-    } else {
-        error_log("Failed to refund {$pricePerTask} to user {$userId} after no images generated");
-    }
+    $refundSuccess = refundPreDeductedBalance($db, $userId, $pricePerTask, 'empty image result');
     
     $billingResult = [
         'success' => false,
