@@ -115,6 +115,16 @@ $assert(($legacyModel['size'] ?? '') === '1536x1024', '旧图片模型继续使�
 
 $convertMethod = new ReflectionMethod(OpenAIImagesAdapter::class, 'convertToGeminiFormat');
 $convertMethod->setAccessible(true);
+$sizeAcceptableMethod = new ReflectionMethod(OpenAIImagesAdapter::class, 'isOutputSizeAcceptable');
+$sizeAcceptableMethod->setAccessible(true);
+$assert(
+    $sizeAcceptableMethod->invoke($adapter, 2048, 1153, ['width' => 2048, 'height' => 1152]) === true,
+    '允许上游 2K 图片因内部取整产生 1 像素误差'
+);
+$assert(
+    $sizeAcceptableMethod->invoke($adapter, 1024, 576, ['width' => 2048, 'height' => 1152]) === false,
+    '仍然拒绝实际降为 1K 的输出'
+);
 $onePixelPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZqKQAAAAASUVORK5CYII=';
 $converted = $convertMethod->invoke($adapter, ['data' => [['b64_json' => $onePixelPng]]], ['width' => 1, 'height' => 1]);
 $assert(isset($converted['candidates'][0]['content']['parts'][0]['inlineData']), '返回尺寸匹配时正常转换图片响应');

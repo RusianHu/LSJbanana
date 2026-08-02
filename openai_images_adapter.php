@@ -781,10 +781,7 @@ class OpenAIImagesAdapter
         if ($this->verifyOutputSize && $expectedDimensions !== null) {
             $actualWidth = (int)($detectedDimensions[0] ?? 0);
             $actualHeight = (int)($detectedDimensions[1] ?? 0);
-            if (
-                $actualWidth !== $expectedDimensions['width']
-                || $actualHeight !== $expectedDimensions['height']
-            ) {
+            if (!$this->isOutputSizeAcceptable($actualWidth, $actualHeight, $expectedDimensions)) {
                 throw new OpenAIImagesAdapterException(
                     __('adapter.openai_images.error.output_size_mismatch', [
                         'expected' => $expectedDimensions['width'] . 'x' . $expectedDimensions['height'],
@@ -792,6 +789,16 @@ class OpenAIImagesAdapter
                     ]),
                     502
                 );
+            }
+
+            if (
+                $actualWidth !== $expectedDimensions['width']
+                || $actualHeight !== $expectedDimensions['height']
+            ) {
+                error_log('[OpenAIImagesAdapter] Accepted minor output size variance: ' . json_encode([
+                    'expected' => $expectedDimensions['width'] . 'x' . $expectedDimensions['height'],
+                    'actual' => $actualWidth . 'x' . $actualHeight,
+                ], JSON_UNESCAPED_SLASHES));
             }
         }
 
@@ -823,6 +830,35 @@ class OpenAIImagesAdapter
             ]],
             'usageMetadata' => $response['usage'] ?? null,
         ];
+    }
+
+    /**
+     * 上游在保持同一分辨率档位和宽高比时，偶尔会因内部取整多出或少掉少量像素。
+     * 允许每条边最多 0.1% 的误差，但继续拒绝真正的分辨率降级或尺寸参数失效。
+     *
+     * @param array{width:int,height:int} $expectedDimensions
+     */
+    private function isOutputSizeAcceptable(
+        int $actualWidth,
+        int $actualHeight,
+        array $expectedDimensions
+    ): bool {
+        $expectedWidth = (int)$expectedDimensions['width'];
+        $expectedHeight = (int)$expectedDimensions['height'];
+
+        if ($actualWidth === $expectedWidth && $actualHeight === $expectedHeight) {
+            return true;
+        }
+
+        $widthTolerance = $expectedWidth >= 512
+            ? max(1, (int)ceil($expectedWidth * 0.001))
+            : 0;
+        $heightTolerance = $expectedHeight >= 512
+            ? max(1, (int)ceil($expectedHeight * 0.001))
+            : 0;
+
+        return abs($actualWidth - $expectedWidth) <= $widthTolerance
+            && abs($actualHeight - $expectedHeight) <= $heightTolerance;
     }
 
     /**
