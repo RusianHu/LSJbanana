@@ -2,19 +2,19 @@
 /**
  * 数据库操作类
  *
- * 使用 SQLite3 作为数据库，提供用户、订单、消费记录的 CRUD 操作
+ * 使用 PDO 提供 SQLite/MySQL 双后端，负责用户、订单、消费记录等 CRUD 操作
  */
 
 class Database {
     private static ?Database $instance = null;
     private ?PDO $pdo = null;
     private array $config;
+    private string $driver = 'sqlite';
     
     /**
      * 获取当前本地时间的 ISO 格式字符串
      *
-     * 注意：SQLite 的 datetime('now') 返回 UTC 时间，
-     * 为确保时间显示正确，使用 PHP 的 date() 函数生成本地时间
+     * 统一由 PHP 生成应用时区时间，避免不同数据库的默认时区不一致。
      *
      * @return string 格式为 'Y-m-d H:i:s' 的时间字符串
      */
@@ -56,26 +56,24 @@ class Database {
      * 连接数据库
      */
     private function connect(): void {
-        $dbPath = $this->config['path'] ?? __DIR__ . '/database/lsjbanana.db';
-        $dbDir = dirname($dbPath);
-
-        // 确保数据库目录存在
-        if (!is_dir($dbDir)) {
-            mkdir($dbDir, 0755, true);
+        $this->driver = strtolower((string) ($this->config['driver'] ?? 'sqlite'));
+        if (!in_array($this->driver, ['sqlite', 'mysql'], true)) {
+            throw new RuntimeException("不支持的数据库驱动：{$this->driver}");
         }
 
-        $isNewDb = !file_exists($dbPath);
+        if (!in_array($this->driver, PDO::getAvailableDrivers(), true)) {
+            throw new RuntimeException("PHP 未启用 PDO {$this->driver} 驱动");
+        }
 
         try {
-            $this->pdo = new PDO("sqlite:{$dbPath}");
-            $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-            $this->pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+            if ($this->driver === 'mysql') {
+                $this->connectMysql();
+            } else {
+                $this->connectSqlite();
+            }
 
-            // 启用外键约束
-            $this->pdo->exec('PRAGMA foreign_keys = ON');
-
-            // 如果是新数据库，初始化表结构
-            if ($isNewDb) {
+            // 空数据库自动初始化；已有数据库只执行幂等迁移。
+            if (!$this->tableExists('users')) {
                 $this->initTables();
             }
 
@@ -87,14 +85,234 @@ class Database {
     }
 
     /**
+     * 连接 SQLite。
+     */
+    private function connectSqlite(): void {
+        $sqliteConfig = is_array($this->config['sqlite'] ?? null) ? $this->config['sqlite'] : [];
+        $dbPath = $sqliteConfig['path'] ?? $this->config['path'] ?? __DIR__ . '/database/lsjbanana.db';
+        $dbDir = dirname($dbPath);
+
+        if (!is_dir($dbDir) && !mkdir($dbDir, 0755, true) && !is_dir($dbDir)) {
+            throw new RuntimeException("无法创建 SQLite 数据库目录：{$dbDir}");
+        }
+
+        $this->pdo = new PDO("sqlite:{$dbPath}", null, null, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]);
+        $this->pdo->exec('PRAGMA foreign_keys = ON');
+        $this->pdo->exec('PRAGMA busy_timeout = ' . max(0, (int) ($sqliteConfig['busy_timeout_ms'] ?? 5000)));
+    }
+
+    /**
+     * 连接 MySQL/MariaDB。
+     */
+    private function connectMysql(): void {
+        $nested = is_array($this->config['mysql'] ?? null) ? $this->config['mysql'] : [];
+        $mysqlConfig = array_merge($this->config, $nested);
+        $host = (string) ($mysqlConfig['host'] ?? '127.0.0.1');
+        $port = max(1, (int) ($mysqlConfig['port'] ?? 3306));
+        $database = (string) ($mysqlConfig['database'] ?? $mysqlConfig['dbname'] ?? '');
+        $username = (string) ($mysqlConfig['username'] ?? $mysqlConfig['user'] ?? '');
+        $password = (string) ($mysqlConfig['password'] ?? '');
+        $charset = strtolower((string) ($mysqlConfig['charset'] ?? 'utf8mb4'));
+
+        if ($database === '' || $username === '') {
+            throw new RuntimeException('MySQL 配置必须提供 database 和 username');
+        }
+        if (!preg_match('/^[a-z0-9_]+$/', $charset)) {
+            throw new RuntimeException('MySQL charset 配置无效');
+        }
+
+        $socket = trim((string) ($mysqlConfig['unix_socket'] ?? ''));
+        $dsn = $socket !== ''
+            ? "mysql:unix_socket={$socket};dbname={$database};charset={$charset}"
+            : "mysql:host={$host};port={$port};dbname={$database};charset={$charset}";
+
+        $options = [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+            PDO::ATTR_TIMEOUT => max(1, (int) ($mysqlConfig['connect_timeout'] ?? 5)),
+        ];
+
+        $sslConfig = is_array($mysqlConfig['ssl'] ?? null) ? $mysqlConfig['ssl'] : [];
+        if (!empty($sslConfig['enabled'])) {
+            if (!empty($sslConfig['ca'])) {
+                $options[PDO::MYSQL_ATTR_SSL_CA] = $sslConfig['ca'];
+            }
+            if (!empty($sslConfig['cert'])) {
+                $options[PDO::MYSQL_ATTR_SSL_CERT] = $sslConfig['cert'];
+            }
+            if (!empty($sslConfig['key'])) {
+                $options[PDO::MYSQL_ATTR_SSL_KEY] = $sslConfig['key'];
+            }
+            if (defined('PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT')) {
+                $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = (bool) ($sslConfig['verify_server_cert'] ?? true);
+            }
+        }
+
+        $this->pdo = new PDO($dsn, $username, $password, $options);
+        // 使用固定偏移无需安装 MySQL 时区表，且与 PHP 的应用时区保持一致。
+        $this->pdo->exec('SET SESSION time_zone = ' . $this->pdo->quote(date('P')));
+    }
+
+    /**
      * 初始化数据库表
      */
     private function initTables(): void {
-        $sqlFile = __DIR__ . '/database/init.sql';
-        if (file_exists($sqlFile)) {
-            $sql = file_get_contents($sqlFile);
-            $this->pdo->exec($sql);
+        $sqlFile = $this->driver === 'mysql'
+            ? __DIR__ . '/database/mysql_init.sql'
+            : __DIR__ . '/database/init.sql';
+        if (!file_exists($sqlFile)) {
+            throw new RuntimeException("数据库初始化脚本不存在：{$sqlFile}");
         }
+
+        $sql = file_get_contents($sqlFile);
+        if ($sql === false) {
+            throw new RuntimeException("无法读取数据库初始化脚本：{$sqlFile}");
+        }
+        $this->executeSqlScript($sql);
+    }
+
+    /**
+     * 执行由分号分隔的简单 SQL 初始化脚本。
+     */
+    private function executeSqlScript(string $sql): void {
+        $statements = preg_split('/;\s*(?:\r\n|\r|\n|$)/', $sql) ?: [];
+        foreach ($statements as $statement) {
+            $statement = trim($statement);
+            if ($statement !== '') {
+                $this->pdo->exec($statement);
+            }
+        }
+    }
+
+    /**
+     * 检查表是否存在。
+     */
+    private function tableExists(string $tableName): bool {
+        if ($this->driver === 'mysql') {
+            $stmt = $this->pdo->prepare(
+                'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = :table_name LIMIT 1'
+            );
+            $stmt->execute([':table_name' => $tableName]);
+        } else {
+            $stmt = $this->pdo->prepare(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = :table_name LIMIT 1"
+            );
+            $stmt->execute([':table_name' => $tableName]);
+        }
+
+        return (bool) $stmt->fetchColumn();
+    }
+
+    /**
+     * 检查列是否存在。
+     */
+    private function columnExists(string $tableName, string $columnName): bool {
+        if ($this->driver === 'mysql') {
+            $stmt = $this->pdo->prepare(
+                'SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = :table_name AND column_name = :column_name LIMIT 1'
+            );
+            $stmt->execute([
+                ':table_name' => $tableName,
+                ':column_name' => $columnName,
+            ]);
+            return (bool) $stmt->fetchColumn();
+        }
+
+        $this->assertIdentifier($tableName);
+        $stmt = $this->pdo->query("PRAGMA table_info(\"{$tableName}\")");
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $column) {
+            if (($column['name'] ?? null) === $columnName) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 幂等创建索引。
+     */
+    private function ensureIndex(string $indexName, string $tableName, array $columns): void {
+        foreach (array_merge([$indexName, $tableName], $columns) as $identifier) {
+            $this->assertIdentifier($identifier);
+        }
+
+        if ($this->driver === 'mysql') {
+            $stmt = $this->pdo->prepare(
+                'SELECT 1 FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = :table_name AND index_name = :index_name LIMIT 1'
+            );
+            $stmt->execute([
+                ':table_name' => $tableName,
+                ':index_name' => $indexName,
+            ]);
+            if ($stmt->fetchColumn()) {
+                return;
+            }
+            $quotedColumns = implode(', ', array_map(fn(string $column): string => "`{$column}`", $columns));
+            $this->pdo->exec("CREATE INDEX `{$indexName}` ON `{$tableName}` ({$quotedColumns})");
+            return;
+        }
+
+        $quotedColumns = implode(', ', array_map(fn(string $column): string => "\"{$column}\"", $columns));
+        $this->pdo->exec("CREATE INDEX IF NOT EXISTS \"{$indexName}\" ON \"{$tableName}\" ({$quotedColumns})");
+    }
+
+    private function assertIdentifier(string $identifier): void {
+        if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $identifier)) {
+            throw new InvalidArgumentException("无效的数据库标识符：{$identifier}");
+        }
+    }
+
+    private function getMissingTables(array $tableNames): array {
+        $missingTables = [];
+        foreach ($tableNames as $tableName) {
+            if (!$this->tableExists($tableName)) {
+                $missingTables[] = $tableName;
+            }
+        }
+        return $missingTables;
+    }
+
+    /**
+     * 初始化一组功能表。
+     */
+    private function initializeTableGroup(array $tableNames, string $label): array {
+        $missingBefore = $this->getMissingTables($tableNames);
+        if ($missingBefore === []) {
+            return [
+                'success' => true,
+                'created' => [],
+                'message' => "所有{$label}表已存在",
+            ];
+        }
+
+        try {
+            $this->initTables();
+            $missingAfter = $this->getMissingTables($tableNames);
+            $created = array_values(array_diff($missingBefore, $missingAfter));
+            return [
+                'success' => $missingAfter === [],
+                'created' => $created,
+                'message' => $missingAfter === []
+                    ? '已自动创建 ' . count($created) . " 个{$label}表"
+                    : "仍缺少{$label}表：" . implode(', ', $missingAfter),
+            ];
+        } catch (Throwable $e) {
+            return [
+                'success' => false,
+                'created' => [],
+                'message' => '初始化失败: ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    private function isUniqueConstraintViolation(PDOException $e): bool {
+        return $e->getCode() === '23000'
+            || str_contains($e->getMessage(), 'UNIQUE constraint failed')
+            || str_contains($e->getMessage(), 'Duplicate entry');
     }
 
     /**
@@ -110,19 +328,7 @@ class Database {
             'user_sessions'
         ];
 
-        $missingTables = [];
-
-        foreach ($requiredTables as $tableName) {
-            $stmt = $this->pdo->query(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='$tableName'"
-            );
-
-            if (!$stmt->fetch()) {
-                $missingTables[] = $tableName;
-            }
-        }
-
-        return $missingTables;
+        return $this->getMissingTables($requiredTables);
     }
 
     /**
@@ -145,22 +351,20 @@ class Database {
         }
 
         try {
-            // 直接执行完整的 init.sql 来修复
-            $sqlFile = __DIR__ . '/database/init.sql';
-            if (!file_exists($sqlFile)) {
-                $result['success'] = false;
-                $result['message'] = '初始化脚本 init.sql 不存在';
-                return $result;
+            // 执行当前驱动对应的完整初始化脚本，CREATE IF NOT EXISTS 保证幂等。
+            $this->initTables();
+
+            $remaining = $this->checkCoreTables();
+            $result['repaired'] = array_values(array_diff($missingTables, $remaining));
+            $result['success'] = $remaining === [];
+            $result['message'] = $remaining === []
+                ? '已自动修复 ' . count($result['repaired']) . ' 个核心表'
+                : '仍缺少核心表：' . implode(', ', $remaining);
+            if ($result['repaired'] !== []) {
+                error_log("Database core tables auto-repaired: " . implode(', ', $result['repaired']));
             }
 
-            $sql = file_get_contents($sqlFile);
-            $this->pdo->exec($sql);
-
-            $result['repaired'] = $missingTables;
-            $result['message'] = '已自动修复 ' . count($missingTables) . ' 个核心表';
-            error_log("Database core tables auto-repaired: " . implode(', ', $missingTables));
-
-        } catch (PDOException $e) {
+        } catch (Throwable $e) {
             $result['success'] = false;
             $result['message'] = '修复失败: ' . $e->getMessage();
         }
@@ -173,6 +377,13 @@ class Database {
      */
     public function getPdo(): PDO {
         return $this->pdo;
+    }
+
+    /**
+     * 获取当前数据库驱动。
+     */
+    public function getDriver(): string {
+        return $this->driver;
     }
 
     /**
@@ -236,121 +447,13 @@ class Database {
      * @return array 返回初始化结果 ['success' => bool, 'created' => array, 'message' => string]
      */
     public function initAdminTables(): array {
-        $result = [
-            'success' => true,
-            'created' => [],
-            'message' => ''
-        ];
-
-        $adminTables = [
-            'admin_sessions' => "
-                CREATE TABLE IF NOT EXISTS admin_sessions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_token VARCHAR(255) NOT NULL UNIQUE,
-                    ip_address VARCHAR(45) NOT NULL,
-                    user_agent TEXT,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    expires_at DATETIME NOT NULL,
-                    absolute_expires_at DATETIME,
-                    last_activity DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            ",
-            'admin_login_attempts' => "
-                CREATE TABLE IF NOT EXISTS admin_login_attempts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ip_address VARCHAR(45) NOT NULL,
-                    attempt_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    success INTEGER DEFAULT 0
-                )
-            ",
-            'admin_operation_logs' => "
-                CREATE TABLE IF NOT EXISTS admin_operation_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    operation_type VARCHAR(50) NOT NULL,
-                    target_user_id INTEGER,
-                    details TEXT,
-                    ip_address VARCHAR(45),
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            ",
-            'balance_logs' => "
-                CREATE TABLE IF NOT EXISTS balance_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    type VARCHAR(20) NOT NULL,
-                    amount DECIMAL(10, 2) NOT NULL,
-                    balance_before DECIMAL(10, 2) NOT NULL,
-                    balance_after DECIMAL(10, 2) NOT NULL,
-                    remark TEXT,
-                    visible_to_user INTEGER DEFAULT 0,
-                    user_remark TEXT,
-                    source_type VARCHAR(30) DEFAULT 'manual_recharge',
-                    source_id INTEGER,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users(id)
-                )
-            ",
-            'password_reset_tokens' => "
-                CREATE TABLE IF NOT EXISTS password_reset_tokens (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    token_hash VARCHAR(255) NOT NULL UNIQUE,
-                    email VARCHAR(100) NOT NULL,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    expires_at DATETIME NOT NULL,
-                    used INTEGER DEFAULT 0,
-                    FOREIGN KEY (user_id) REFERENCES users(id)
-                )
-            "
-        ];
-
-        $indexes = [
-            "CREATE INDEX IF NOT EXISTS idx_admin_session_token ON admin_sessions(session_token)",
-            "CREATE INDEX IF NOT EXISTS idx_admin_expires ON admin_sessions(expires_at)",
-            "CREATE INDEX IF NOT EXISTS idx_admin_attempts_ip ON admin_login_attempts(ip_address)",
-            "CREATE INDEX IF NOT EXISTS idx_admin_attempts_time ON admin_login_attempts(attempt_time)",
-            "CREATE INDEX IF NOT EXISTS idx_admin_ops_type ON admin_operation_logs(operation_type)",
-            "CREATE INDEX IF NOT EXISTS idx_admin_ops_target ON admin_operation_logs(target_user_id)",
-            "CREATE INDEX IF NOT EXISTS idx_admin_ops_time ON admin_operation_logs(created_at)",
-            "CREATE INDEX IF NOT EXISTS idx_reset_token ON password_reset_tokens(token_hash)",
-            "CREATE INDEX IF NOT EXISTS idx_reset_user ON password_reset_tokens(user_id)",
-            "CREATE INDEX IF NOT EXISTS idx_balance_logs_user_id ON balance_logs(user_id)",
-            "CREATE INDEX IF NOT EXISTS idx_balance_logs_created_at ON balance_logs(created_at)",
-            "CREATE INDEX IF NOT EXISTS idx_balance_logs_visible ON balance_logs(visible_to_user)"
-        ];
-
-        try {
-            // 检查并创建表
-            foreach ($adminTables as $tableName => $createSql) {
-                // 检查表是否存在
-                $stmt = $this->pdo->query(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name='$tableName'"
-                );
-
-                if (!$stmt->fetch()) {
-                    // 表不存在，创建它
-                    $this->pdo->exec($createSql);
-                    $result['created'][] = $tableName;
-                }
-            }
-
-            // 创建索引
-            foreach ($indexes as $indexSql) {
-                $this->pdo->exec($indexSql);
-            }
-
-            if (!empty($result['created'])) {
-                $result['message'] = '已自动创建 ' . count($result['created']) . ' 个管理员系统表';
-            } else {
-                $result['message'] = '所有管理员系统表已存在';
-            }
-
-        } catch (PDOException $e) {
-            $result['success'] = false;
-            $result['message'] = '初始化失败: ' . $e->getMessage();
-        }
-
-        return $result;
+        return $this->initializeTableGroup([
+            'admin_sessions',
+            'admin_login_attempts',
+            'admin_operation_logs',
+            'password_reset_tokens',
+            'balance_logs',
+        ], '管理员系统');
     }
 
     /**
@@ -366,19 +469,7 @@ class Database {
             'balance_logs'
         ];
 
-        $missingTables = [];
-
-        foreach ($requiredTables as $tableName) {
-            $stmt = $this->pdo->query(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='$tableName'"
-            );
-
-            if (!$stmt->fetch()) {
-                $missingTables[] = $tableName;
-            }
-        }
-
-        return $missingTables;
+        return $this->getMissingTables($requiredTables);
     }
 
     // ============================================================
@@ -406,7 +497,7 @@ class Database {
             return (int) $this->pdo->lastInsertId();
         } catch (PDOException $e) {
             // 用户名或邮箱重复
-            if (strpos($e->getMessage(), 'UNIQUE constraint failed') !== false) {
+            if ($this->isUniqueConstraintViolation($e)) {
                 return null;
             }
             throw $e;
@@ -704,15 +795,17 @@ class Database {
                 AND expires_at < :now
                 LIMIT :limit";
         
-        // SQLite 不支持 UPDATE ... LIMIT，需要用子查询
+        // 双层派生表同时兼容 SQLite 与 MySQL 的“更新目标表不可直接作为子查询来源”限制。
         $sql = "UPDATE recharge_orders
                 SET status = 2
                 WHERE id IN (
-                    SELECT id FROM recharge_orders
-                    WHERE status = 0
-                    AND expires_at IS NOT NULL
-                    AND expires_at < :now
-                    LIMIT :limit
+                    SELECT id FROM (
+                        SELECT id FROM recharge_orders
+                        WHERE status = 0
+                        AND expires_at IS NOT NULL
+                        AND expires_at < :now
+                        LIMIT :limit
+                    ) AS expired_orders
                 )";
         
         $stmt = $this->pdo->prepare($sql);
@@ -803,21 +896,9 @@ class Database {
      */
     public function migrateAddExpiresAtColumn(): bool {
         try {
-            // 检查列是否存在
-            $result = $this->pdo->query("PRAGMA table_info(recharge_orders)");
-            $columns = $result->fetchAll(PDO::FETCH_ASSOC);
-            $hasExpiresAt = false;
-            
-            foreach ($columns as $column) {
-                if ($column['name'] === 'expires_at') {
-                    $hasExpiresAt = true;
-                    break;
-                }
-            }
-            
-            if (!$hasExpiresAt) {
+            if (!$this->columnExists('recharge_orders', 'expires_at')) {
                 $this->pdo->exec("ALTER TABLE recharge_orders ADD COLUMN expires_at DATETIME");
-                $this->pdo->exec("CREATE INDEX IF NOT EXISTS idx_recharge_expires_at ON recharge_orders(expires_at)");
+                $this->ensureIndex('idx_recharge_expires_at', 'recharge_orders', ['expires_at']);
                 
                 // 为旧的待支付订单回填过期时间（创建时间 + 5分钟）
                 $this->backfillExpiredAtForOldOrders(5);
@@ -841,10 +922,12 @@ class Database {
      * @return int 更新的订单数量
      */
     public function backfillExpiredAtForOldOrders(int $expireMinutes = 5): int {
-        // 使用 SQLite 的 datetime 函数计算过期时间
-        // 公式: expires_at = created_at + expireMinutes 分钟
+        $expireMinutes = max(0, $expireMinutes);
+        $dateExpression = $this->driver === 'mysql'
+            ? "DATE_ADD(created_at, INTERVAL {$expireMinutes} MINUTE)"
+            : "datetime(created_at, '+{$expireMinutes} minutes')";
         $sql = "UPDATE recharge_orders
-                SET expires_at = datetime(created_at, '+{$expireMinutes} minutes')
+                SET expires_at = {$dateExpression}
                 WHERE expires_at IS NULL
                 AND status = 0";
         
@@ -1231,9 +1314,14 @@ class Database {
      * 记录管理员登录尝试
      */
     public function logAdminAttempt(string $ip, int $success): int {
-        $sql = "INSERT INTO admin_login_attempts (ip_address, success) VALUES (:ip, :success)";
+        $sql = "INSERT INTO admin_login_attempts (ip_address, success, attempt_time)
+                VALUES (:ip, :success, :attempt_time)";
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([':ip' => $ip, ':success' => $success]);
+        $stmt->execute([
+            ':ip' => $ip,
+            ':success' => $success,
+            ':attempt_time' => $this->now(),
+        ]);
         return (int) $this->pdo->lastInsertId();
     }
 
@@ -1262,8 +1350,8 @@ class Database {
      * 记录管理员操作
      */
     public function logAdminOperation(string $opType, ?int $targetUserId, array $details, string $ip): int {
-        $sql = "INSERT INTO admin_operation_logs (operation_type, target_user_id, details, ip_address)
-                VALUES (:type, :target, :details, :ip)";
+        $sql = "INSERT INTO admin_operation_logs (operation_type, target_user_id, details, ip_address, created_at)
+                VALUES (:type, :target, :details, :ip, :created_at)";
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
@@ -1271,6 +1359,7 @@ class Database {
             ':target' => $targetUserId,
             ':details' => json_encode($details, JSON_UNESCAPED_UNICODE),
             ':ip' => $ip,
+            ':created_at' => $this->now(),
         ]);
         return (int) $this->pdo->lastInsertId();
     }
@@ -1317,8 +1406,9 @@ class Database {
         $params = [];
 
         if ($search !== null && $search !== '') {
-            $sql .= " AND (username LIKE :search OR email LIKE :search OR id = :id)";
-            $params[':search'] = '%' . $search . '%';
+            $sql .= " AND (username LIKE :search_username OR email LIKE :search_email OR id = :id)";
+            $params[':search_username'] = '%' . $search . '%';
+            $params[':search_email'] = '%' . $search . '%';
             $params[':id'] = (int) $search;
         }
 
@@ -1348,8 +1438,9 @@ class Database {
         $params = [];
 
         if ($search !== null && $search !== '') {
-            $sql .= " AND (username LIKE :search OR email LIKE :search OR id = :id)";
-            $params[':search'] = '%' . $search . '%';
+            $sql .= " AND (username LIKE :search_username OR email LIKE :search_email OR id = :id)";
+            $params[':search_username'] = '%' . $search . '%';
+            $params[':search_email'] = '%' . $search . '%';
             $params[':id'] = (int) $search;
         }
 
@@ -1696,46 +1787,25 @@ class Database {
      */
     public function migrateBalanceLogsVisibility(): bool {
         try {
-            // 检查列是否存在
-            $result = $this->pdo->query("PRAGMA table_info(balance_logs)");
-            $columns = $result->fetchAll(PDO::FETCH_ASSOC);
-            $hasVisibleToUser = false;
-            $hasUserRemark = false;
-            $hasSourceType = false;
-            $hasSourceId = false;
-            
-            foreach ($columns as $column) {
-                if ($column['name'] === 'visible_to_user') {
-                    $hasVisibleToUser = true;
-                }
-                if ($column['name'] === 'user_remark') {
-                    $hasUserRemark = true;
-                }
-                if ($column['name'] === 'source_type') {
-                    $hasSourceType = true;
-                }
-                if ($column['name'] === 'source_id') {
-                    $hasSourceId = true;
-                }
+            if (!$this->columnExists('balance_logs', 'visible_to_user')) {
+                $visibleType = $this->driver === 'mysql' ? 'TINYINT(1)' : 'INTEGER';
+                $this->pdo->exec("ALTER TABLE balance_logs ADD COLUMN visible_to_user {$visibleType} DEFAULT 0");
+                $this->ensureIndex('idx_balance_logs_visible', 'balance_logs', ['visible_to_user']);
             }
             
-            if (!$hasVisibleToUser) {
-                $this->pdo->exec("ALTER TABLE balance_logs ADD COLUMN visible_to_user INTEGER DEFAULT 0");
-                $this->pdo->exec("CREATE INDEX IF NOT EXISTS idx_balance_logs_visible ON balance_logs(visible_to_user)");
-            }
-            
-            if (!$hasUserRemark) {
+            if (!$this->columnExists('balance_logs', 'user_remark')) {
                 $this->pdo->exec("ALTER TABLE balance_logs ADD COLUMN user_remark TEXT");
             }
 
             // source_type: manual_recharge, manual_deduct, online_recharge, consumption
-            if (!$hasSourceType) {
+            if (!$this->columnExists('balance_logs', 'source_type')) {
                 $this->pdo->exec("ALTER TABLE balance_logs ADD COLUMN source_type VARCHAR(30) DEFAULT 'manual_recharge'");
             }
 
             // source_id: 关联的 recharge_orders.id 或 consumption_logs.id
-            if (!$hasSourceId) {
-                $this->pdo->exec("ALTER TABLE balance_logs ADD COLUMN source_id INTEGER");
+            if (!$this->columnExists('balance_logs', 'source_id')) {
+                $sourceIdType = $this->driver === 'mysql' ? 'BIGINT UNSIGNED' : 'INTEGER';
+                $this->pdo->exec("ALTER TABLE balance_logs ADD COLUMN source_id {$sourceIdType}");
             }
             
             return true;
@@ -1790,84 +1860,10 @@ class Database {
      * @return array 返回初始化结果 ['success' => bool, 'created' => array, 'message' => string]
      */
     public function initAnnouncementTables(): array {
-        $result = [
-            'success' => true,
-            'created' => [],
-            'message' => ''
-        ];
-
-        $announcementTables = [
-            'announcements' => "
-                CREATE TABLE IF NOT EXISTS announcements (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    title VARCHAR(200) NOT NULL,
-                    content TEXT NOT NULL,
-                    type VARCHAR(20) DEFAULT 'info',
-                    display_mode VARCHAR(20) DEFAULT 'banner',
-                    target VARCHAR(20) DEFAULT 'all',
-                    priority INTEGER DEFAULT 0,
-                    is_dismissible INTEGER DEFAULT 1,
-                    is_active INTEGER DEFAULT 1,
-                    start_at DATETIME,
-                    end_at DATETIME,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    created_by VARCHAR(50) DEFAULT 'admin'
-                )
-            ",
-            'announcement_dismissals' => "
-                CREATE TABLE IF NOT EXISTS announcement_dismissals (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    announcement_id INTEGER NOT NULL,
-                    user_id INTEGER NOT NULL,
-                    dismissed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (announcement_id) REFERENCES announcements(id) ON DELETE CASCADE,
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                    UNIQUE(announcement_id, user_id)
-                )
-            "
-        ];
-
-        $indexes = [
-            "CREATE INDEX IF NOT EXISTS idx_announcements_active ON announcements(is_active)",
-            "CREATE INDEX IF NOT EXISTS idx_announcements_priority ON announcements(priority DESC)",
-            "CREATE INDEX IF NOT EXISTS idx_announcements_dates ON announcements(start_at, end_at)",
-            "CREATE INDEX IF NOT EXISTS idx_announcements_type ON announcements(type)",
-            "CREATE INDEX IF NOT EXISTS idx_announcements_display_mode ON announcements(display_mode)",
-            "CREATE INDEX IF NOT EXISTS idx_dismissals_user ON announcement_dismissals(user_id)",
-            "CREATE INDEX IF NOT EXISTS idx_dismissals_announcement ON announcement_dismissals(announcement_id)"
-        ];
-
-        try {
-            // 检查并创建表
-            foreach ($announcementTables as $tableName => $createSql) {
-                $stmt = $this->pdo->query(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name='$tableName'"
-                );
-
-                if (!$stmt->fetch()) {
-                    $this->pdo->exec($createSql);
-                    $result['created'][] = $tableName;
-                }
-            }
-
-            // 创建索引
-            foreach ($indexes as $indexSql) {
-                $this->pdo->exec($indexSql);
-            }
-
-            if (!empty($result['created'])) {
-                $result['message'] = '已自动创建 ' . count($result['created']) . ' 个公告系统表';
-            } else {
-                $result['message'] = '所有公告系统表已存在';
-            }
-
-        } catch (PDOException $e) {
-            $result['success'] = false;
-            $result['message'] = '初始化失败: ' . $e->getMessage();
-        }
-
-        return $result;
+        return $this->initializeTableGroup([
+            'announcements',
+            'announcement_dismissals',
+        ], '公告系统');
     }
 
     /**
@@ -1880,19 +1876,7 @@ class Database {
             'announcement_dismissals'
         ];
 
-        $missingTables = [];
-
-        foreach ($requiredTables as $tableName) {
-            $stmt = $this->pdo->query(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='$tableName'"
-            );
-
-            if (!$stmt->fetch()) {
-                $missingTables[] = $tableName;
-            }
-        }
-
-        return $missingTables;
+        return $this->getMissingTables($requiredTables);
     }
 
     /**
@@ -2028,8 +2012,9 @@ class Database {
 
         // 搜索
         if (!empty($filters['search'])) {
-            $sql .= " AND (title LIKE :search OR content LIKE :search)";
-            $params[':search'] = '%' . $filters['search'] . '%';
+            $sql .= " AND (title LIKE :search_title OR content LIKE :search_content)";
+            $params[':search_title'] = '%' . $filters['search'] . '%';
+            $params[':search_content'] = '%' . $filters['search'] . '%';
         }
 
         $sql .= " ORDER BY priority DESC, created_at DESC LIMIT :limit OFFSET :offset";
@@ -2071,8 +2056,9 @@ class Database {
         }
 
         if (!empty($filters['search'])) {
-            $sql .= " AND (title LIKE :search OR content LIKE :search)";
-            $params[':search'] = '%' . $filters['search'] . '%';
+            $sql .= " AND (title LIKE :search_title OR content LIKE :search_content)";
+            $params[':search_title'] = '%' . $filters['search'] . '%';
+            $params[':search_content'] = '%' . $filters['search'] . '%';
         }
 
         $stmt = $this->pdo->prepare($sql);
@@ -2170,7 +2156,8 @@ class Database {
      * 记录用户关闭公告
      */
     public function dismissAnnouncement(int $announcementId, int $userId): bool {
-        $sql = "INSERT OR IGNORE INTO announcement_dismissals (announcement_id, user_id, dismissed_at)
+        $sql = ($this->driver === 'mysql' ? 'INSERT IGNORE' : 'INSERT OR IGNORE')
+            . " INTO announcement_dismissals (announcement_id, user_id, dismissed_at)
                 VALUES (:announcement_id, :user_id, :dismissed_at)";
         
         try {
@@ -2245,32 +2232,11 @@ class Database {
      */
     public function migrateSessionAbsoluteExpiry(): bool {
         try {
-            // user_sessions
-            $result = $this->pdo->query("PRAGMA table_info(user_sessions)");
-            $columns = $result->fetchAll(PDO::FETCH_ASSOC);
-            $hasAbsolute = false;
-            foreach ($columns as $col) {
-                if ($col['name'] === 'absolute_expires_at') {
-                    $hasAbsolute = true;
-                    break;
+            foreach (['user_sessions', 'admin_sessions'] as $tableName) {
+                if ($this->tableExists($tableName) && !$this->columnExists($tableName, 'absolute_expires_at')) {
+                    $this->assertIdentifier($tableName);
+                    $this->pdo->exec("ALTER TABLE {$tableName} ADD COLUMN absolute_expires_at DATETIME");
                 }
-            }
-            if (!$hasAbsolute) {
-                $this->pdo->exec("ALTER TABLE user_sessions ADD COLUMN absolute_expires_at DATETIME");
-            }
-
-            // admin_sessions
-            $result = $this->pdo->query("PRAGMA table_info(admin_sessions)");
-            $columns = $result->fetchAll(PDO::FETCH_ASSOC);
-            $hasAbsolute = false;
-            foreach ($columns as $col) {
-                if ($col['name'] === 'absolute_expires_at') {
-                    $hasAbsolute = true;
-                    break;
-                }
-            }
-            if (!$hasAbsolute) {
-                $this->pdo->exec("ALTER TABLE admin_sessions ADD COLUMN absolute_expires_at DATETIME");
             }
 
             return true;

@@ -56,8 +56,9 @@ if ($payType !== '') {
 }
 
 if ($search !== '') {
-    $where .= ' AND (r.out_trade_no LIKE :search OR r.trade_no LIKE :search OR r.user_id = :user_id)';
-    $params['search'] = '%' . $search . '%';
+    $where .= ' AND (r.out_trade_no LIKE :search_out_trade_no OR r.trade_no LIKE :search_trade_no OR r.user_id = :user_id)';
+    $params['search_out_trade_no'] = '%' . $search . '%';
+    $params['search_trade_no'] = '%' . $search . '%';
     $params['user_id'] = is_numeric($search) ? (int)$search : 0;
 }
 

@@ -619,9 +619,19 @@ try {
             // 过滤危险 HTML 标签
             $config = require __DIR__ . '/../config.php';
             $announcementConfig = $config['announcement'] ?? [];
-            if ($announcementConfig['sanitize_html'] ?? true) {
-                $allowedTags = $announcementConfig['allowed_tags'] ?? '<b><i><u><a><br><p><ul><ol><li><strong><em><span>';
-                $content = strip_tags($content, $allowedTags);
+            $allowHtml = (bool)($announcementConfig['allow_html'] ?? true);
+            
+            if (!$allowHtml) {
+                // 禁用 HTML：强制纯文本
+                $content = trim(strip_tags($content));
+            } else {
+                // 允许 HTML：再按 sanitize_html 处理
+                if ($announcementConfig['sanitize_html'] ?? true) {
+                    $allowedTags = $announcementConfig['allowed_tags'] ?? '<b><i><u><a><br><p><ul><ol><li><strong><em><span>';
+                    $content = trim(strip_tags($content, $allowedTags));
+                } else {
+                    $content = trim($content);
+                }
             }
             
             $data = [
@@ -675,9 +685,19 @@ try {
             // 过滤危险 HTML 标签
             $config = require __DIR__ . '/../config.php';
             $announcementConfig = $config['announcement'] ?? [];
-            if ($announcementConfig['sanitize_html'] ?? true) {
-                $allowedTags = $announcementConfig['allowed_tags'] ?? '<b><i><u><a><br><p><ul><ol><li><strong><em><span>';
-                $content = strip_tags($content, $allowedTags);
+            $allowHtml = (bool)($announcementConfig['allow_html'] ?? true);
+            
+            if (!$allowHtml) {
+                // 禁用 HTML：强制纯文本
+                $content = trim(strip_tags($content));
+            } else {
+                // 允许 HTML：再按 sanitize_html 处理
+                if ($announcementConfig['sanitize_html'] ?? true) {
+                    $allowedTags = $announcementConfig['allowed_tags'] ?? '<b><i><u><a><br><p><ul><ol><li><strong><em><span>';
+                    $content = trim(strip_tags($content, $allowedTags));
+                } else {
+                    $content = trim($content);
+                }
             }
             
             $data = [

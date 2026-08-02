@@ -14,6 +14,7 @@ require_once __DIR__ . '/security_utils.php';
 require_once __DIR__ . '/prompt_optimizer.php';
 require_once __DIR__ . '/speech_to_text.php';
 require_once __DIR__ . '/openai_adapter.php';
+require_once __DIR__ . '/openai_images_adapter.php';
 require_once __DIR__ . '/gemini_proxy_adapter.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/db.php';
@@ -35,25 +36,45 @@ $auth = getAuth();
 
 // 核心配置
 $apiKey = $config['api_key'];
-$apiProvider = $config['api_provider'] ?? 'native';  // 默认使用原生 API
+$apiProvider = $config['api_provider'] ?? 'native';  // 文本/通用调用提供商
+$imageApiProvider = $config['image_api_provider'] ?? $apiProvider; // 图片生成与编辑提供商
 
 // 初始化 OpenAI 适配器（如果使用中转站）
 $openaiAdapter = null;
-if ($apiProvider === 'openai_compatible') {
+if ($apiProvider === 'openai_compatible' || $imageApiProvider === 'openai_compatible') {
     $openaiAdapter = new GeminiOpenAIAdapter($config);
     if (!$openaiAdapter->isAvailable()) {
         $openaiAdapter = null;
-        $apiProvider = 'native';  // 回退到原生 API
+        if ($apiProvider === 'openai_compatible') {
+            $apiProvider = 'native';
+        }
+        if ($imageApiProvider === 'openai_compatible') {
+            $imageApiProvider = 'native';
+        }
+    }
+}
+
+// 初始化 OpenAI Images API 适配器（图片专用渠道）
+$openaiImagesAdapter = null;
+if ($imageApiProvider === 'openai_images') {
+    $openaiImagesAdapter = new OpenAIImagesAdapter($config);
+    if (!$openaiImagesAdapter->isAvailable()) {
+        $openaiImagesAdapter = null;
     }
 }
 
 // 初始化 Gemini 代理适配器（如果使用 SSE 代理）
 $geminiProxyAdapter = null;
-if ($apiProvider === 'gemini_proxy') {
+if ($apiProvider === 'gemini_proxy' || $imageApiProvider === 'gemini_proxy') {
     $geminiProxyAdapter = new GeminiProxyAdapter($config);
     if (!$geminiProxyAdapter->isAvailable()) {
         $geminiProxyAdapter = null;
-        $apiProvider = 'native';  // 回退到原生 API
+        if ($apiProvider === 'gemini_proxy') {
+            $apiProvider = 'native';
+        }
+        if ($imageApiProvider === 'gemini_proxy') {
+            $imageApiProvider = 'native';
+        }
     }
 }
 
@@ -88,20 +109,35 @@ class GeminiApiException extends Exception {
 /**
  * 安全版本的 Gemini API 调用（抛出异常而非直接退出）
  * 供工具类使用，支持错误捕获和回退机制
- * 根据配置自动选择使用原生 API 或 OpenAI 兼容中转站
+ * 根据配置自动选择使用原生 API、OpenAI 兼容中转站或 OpenAI Images API
  *
  * @param string $modelName 模型名称
  * @param array $payload 请求体
  * @param int $timeout 超时时间
  * @param int $connectTimeout 连接超时
+ * @param string|null $providerOverride 可选的提供商覆盖（图片请求使用）
  * @return array 解析后的响应数组
  * @throws GeminiApiException 当请求失败时抛出
  */
-function callGeminiApiSafe($modelName, array $payload, $timeout = 120, $connectTimeout = 20): array {
-    global $apiKey, $apiProvider, $openaiAdapter, $geminiProxyAdapter;
+function callGeminiApiSafe($modelName, array $payload, $timeout = 120, $connectTimeout = 20, ?string $providerOverride = null): array {
+    global $apiKey, $apiProvider, $openaiAdapter, $openaiImagesAdapter, $geminiProxyAdapter;
+
+    $provider = $providerOverride ?? $apiProvider;
+
+    // 使用 OpenAI Images API（图片生成/编辑专用）
+    if ($provider === 'openai_images') {
+        if ($openaiImagesAdapter === null) {
+            throw new GeminiApiException('OpenAI Images API 配置不完整', 500);
+        }
+        try {
+            return $openaiImagesAdapter->generateContent($modelName, $payload);
+        } catch (OpenAIImagesAdapterException $e) {
+            throw new GeminiApiException($e->getMessage(), $e->getHttpCode());
+        }
+    }
 
     // 使用 Gemini 代理站（SSE 流式响应）
-    if ($apiProvider === 'gemini_proxy' && $geminiProxyAdapter !== null) {
+    if ($provider === 'gemini_proxy' && $geminiProxyAdapter !== null) {
         try {
             return $geminiProxyAdapter->generateContent($modelName, $payload);
         } catch (GeminiProxyAdapterException $e) {
@@ -110,12 +146,16 @@ function callGeminiApiSafe($modelName, array $payload, $timeout = 120, $connectT
     }
 
     // 使用 OpenAI 兼容中转站
-    if ($apiProvider === 'openai_compatible' && $openaiAdapter !== null) {
+    if ($provider === 'openai_compatible' && $openaiAdapter !== null) {
         try {
             return $openaiAdapter->generateContent($modelName, $payload);
         } catch (OpenAIAdapterException $e) {
             throw new GeminiApiException($e->getMessage(), $e->getHttpCode());
         }
+    }
+
+    if ($provider !== 'native') {
+        throw new GeminiApiException('未知的 API 提供商: ' . $provider, 500);
     }
 
     // 原生 Gemini API 调用
@@ -431,10 +471,109 @@ function validateUserAuthAndStatus(Auth $auth, bool $requireBalance = false, flo
     return $user;
 }
 
+/**
+ * 获取公告运行时配置（归一化）
+ * 
+ * @param array $announcementConfig 原始公告配置
+ * @return array 归一化后的配置数组
+ */
+function getAnnouncementRuntimeConfig(array $announcementConfig): array {
+    return [
+        'allow_html' => (bool) ($announcementConfig['allow_html'] ?? true),
+        'sanitize_html' => (bool) ($announcementConfig['sanitize_html'] ?? true),
+        'allowed_tags' => (string) ($announcementConfig['allowed_tags'] ?? '<b><i><u><a><br><p><ul><ol><li><strong><em><span>'),
+        'max_banners' => max(0, (int) ($announcementConfig['max_banners'] ?? 3)),
+        'max_modals_per_session' => max(0, (int) ($announcementConfig['max_modals_per_session'] ?? 1)),
+        'cache_ttl' => max(0, (int) ($announcementConfig['cache_ttl'] ?? 300)),
+        'guest_dismissal_ttl' => max(0, (int) ($announcementConfig['guest_dismissal_ttl'] ?? 7 * 24 * 3600)),
+    ];
+}
+
+/**
+ * 清理公告纯文本内容
+ * 
+ * @param string $value 原始文本
+ * @return string 清理后的纯文本
+ */
+function sanitizeAnnouncementPlainText(string $value): string {
+    return trim(strip_tags($value));
+}
+
+/**
+ * 清理公告 HTML 内容
+ * 
+ * @param string $value 原始内容
+ * @param array $runtimeConfig 运行时配置
+ * @return string 清理后的内容
+ */
+function sanitizeAnnouncementHtmlContent(string $value, array $runtimeConfig): string {
+    if (!$runtimeConfig['allow_html']) {
+        return sanitizeAnnouncementPlainText($value);
+    }
+    
+    if ($runtimeConfig['sanitize_html']) {
+        return trim(strip_tags($value, $runtimeConfig['allowed_tags']));
+    }
+    
+    return trim($value);
+}
+
+/**
+ * 规范化公告数据用于响应输出
+ * 
+ * @param array $announcements 原始公告数据
+ * @param array $runtimeConfig 运行时配置
+ * @return array 规范化后的公告数据
+ */
+function normalizeAnnouncementsForResponse(array $announcements, array $runtimeConfig): array {
+    $result = [
+        'banners' => [],
+        'modals' => [],
+        'inlines' => []
+    ];
+    
+    $allowedTypes = ['info', 'warning', 'success', 'important'];
+    
+    foreach (['banners', 'modals', 'inlines'] as $category) {
+        if (!isset($announcements[$category]) || !is_array($announcements[$category])) {
+            continue;
+        }
+        
+        foreach ($announcements[$category] as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            
+            $type = isset($item['type']) && is_string($item['type']) ? strtolower(trim($item['type'])) : 'info';
+            if (!in_array($type, $allowedTypes, true)) {
+                $type = 'info';
+            }
+            
+            $normalized = [
+                'id' => (int) ($item['id'] ?? 0),
+                'title' => sanitizeAnnouncementPlainText((string) ($item['title'] ?? '')),
+                'content' => sanitizeAnnouncementHtmlContent((string) ($item['content'] ?? ''), $runtimeConfig),
+                'type' => $type,
+                'is_dismissible' => (bool) ($item['is_dismissible'] ?? true),
+            ];
+            
+            $result[$category][] = $normalized;
+        }
+    }
+    
+    return $result;
+}
+
 // 公告相关 API（不需要登录也可以获取公告）
 if ($action === 'get_announcements') {
-    // 获取公告配置
+    // 读取公告配置
     $announcementConfig = $config['announcement'] ?? [];
+    
+    // 计算运行时配置
+    $runtimeConfig = getAnnouncementRuntimeConfig($announcementConfig);
+    
+    // 构建元数据
+    $meta = array_merge($runtimeConfig, ['server_time' => time()]);
     
     // 检查公告系统是否启用
     if (!($announcementConfig['enabled'] ?? true)) {
@@ -444,7 +583,8 @@ if ($action === 'get_announcements') {
                 'banners' => [],
                 'modals' => [],
                 'inlines' => []
-            ]
+            ],
+            'meta' => $meta
         ]);
         exit;
     }
@@ -464,35 +604,32 @@ if ($action === 'get_announcements') {
         if (!is_array($dismissedIds)) {
             $dismissedIds = [];
         }
-        // 确保 ID 是整数
-        $dismissedIds = array_map('intval', $dismissedIds);
+        
+        // 规范化 dismissed_ids：只保留正整数，去重，限制最多 1000 个
+        $dismissedIds = array_filter(array_map('intval', $dismissedIds), function($id) {
+            return $id > 0;
+        });
+        $dismissedIds = array_unique($dismissedIds);
+        $dismissedIds = array_values($dismissedIds);
+        if (count($dismissedIds) > 1000) {
+            $dismissedIds = array_slice($dismissedIds, 0, 1000);
+        }
         
         // 获取有效公告
         $announcements = $db->getActiveAnnouncements($isLoggedIn, $userId, $dismissedIds);
         
-        // 验证返回数据结构
-        if (!is_array($announcements)) {
-            $announcements = ['banners' => [], 'modals' => [], 'inlines' => []];
-        }
-        if (!isset($announcements['banners']) || !is_array($announcements['banners'])) {
-            $announcements['banners'] = [];
-        }
-        if (!isset($announcements['modals']) || !is_array($announcements['modals'])) {
-            $announcements['modals'] = [];
-        }
-        if (!isset($announcements['inlines']) || !is_array($announcements['inlines'])) {
-            $announcements['inlines'] = [];
-        }
+        // 规范化公告数据
+        $announcements = normalizeAnnouncementsForResponse($announcements, $runtimeConfig);
         
-        // 应用最大数量限制
-        $maxBanners = (int)($announcementConfig['max_banners'] ?? 3);
-        if (count($announcements['banners']) > $maxBanners) {
-            $announcements['banners'] = array_slice($announcements['banners'], 0, $maxBanners);
+        // 应用 banner 最大数量限制
+        if (count($announcements['banners']) > $runtimeConfig['max_banners']) {
+            $announcements['banners'] = array_slice($announcements['banners'], 0, $runtimeConfig['max_banners']);
         }
         
         echo json_encode([
             'success' => true,
-            'data' => $announcements
+            'data' => $announcements,
+            'meta' => $meta
         ]);
     } catch (Exception $e) {
         // 数据库错误时返回空数据，不影响页面正常显示
@@ -503,7 +640,8 @@ if ($action === 'get_announcements') {
                 'banners' => [],
                 'modals' => [],
                 'inlines' => []
-            ]
+            ],
+            'meta' => $meta
         ]);
     }
     exit;
@@ -652,7 +790,9 @@ $supportedSizes = $config['image_model_supported_sizes'] ?? ['1K'];
 if (!is_array($supportedSizes) || $supportedSizes === []) {
     $supportedSizes = ['1K'];
 }
-$isBasicImageModel = (count($supportedSizes) === 1 && $supportedSizes[0] === '1K');
+$isBasicImageModel = array_key_exists('image_model_is_basic', $config)
+    ? (bool)$config['image_model_is_basic']
+    : (count($supportedSizes) === 1 && $supportedSizes[0] === '1K');
 // 构建请求体
 $requestData = [
     'contents' => [],
@@ -838,7 +978,7 @@ $balanceAfterDeduct = $preDeductResult['balance_after'];
 // 调用 Gemini 生成/编辑
 // 注意：如果 API 调用失败，需要退还已扣除的余额
 try {
-    $responseData = callGeminiApiSafe($modelName, $requestData, 300, 30);
+    $responseData = callGeminiApiSafe($modelName, $requestData, 300, 30, $imageApiProvider);
 } catch (GeminiApiException $e) {
     // API 调用失败，退还余额
     $db->atomicRefundBalance($userId, $pricePerTask);
@@ -874,12 +1014,18 @@ if (isset($responseData['candidates'][0]['content']['parts'])) {
             $resultText .= SecurityUtils::sanitizeHtml($part['text']) . "\n";
         } elseif (isset($part['inlineData'])) {
             $imageBytes = base64_decode($part['inlineData']['data']);
+            $mimeType = strtolower((string)($part['inlineData']['mimeType'] ?? 'image/png'));
+            $extension = match ($mimeType) {
+                'image/jpeg' => 'jpg',
+                'image/webp' => 'webp',
+                default => 'png',
+            };
             try {
                 $token = SecurityUtils::generateSecureToken(16);
             } catch (\Exception $e) {
                 $token = uniqid();
             }
-            $fileName = 'gen_' . date('Ymd_His') . '_' . $token . '.png';
+            $fileName = 'gen_' . date('Ymd_His') . '_' . $token . '.' . $extension;
             $filePath = $config['output_dir'] . $fileName;
             
             if (file_put_contents($filePath, $imageBytes)) {

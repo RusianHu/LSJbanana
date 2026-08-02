@@ -30,8 +30,8 @@ return [
     'site' => [
         'title' => '老司机的香蕉',
         'subtitle' => 'LSJbanana',
-        'description' => '基于 gemini-3.1-flash-image (Nano Banana 2) 的图片生成与编辑工具',
-        'copyright' => '© :year LSJbanana Project. Powered by Gemini.',
+        'description' => '基于 :model 的图片生成与编辑工具',
+        'copyright' => '© :year LSJbanana Project. 由已配置的 AI 服务提供支持。',
         'github_title' => '在 GitHub 上查看源码',
         'github_text' => '源码',
         'sponsor_title' => '为项目充电',
@@ -292,7 +292,7 @@ return [
         'btn_edit' => '开始编辑',
         // 提示词优化
         'prompt_optimize' => '提示词优化',
-        'prompt_optimize_tip' => '调用 gemini-2.5-flash 自动扩写提示词，生成前先润色或加强细节。',
+        'prompt_optimize_tip' => '调用当前提示词优化服务自动扩写提示词，生成前先润色或加强细节。',
         'optimize_mode_enhance' => '增强模式',
         'optimize_mode_detail' => '细节模式',
         'btn_optimize' => '一键优化',
