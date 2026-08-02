@@ -285,8 +285,9 @@ return [
         'connect_timeout' => 30,
         'download_timeout' => 120,
         'quality' => 'low',                 // auto | low | medium | high
-        // dimensions：按宽高比发送 OpenAI 常用像素尺寸；tier：直接发送 1K / 2K / 4K，并附带 aspect_ratio
-        'size_mode' => 'dimensions',
+        // GPT Image 2 会把界面选择的宽高比 + 1K/2K/4K 转换为官方 WIDTHxHEIGHT 尺寸。
+        // 旧配置中的 size_mode=tier 可以保留，但不再发送非标准的 `size: 2K` / `aspect_ratio` 字段。
+        'verify_output_size' => true,        // 校验实际图片像素；上游忽略 size 时直接报错
         'verify_ssl' => true,
         'force_http1' => true,              // 部分中转站的编辑接口在 HTTP/2 下会断流
         'log_response_errors' => true,       // 非 JSON/截断响应写入 PHP 错误日志（不记录请求正文或密钥）

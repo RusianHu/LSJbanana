@@ -847,6 +847,7 @@ return [
                 'invalid_json' => '图片上游返回了无效 JSON（HTTP :code，:content_type，:bytes 字节）: :error:trace',
                 'invalid_shape' => '图片上游返回了异常 JSON 结构（HTTP :code，:content_type，:bytes 字节）:trace',
                 'api_error' => '图片上游接口返回异常',
+                'output_size_mismatch' => '图片上游返回了 :actual，期望 :expected。上游可能忽略了 size 参数；使用 sub2api 时请检查账号组是否实际走 OpenAI OAuth/Codex 路由。',
                 'trace_suffix' => '；追踪 ID: :id',
             ],
         ],

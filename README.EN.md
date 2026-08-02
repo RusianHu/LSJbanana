@@ -125,7 +125,7 @@ Edit `config.php`, the system provides fine-grained feature control:
 |---------------|-------------|
 | `api_provider` | `native` (direct) / `openai_compatible` (relay) / `gemini_proxy` (SSE proxy) |
 | `image_api_provider` | Dedicated image route; may use `openai_images` without changing prompt-optimization/text calls |
-| `openai_images` | OpenAI `/v1/images/generations` and `/v1/images/edits` settings; `size_mode=tier` passes 1K / 2K / 4K tiers directly to compatible providers |
+| `openai_images` | OpenAI `/v1/images/generations` and `/v1/images/edits` settings; GPT Image 2 maps aspect ratio plus the 1K / 2K / 4K tier to an official `WIDTHxHEIGHT` value, and `verify_output_size` can detect upstream size overrides |
 | `active_image_model` | `pro` / `flash` / `gpt_image_2`, selected by deployment configuration |
 | `thinking_config` | Thinking mode config, supports `reasoning_content` passthrough |
 | `speech_to_text` | Speech-to-text config, defaults to `gemini-2.5-flash` |

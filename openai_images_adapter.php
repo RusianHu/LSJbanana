@@ -41,10 +41,10 @@ class OpenAIImagesAdapter
     private int $downloadTimeout;
     private int $maxDownloadBytes;
     private string $quality;
-    private string $sizeMode;
     private bool $verifySsl;
     private bool $forceHttp1;
     private bool $logResponseErrors;
+    private bool $verifyOutputSize;
     private int $responsePreviewBytes;
 
     public function __construct(array $config)
@@ -61,13 +61,13 @@ class OpenAIImagesAdapter
         $this->verifySsl = (bool)($provider['verify_ssl'] ?? true);
         $this->forceHttp1 = (bool)($provider['force_http1'] ?? true);
         $this->logResponseErrors = (bool)($provider['log_response_errors'] ?? true);
+        $this->verifyOutputSize = array_key_exists('verify_output_size', $provider)
+            ? (bool)$provider['verify_output_size']
+            : true;
         $this->responsePreviewBytes = max(0, min(2048, (int)($provider['response_preview_bytes'] ?? 256)));
 
         $quality = strtolower((string)($provider['quality'] ?? 'low'));
         $this->quality = in_array($quality, ['auto', 'low', 'medium', 'high'], true) ? $quality : 'low';
-
-        $sizeMode = strtolower(trim((string)($provider['size_mode'] ?? 'dimensions')));
-        $this->sizeMode = in_array($sizeMode, ['dimensions', 'tier'], true) ? $sizeMode : 'dimensions';
 
         $configuredDir = (string)($provider['temporary_image_dir'] ?? ($config['output_dir'] ?? 'images/'));
         $this->temporaryImageDir = $this->resolveProjectPath($configuredDir);
@@ -99,7 +99,11 @@ class OpenAIImagesAdapter
             'prompt' => $prompt,
         ];
 
-        $this->applyImageConfig($request, $payload['generationConfig']['imageConfig'] ?? []);
+        $expectedDimensions = $this->applyImageConfig(
+            $request,
+            $modelName,
+            $payload['generationConfig']['imageConfig'] ?? []
+        );
 
         $temporaryFiles = [];
         try {
@@ -118,7 +122,7 @@ class OpenAIImagesAdapter
                 $response = $this->sendJsonRequest('/v1/images/edits', $request);
             }
 
-            return $this->convertToGeminiFormat($response);
+            return $this->convertToGeminiFormat($response, $expectedDimensions);
         } finally {
             foreach ($temporaryFiles as $temporaryFile) {
                 if (is_file($temporaryFile)) {
@@ -190,7 +194,10 @@ class OpenAIImagesAdapter
         return [trim(implode("\n", $textParts)), $images];
     }
 
-    private function applyImageConfig(array &$request, mixed $imageConfig): void
+    /**
+     * @return array{width:int,height:int}|null
+     */
+    private function applyImageConfig(array &$request, string $modelName, mixed $imageConfig): ?array
     {
         if (!is_array($imageConfig)) {
             $imageConfig = [];
@@ -199,26 +206,72 @@ class OpenAIImagesAdapter
         $aspectRatio = trim((string)($imageConfig['aspectRatio'] ?? ''));
         $imageSize = strtoupper(trim((string)($imageConfig['imageSize'] ?? '')));
 
-        if ($this->sizeMode === 'tier') {
-            if (in_array($imageSize, ['1K', '2K', '4K'], true)) {
-                $request['size'] = $imageSize;
-            }
-            if ($this->isSupportedAspectRatio($aspectRatio)) {
-                $request['aspect_ratio'] = $aspectRatio;
-            }
-        } else {
-            $size = $this->mapAspectRatioToSize($aspectRatio);
-            if ($size !== '') {
-                $request['size'] = $size;
-            }
+        $size = $this->mapAspectRatioToSize($aspectRatio, $imageSize, $modelName);
+        if ($size !== '') {
+            // OpenAI Images uses a WIDTHxHEIGHT string. `2K` and `aspect_ratio`
+            // are not official Images API request fields; sub2api may silently
+            // ignore them on its OAuth/Codex route.
+            $request['size'] = $size;
         }
 
         if ($this->quality !== 'auto') {
             $request['quality'] = $this->quality;
         }
+
+        return $this->parseDimensions($size);
     }
 
-    private function mapAspectRatioToSize(string $aspectRatio): string
+    private function mapAspectRatioToSize(string $aspectRatio, string $imageSize, string $modelName = ''): string
+    {
+        if (!$this->isSupportedAspectRatio($aspectRatio)) {
+            return '';
+        }
+
+        // Keep the old OpenAI Images compatibility sizes for older models.
+        // gpt-image-2 supports arbitrary dimensions, which is required to
+        // preserve both the selected tier and the selected aspect ratio.
+        if (!$this->supportsArbitraryImageSize($modelName)) {
+            return $this->mapLegacyAspectRatioToSize($aspectRatio);
+        }
+
+        $tier = in_array($imageSize, ['1K', '2K', '4K'], true) ? $imageSize : '1K';
+        [$ratioWidth, $ratioHeight] = array_map('intval', explode(':', $aspectRatio, 2));
+        if ($ratioWidth <= 0 || $ratioHeight <= 0) {
+            return '';
+        }
+        $gcd = $this->greatestCommonDivisor($ratioWidth, $ratioHeight);
+        $ratioWidth = intdiv($ratioWidth, $gcd);
+        $ratioHeight = intdiv($ratioHeight, $gcd);
+
+        // OpenAI's arbitrary image sizes require dimensions divisible by 16.
+        // The tier controls the target long edge; the 4K tier is additionally
+        // bounded by the documented 3840x2160 / ~8.29MP ceiling.
+        $baseWidth = $ratioWidth * 16;
+        $baseHeight = $ratioHeight * 16;
+        $baseLongEdge = max($baseWidth, $baseHeight);
+        $tierLongEdge = ['1K' => 1024, '2K' => 2048, '4K' => 3840][$tier];
+        $maxPixels = 8_294_400;
+        $minPixels = 655_360;
+
+        $multiplier = max(1, intdiv($tierLongEdge, $baseLongEdge));
+        $minMultiplier = (int)ceil(sqrt($minPixels / ($baseWidth * $baseHeight)));
+        $maxMultiplier = (int)floor(sqrt($maxPixels / ($baseWidth * $baseHeight)));
+        $multiplier = max($multiplier, $minMultiplier);
+        if ($maxMultiplier < 1) {
+            return '';
+        }
+        $multiplier = min($multiplier, $maxMultiplier);
+
+        $width = $baseWidth * $multiplier;
+        $height = $baseHeight * $multiplier;
+        if ($width * $height < $minPixels || $width > 3840 || $height > 3840) {
+            return '';
+        }
+
+        return $width . 'x' . $height;
+    }
+
+    private function mapLegacyAspectRatioToSize(string $aspectRatio): string
     {
         $portrait = ['2:3', '3:4', '4:5', '9:16'];
         $landscape = ['3:2', '4:3', '5:4', '16:9', '21:9'];
@@ -234,6 +287,36 @@ class OpenAIImagesAdapter
         }
 
         return '';
+    }
+
+    private function supportsArbitraryImageSize(string $modelName): bool
+    {
+        return str_starts_with(strtolower(trim($modelName)), 'gpt-image-2');
+    }
+
+    private function greatestCommonDivisor(int $a, int $b): int
+    {
+        while ($b !== 0) {
+            $remainder = $a % $b;
+            $a = $b;
+            $b = $remainder;
+        }
+
+        return max(1, abs($a));
+    }
+
+    /**
+     * @return array{width:int,height:int}|null
+     */
+    private function parseDimensions(string $size): ?array
+    {
+        if (!preg_match('/^(\d+)x(\d+)$/', trim($size), $matches)) {
+            return null;
+        }
+
+        $width = (int)$matches[1];
+        $height = (int)$matches[2];
+        return $width > 0 && $height > 0 ? ['width' => $width, 'height' => $height] : null;
     }
 
     private function isSupportedAspectRatio(string $aspectRatio): bool
@@ -629,7 +712,10 @@ class OpenAIImagesAdapter
         );
     }
 
-    private function convertToGeminiFormat(array $response): array
+    /**
+     * @param array{width:int,height:int}|null $expectedDimensions
+     */
+    private function convertToGeminiFormat(array $response, ?array $expectedDimensions = null): array
     {
         $item = $response['data'][0] ?? null;
         if (!is_array($item)) {
@@ -652,8 +738,26 @@ class OpenAIImagesAdapter
             [$imageBytes, $mimeType] = $this->downloadImage($url);
         }
 
-        if (!is_string($imageBytes) || strlen($imageBytes) < 16 || @getimagesizefromstring($imageBytes) === false) {
+        $detectedDimensions = is_string($imageBytes) ? @getimagesizefromstring($imageBytes) : false;
+        if (!is_string($imageBytes) || strlen($imageBytes) < 16 || $detectedDimensions === false) {
             throw new OpenAIImagesAdapterException('OpenAI 图片接口返回的图片文件无效', 502);
+        }
+
+        if ($this->verifyOutputSize && $expectedDimensions !== null) {
+            $actualWidth = (int)($detectedDimensions[0] ?? 0);
+            $actualHeight = (int)($detectedDimensions[1] ?? 0);
+            if (
+                $actualWidth !== $expectedDimensions['width']
+                || $actualHeight !== $expectedDimensions['height']
+            ) {
+                throw new OpenAIImagesAdapterException(
+                    __('adapter.openai_images.error.output_size_mismatch', [
+                        'expected' => $expectedDimensions['width'] . 'x' . $expectedDimensions['height'],
+                        'actual' => $actualWidth . 'x' . $actualHeight,
+                    ]),
+                    502
+                );
+            }
         }
 
         if ($mimeType === 'image/png' && class_exists('finfo')) {

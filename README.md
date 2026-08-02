@@ -125,7 +125,7 @@ php -S 127.0.0.1:8000
 |--------|------|
 | `api_provider` | `native` (直连) / `openai_compatible` (中转) / `gemini_proxy` (SSE代理) |
 | `image_api_provider` | 独立图片渠道；可设置为 `openai_images`，不影响提示词优化等文本调用 |
-| `openai_images` | OpenAI `/v1/images/generations` 与 `/v1/images/edits` 配置；`size_mode=tier` 可向兼容渠道直接传递 1K / 2K / 4K 档位 |
+| `openai_images` | OpenAI `/v1/images/generations` 与 `/v1/images/edits` 配置；GPT Image 2 会把宽高比和 1K / 2K / 4K 档位转换为官方 `WIDTHxHEIGHT`，并可通过 `verify_output_size` 检查上游是否忽略尺寸 |
 | `active_image_model` | `pro` / `flash` / `gpt_image_2`，由部署配置选择 |
 | `thinking_config` | 思考模式配置，支持 `reasoning_content` 透传 |
 | `speech_to_text` | 语音转文字配置，默认使用 `gemini-2.5-flash` |

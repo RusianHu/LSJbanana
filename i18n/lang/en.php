@@ -847,6 +847,7 @@ return [
                 'invalid_json' => 'Image upstream returned invalid JSON (HTTP :code, :content_type, :bytes bytes): :error:trace',
                 'invalid_shape' => 'Image upstream returned an unexpected JSON structure (HTTP :code, :content_type, :bytes bytes):trace',
                 'api_error' => 'Image upstream API returned an error',
+                'output_size_mismatch' => 'The image upstream returned :actual instead of :expected. It may have ignored the size parameter; with sub2api, check whether the group is actually routed through OpenAI OAuth/Codex.',
                 'trace_suffix' => '; trace ID: :id',
             ],
         ],

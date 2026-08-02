@@ -36,6 +36,96 @@ $assert = static function (bool $condition, string $message) use (&$passed, &$fa
     echo "[FAIL] {$message}\n";
 };
 
+$applyImageConfigMethod = new ReflectionMethod(OpenAIImagesAdapter::class, 'applyImageConfig');
+$applyImageConfigMethod->setAccessible(true);
+$applyImageConfig = static function (
+    OpenAIImagesAdapter $target,
+    string $model,
+    string $aspectRatio,
+    string $imageSize
+) use ($applyImageConfigMethod): array {
+    $request = ['model' => $model, 'prompt' => 'test'];
+    $args = [
+        &$request,
+        $model,
+        ['aspectRatio' => $aspectRatio, 'imageSize' => $imageSize],
+    ];
+    $expected = $applyImageConfigMethod->invokeArgs($target, $args);
+    return [$request, $expected];
+};
+
+[$wide2K, $wide2KExpected] = $applyImageConfig($adapter, 'gpt-image-2', '16:9', '2K');
+$assert(($wide2K['size'] ?? '') === '2048x1152', 'GPT Image 2 的 16:9 2K 映射为明确像素尺寸');
+$assert($wide2KExpected === ['width' => 2048, 'height' => 1152], '返回 16:9 2K 预期尺寸用于响应校验');
+$assert(!array_key_exists('aspect_ratio', $wide2K), '不再发送非标准 aspect_ratio 字段');
+
+[$tall2K] = $applyImageConfig($adapter, 'gpt-image-2', '9:16', '2K');
+$assert(($tall2K['size'] ?? '') === '1152x2048', 'GPT Image 2 的 9:16 2K 保持竖屏方向');
+
+[$wide1K] = $applyImageConfig($adapter, 'gpt-image-2', '16:9', '1K');
+$assert(($wide1K['size'] ?? '') === '1280x720', 'GPT Image 2 的 16:9 1K 同时满足最小像素约束');
+
+[$square4K] = $applyImageConfig($adapter, 'gpt-image-2', '1:1', '4K');
+$assert(($square4K['size'] ?? '') === '2880x2880', 'GPT Image 2 的方形 4K 遵守最大总像素约束');
+
+[$ultrawide4K] = $applyImageConfig($adapter, 'gpt-image-2', '21:9', '4K');
+$assert(($ultrawide4K['size'] ?? '') === '3808x1632', 'GPT Image 2 的 21:9 4K 遵守最大边长约束');
+
+$allGeneratedSizesValid = true;
+foreach (['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'] as $ratio) {
+    [$ratioWidth, $ratioHeight] = array_map('intval', explode(':', $ratio));
+    foreach (['1K', '2K', '4K'] as $tier) {
+        [$mapped] = $applyImageConfig($adapter, 'gpt-image-2', $ratio, $tier);
+        if (!preg_match('/^(\d+)x(\d+)$/', (string)($mapped['size'] ?? ''), $matches)) {
+            $allGeneratedSizesValid = false;
+            continue;
+        }
+        $width = (int)$matches[1];
+        $height = (int)$matches[2];
+        $pixels = $width * $height;
+        if (
+            $width % 16 !== 0
+            || $height % 16 !== 0
+            || $width > 3840
+            || $height > 3840
+            || $pixels < 655_360
+            || $pixels > 8_294_400
+            || $width * $ratioHeight !== $height * $ratioWidth
+        ) {
+            $allGeneratedSizesValid = false;
+        }
+    }
+}
+$assert($allGeneratedSizesValid, '所有宽高比与分辨率组合均满足 GPT Image 2 尺寸约束');
+
+$tierAdapter = new OpenAIImagesAdapter([
+    'openai_images' => [
+        'base_url' => 'https://example.invalid',
+        'api_key' => 'test-key',
+        'public_base_url' => 'https://example.invalid/LSJbanana',
+        'size_mode' => 'tier',
+        'log_response_errors' => false,
+    ],
+]);
+[$legacyTier2K] = $applyImageConfig($tierAdapter, 'gpt-image-2', '16:9', '2K');
+$assert(($legacyTier2K['size'] ?? '') === '2048x1152', '旧 tier 配置对 GPT Image 2 自动迁移为官方像素尺寸');
+
+[$legacyModel] = $applyImageConfig($adapter, 'gpt-image-1', '16:9', '2K');
+$assert(($legacyModel['size'] ?? '') === '1536x1024', '旧图片模型继续使用兼容尺寸');
+
+$convertMethod = new ReflectionMethod(OpenAIImagesAdapter::class, 'convertToGeminiFormat');
+$convertMethod->setAccessible(true);
+$onePixelPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZqKQAAAAASUVORK5CYII=';
+$converted = $convertMethod->invoke($adapter, ['data' => [['b64_json' => $onePixelPng]]], ['width' => 1, 'height' => 1]);
+$assert(isset($converted['candidates'][0]['content']['parts'][0]['inlineData']), '返回尺寸匹配时正常转换图片响应');
+try {
+    $convertMethod->invoke($adapter, ['data' => [['b64_json' => $onePixelPng]]], ['width' => 2, 'height' => 2]);
+    $assert(false, '返回尺寸不匹配时应抛出异常');
+} catch (OpenAIImagesAdapterException $e) {
+    $assert($e->getHttpCode() === 502, '返回尺寸不匹配映射为上游错误');
+    $assert(str_contains($e->getMessage(), '1x1') && str_contains($e->getMessage(), '2x2'), '尺寸不匹配错误包含实际与期望尺寸');
+}
+
 $invoke = static function (
     string $body,
     int $httpCode = 200,
