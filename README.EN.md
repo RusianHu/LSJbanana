@@ -32,7 +32,7 @@ mindmap
         Session Management
         Password Change
       Balance Billing
-        Per-task billing ¥0.20/task
+        Per-task billing ¥0.01/task
       Online Recharge
         LSJ Aggregated Payment
         Alipay/WeChat/QQ
