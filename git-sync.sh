@@ -133,7 +133,10 @@ if [ "$RUN_CHECKS" -eq 1 ]; then
     fi
 
     if command -v curl >/dev/null 2>&1; then
-        curl --fail --silent --show-error --location --max-time 30 --output /dev/null "$SITE_URL"
+        http_code="$(curl --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' "$SITE_URL")"
+        if [ "$http_code" != '200' ]; then
+            fail "站点 HTTP 检查失败：$SITE_URL 返回 $http_code（预期 200，且不允许 302）"
+        fi
     else
         echo "[警告] 未找到 curl，跳过站点 HTTP 检查。" >&2
     fi
