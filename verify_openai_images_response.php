@@ -36,6 +36,20 @@ $assert = static function (bool $condition, string $message) use (&$passed, &$fa
     echo "[FAIL] {$message}\n";
 };
 
+$forceIpv4Property = new ReflectionProperty(OpenAIImagesAdapter::class, 'forceIpv4');
+$forceIpv4Property->setAccessible(true);
+$assert($forceIpv4Property->getValue($adapter) === true, 'OpenAI Images 默认使用 IPv4 长连接');
+$ipv6AllowedAdapter = new OpenAIImagesAdapter([
+    'openai_images' => [
+        'base_url' => 'https://example.invalid',
+        'api_key' => 'test-key',
+        'public_base_url' => 'https://example.invalid/LSJbanana',
+        'force_ipv4' => false,
+        'log_response_errors' => false,
+    ],
+]);
+$assert($forceIpv4Property->getValue($ipv6AllowedAdapter) === false, '可显式关闭 OpenAI Images IPv4 限制');
+
 $applyImageConfigMethod = new ReflectionMethod(OpenAIImagesAdapter::class, 'applyImageConfig');
 $applyImageConfigMethod->setAccessible(true);
 $applyImageConfig = static function (
@@ -252,7 +266,12 @@ if (is_string($logFile)) {
             'text/html',
             ['cf-ray' => 'redaction-test'],
             'lsjbanana-log-test',
-            ['elapsed_ms' => 125000, 'curl_errno' => 0]
+            [
+                'elapsed_ms' => 125000,
+                'curl_errno' => 0,
+                'primary_ip' => '203.0.113.10',
+                'http_version' => 2,
+            ]
         );
     } catch (OpenAIImagesAdapterException) {
         // 预期异常，仅检查诊断日志。
@@ -263,6 +282,8 @@ if (is_string($logFile)) {
     $assert(is_string($logContent) && str_contains($logContent, 'response_sha256'), '诊断日志包含响应指纹');
     $assert(is_string($logContent) && str_contains($logContent, '"elapsed_ms":125000'), '诊断日志包含上游等待耗时');
     $assert(is_string($logContent) && str_contains($logContent, '"curl_errno":0'), '诊断日志包含 cURL 错误码');
+    $assert(is_string($logContent) && str_contains($logContent, '"primary_ip":"203.0.113.10"'), '诊断日志包含上游连接 IP');
+    $assert(is_string($logContent) && str_contains($logContent, '"http_version":2'), '诊断日志包含 HTTP 版本');
     @unlink($logFile);
     ini_set('error_log', is_string($previousErrorLog) ? $previousErrorLog : '');
 } else {

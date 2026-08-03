@@ -290,6 +290,7 @@ return [
         'verify_output_size' => true,        // 校验实际图片像素；上游忽略 size 时直接报错
         'verify_ssl' => true,
         'force_http1' => true,              // 部分中转站的编辑接口在 HTTP/2 下会断流
+        'force_ipv4' => true,               // 避免部分 Cloudflare IPv6 路径在长时间图片请求中无响应断开
         'log_response_errors' => true,       // 非 JSON/截断响应写入 PHP 错误日志（不记录请求正文或密钥）
         'response_preview_bytes' => 256,     // 错误响应预览长度；设为 0 可关闭正文预览
         // 唯一图片渠道使用非阻塞全站锁；忙时立即返回 429，不扣费、不重试、不降级。

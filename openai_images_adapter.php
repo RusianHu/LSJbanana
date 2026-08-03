@@ -43,6 +43,7 @@ class OpenAIImagesAdapter
     private string $quality;
     private bool $verifySsl;
     private bool $forceHttp1;
+    private bool $forceIpv4;
     private bool $logResponseErrors;
     private bool $verifyOutputSize;
     private int $responsePreviewBytes;
@@ -60,6 +61,7 @@ class OpenAIImagesAdapter
         $this->maxDownloadBytes = max(1024 * 1024, (int)($provider['max_download_bytes'] ?? 32 * 1024 * 1024));
         $this->verifySsl = (bool)($provider['verify_ssl'] ?? true);
         $this->forceHttp1 = (bool)($provider['force_http1'] ?? true);
+        $this->forceIpv4 = (bool)($provider['force_ipv4'] ?? true);
         $this->logResponseErrors = (bool)($provider['log_response_errors'] ?? true);
         $this->verifyOutputSize = array_key_exists('verify_output_size', $provider)
             ? (bool)$provider['verify_output_size']
@@ -433,6 +435,9 @@ class OpenAIImagesAdapter
         if ($this->forceHttp1 && defined('CURL_HTTP_VERSION_1_1')) {
             $options[CURLOPT_HTTP_VERSION] = CURL_HTTP_VERSION_1_1;
         }
+        if ($this->forceIpv4 && defined('CURL_IPRESOLVE_V4')) {
+            $options[CURLOPT_IPRESOLVE] = CURL_IPRESOLVE_V4;
+        }
         curl_setopt_array($ch, $options);
 
         $startedAt = microtime(true);
@@ -445,11 +450,19 @@ class OpenAIImagesAdapter
         }
         $curlErrno = curl_errno($ch);
         $error = curl_error($ch);
+        $primaryIp = defined('CURLINFO_PRIMARY_IP')
+            ? (string)curl_getinfo($ch, CURLINFO_PRIMARY_IP)
+            : '';
+        $httpVersion = defined('CURLINFO_HTTP_VERSION')
+            ? (int)curl_getinfo($ch, CURLINFO_HTTP_VERSION)
+            : null;
         curl_close($ch);
 
         $diagnostics = [
             'elapsed_ms' => $elapsedMs,
             'curl_errno' => $curlErrno,
+            'primary_ip' => $primaryIp !== '' ? $primaryIp : null,
+            'http_version' => $httpVersion,
         ];
 
         if ($response === false || $error !== '') {
@@ -738,6 +751,8 @@ class OpenAIImagesAdapter
             'client_request_id' => $clientRequestId,
             'elapsed_ms' => isset($diagnostics['elapsed_ms']) ? (int)$diagnostics['elapsed_ms'] : null,
             'curl_errno' => isset($diagnostics['curl_errno']) ? (int)$diagnostics['curl_errno'] : null,
+            'primary_ip' => isset($diagnostics['primary_ip']) ? (string)$diagnostics['primary_ip'] : null,
+            'http_version' => isset($diagnostics['http_version']) ? (int)$diagnostics['http_version'] : null,
         ];
 
         if ($this->responsePreviewBytes > 0 && $response !== '') {
@@ -890,6 +905,9 @@ class OpenAIImagesAdapter
         ];
         if ($this->forceHttp1 && defined('CURL_HTTP_VERSION_1_1')) {
             $options[CURLOPT_HTTP_VERSION] = CURL_HTTP_VERSION_1_1;
+        }
+        if ($this->forceIpv4 && defined('CURL_IPRESOLVE_V4')) {
+            $options[CURLOPT_IPRESOLVE] = CURL_IPRESOLVE_V4;
         }
         curl_setopt_array($ch, $options);
 
