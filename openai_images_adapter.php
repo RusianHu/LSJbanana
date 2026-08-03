@@ -50,6 +50,7 @@ class OpenAIImagesAdapter
     private bool $promptAspectRatioHint;
     private string $outputSizeCorrection;
     private int $responsePreviewBytes;
+    private float $heartbeatInterval;
 
     public function __construct(array $config)
     {
@@ -76,6 +77,11 @@ class OpenAIImagesAdapter
             ? $outputSizeCorrection
             : 'off';
         $this->responsePreviewBytes = max(0, min(2048, (int)($provider['response_preview_bytes'] ?? 256)));
+        $jobConfig = is_array($config['generation_jobs'] ?? null) ? $config['generation_jobs'] : [];
+        $this->heartbeatInterval = max(
+            0.5,
+            min(10.0, (float)($jobConfig['cancellation_check_interval'] ?? 2.0))
+        );
 
         $quality = strtolower((string)($provider['quality'] ?? 'low'));
         $this->quality = in_array($quality, ['auto', 'low', 'medium', 'high'], true) ? $quality : 'low';
@@ -146,7 +152,7 @@ class OpenAIImagesAdapter
                 $response = $this->sendJsonRequest('/v1/images/edits', $request, $clientRequestId, $heartbeat);
             }
 
-            return $this->convertToGeminiFormat($response, $expectedDimensions);
+            return $this->convertToGeminiFormat($response, $expectedDimensions, $heartbeat);
         } finally {
             foreach ($temporaryFiles as $temporaryFile) {
                 if (is_file($temporaryFile)) {
@@ -481,15 +487,26 @@ class OpenAIImagesAdapter
         ];
         if ($heartbeat !== null) {
             $lastHeartbeatAt = 0.0;
+            $cancelledByHeartbeat = false;
+            $heartbeatFailure = null;
             $options[CURLOPT_NOPROGRESS] = false;
-            $options[CURLOPT_XFERINFOFUNCTION] = static function () use (&$lastHeartbeatAt, $heartbeat): int {
+            $options[CURLOPT_XFERINFOFUNCTION] = function () use (
+                &$lastHeartbeatAt,
+                &$cancelledByHeartbeat,
+                &$heartbeatFailure,
+                $heartbeat
+            ): int {
                 $now = microtime(true);
-                if ($now - $lastHeartbeatAt >= 10.0) {
+                if ($now - $lastHeartbeatAt >= $this->heartbeatInterval) {
                     $lastHeartbeatAt = $now;
                     try {
-                        $heartbeat();
+                        if (!$this->heartbeatAllowsTransfer($heartbeat)) {
+                            $cancelledByHeartbeat = true;
+                            return 1;
+                        }
                     } catch (Throwable $e) {
-                        error_log('[OpenAIImagesAdapter] heartbeat failed: ' . $e->getMessage());
+                        $heartbeatFailure = $e;
+                        return 1;
                     }
                 }
                 return 0;
@@ -520,6 +537,13 @@ class OpenAIImagesAdapter
             ? (int)curl_getinfo($ch, CURLINFO_HTTP_VERSION)
             : null;
         curl_close($ch);
+
+        if (($cancelledByHeartbeat ?? false) === true) {
+            throw new OpenAIImagesAdapterException('图片生成请求已由用户取消', 499);
+        }
+        if (($heartbeatFailure ?? null) instanceof Throwable) {
+            throw $heartbeatFailure;
+        }
 
         $diagnostics = [
             'elapsed_ms' => $elapsedMs,
@@ -561,6 +585,11 @@ class OpenAIImagesAdapter
             $clientRequestId,
             $diagnostics
         );
+    }
+
+    private function heartbeatAllowsTransfer(callable $heartbeat): bool
+    {
+        return $heartbeat() !== false;
     }
 
     private function interpretHttpResponse(
@@ -835,7 +864,11 @@ class OpenAIImagesAdapter
     /**
      * @param array{width:int,height:int}|null $expectedDimensions
      */
-    private function convertToGeminiFormat(array $response, ?array $expectedDimensions = null): array
+    private function convertToGeminiFormat(
+        array $response,
+        ?array $expectedDimensions = null,
+        ?callable $heartbeat = null
+    ): array
     {
         $item = $response['data'][0] ?? null;
         if (!is_array($item)) {
@@ -855,7 +888,7 @@ class OpenAIImagesAdapter
             if (!is_string($url) || $url === '') {
                 throw new OpenAIImagesAdapterException('OpenAI 图片接口未返回可用的图片 URL', 502);
             }
-            [$imageBytes, $mimeType] = $this->downloadImage($url);
+            [$imageBytes, $mimeType] = $this->downloadImage($url, $heartbeat);
         }
 
         if (is_string($imageBytes) && strlen($imageBytes) > $this->maxDownloadBytes) {
@@ -1112,7 +1145,7 @@ class OpenAIImagesAdapter
     /**
      * @return array{0:string,1:string}
      */
-    private function downloadImage(string $url): array
+    private function downloadImage(string $url, ?callable $heartbeat = null): array
     {
         $scheme = strtolower((string)parse_url($url, PHP_URL_SCHEME));
         if (!in_array($scheme, ['http', 'https'], true)) {
@@ -1135,6 +1168,34 @@ class OpenAIImagesAdapter
         if ($this->forceIpv4 && defined('CURL_IPRESOLVE_V4')) {
             $options[CURLOPT_IPRESOLVE] = CURL_IPRESOLVE_V4;
         }
+        if ($heartbeat !== null) {
+            $lastHeartbeatAt = 0.0;
+            $cancelledByHeartbeat = false;
+            $heartbeatFailure = null;
+            $options[CURLOPT_NOPROGRESS] = false;
+            $options[CURLOPT_XFERINFOFUNCTION] = function () use (
+                &$lastHeartbeatAt,
+                &$cancelledByHeartbeat,
+                &$heartbeatFailure,
+                $heartbeat
+            ): int {
+                $now = microtime(true);
+                if ($now - $lastHeartbeatAt < $this->heartbeatInterval) {
+                    return 0;
+                }
+                $lastHeartbeatAt = $now;
+                try {
+                    if (!$this->heartbeatAllowsTransfer($heartbeat)) {
+                        $cancelledByHeartbeat = true;
+                        return 1;
+                    }
+                } catch (Throwable $e) {
+                    $heartbeatFailure = $e;
+                    return 1;
+                }
+                return 0;
+            };
+        }
         curl_setopt_array($ch, $options);
 
         $bytes = curl_exec($ch);
@@ -1142,6 +1203,13 @@ class OpenAIImagesAdapter
         $contentType = (string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
         $error = curl_error($ch);
         curl_close($ch);
+
+        if (($cancelledByHeartbeat ?? false) === true) {
+            throw new OpenAIImagesAdapterException('图片下载已由用户取消', 499);
+        }
+        if (($heartbeatFailure ?? null) instanceof Throwable) {
+            throw $heartbeatFailure;
+        }
 
         if ($bytes === false || $error !== '') {
             throw new OpenAIImagesAdapterException(__('adapter.openai.error.request_failed', ['error' => $error ?: 'image download failed']), 502);

@@ -27,6 +27,10 @@ final class ImageGenerationExecutionException extends RuntimeException
     }
 }
 
+final class ImageGenerationCancelledException extends RuntimeException
+{
+}
+
 final class ImageGenerationService
 {
     public function __construct(private array $config)
@@ -61,9 +65,7 @@ final class ImageGenerationService
             }
         }
 
-        if ($heartbeat !== null) {
-            $heartbeat();
-        }
+        $this->assertCanContinue($heartbeat);
         $provider = (string)($job['provider'] ?? 'native');
         $modelName = (string)($job['model_name'] ?? '');
         $clientRequestId = 'lsjbanana-job-' . (string)($job['public_id'] ?? 'unknown');
@@ -71,15 +73,20 @@ final class ImageGenerationService
         try {
             $response = match ($provider) {
                 'openai_images' => $this->callOpenAIImages($modelName, $payload, $clientRequestId, $heartbeat),
-                'openai_compatible' => $this->callOpenAICompatible($modelName, $payload),
-                'gemini_proxy' => $this->callGeminiProxy($modelName, $payload),
-                'native' => $this->callNativeGemini($modelName, $payload),
+                'openai_compatible' => $this->callOpenAICompatible($modelName, $payload, $heartbeat),
+                'gemini_proxy' => $this->callGeminiProxy($modelName, $payload, $heartbeat),
+                'native' => $this->callNativeGemini($modelName, $payload, $heartbeat),
                 default => throw new ImageGenerationExecutionException('未知的图片 API 提供商: ' . $provider, 500, false),
             };
         } catch (ImageGenerationExecutionException $e) {
             throw $e;
+        } catch (ImageGenerationCancelledException $e) {
+            throw $e;
         } catch (OpenAIImagesAdapterException|OpenAIAdapterException|GeminiProxyAdapterException $e) {
             $httpCode = $e->getHttpCode();
+            if ($httpCode === 499) {
+                throw new ImageGenerationCancelledException($e->getMessage(), 499, $e);
+            }
             throw new ImageGenerationExecutionException(
                 $e->getMessage(),
                 $httpCode,
@@ -90,10 +97,47 @@ final class ImageGenerationService
             throw new ImageGenerationExecutionException($e->getMessage(), 500, true, $e);
         }
 
-        if ($heartbeat !== null) {
-            $heartbeat();
+        $this->assertCanContinue($heartbeat);
+        $result = $this->persistResponse($response);
+        try {
+            $this->assertCanContinue($heartbeat);
+        } catch (Throwable $e) {
+            $this->discardResult($result);
+            throw $e;
         }
-        return $this->persistResponse($response);
+        return $result;
+    }
+
+    /**
+     * 仅删除本服务生成、且严格位于 output_dir 下的结果文件。
+     */
+    public function discardResult(array $result): int
+    {
+        $directory = $this->resolveOutputDirectory();
+        $root = realpath($directory);
+        if ($root === false) {
+            return 0;
+        }
+
+        $deleted = 0;
+        foreach (is_array($result['images'] ?? null) ? $result['images'] : [] as $image) {
+            if (!is_string($image)) {
+                continue;
+            }
+            $name = basename(str_replace('\\', '/', $image));
+            if (preg_match('/^gen_\d{8}_\d{6}_[a-f0-9]{32}\.(?:png|jpe?g|webp)$/i', $name) !== 1) {
+                continue;
+            }
+            $target = $root . DIRECTORY_SEPARATOR . $name;
+            $realTarget = realpath($target);
+            if ($realTarget === false || !$this->isDirectChildPath($root, $realTarget)) {
+                continue;
+            }
+            if (@unlink($realTarget)) {
+                $deleted++;
+            }
+        }
+        return $deleted;
     }
 
     private function callOpenAIImages(
@@ -109,25 +153,25 @@ final class ImageGenerationService
         return $adapter->generateContent($modelName, $payload, $clientRequestId, $heartbeat);
     }
 
-    private function callOpenAICompatible(string $modelName, array $payload): array
+    private function callOpenAICompatible(string $modelName, array $payload, ?callable $heartbeat): array
     {
         $adapter = new GeminiOpenAIAdapter($this->config);
         if (!$adapter->isAvailable()) {
             throw new ImageGenerationExecutionException('OpenAI 兼容 API 配置不完整', 500, false);
         }
-        return $adapter->generateContent($modelName, $payload);
+        return $adapter->generateContent($modelName, $payload, $heartbeat);
     }
 
-    private function callGeminiProxy(string $modelName, array $payload): array
+    private function callGeminiProxy(string $modelName, array $payload, ?callable $heartbeat): array
     {
         $adapter = new GeminiProxyAdapter($this->config);
         if (!$adapter->isAvailable()) {
             throw new ImageGenerationExecutionException('Gemini 代理 API 配置不完整', 500, false);
         }
-        return $adapter->generateContent($modelName, $payload);
+        return $adapter->generateContent($modelName, $payload, $heartbeat);
     }
 
-    private function callNativeGemini(string $modelName, array $payload): array
+    private function callNativeGemini(string $modelName, array $payload, ?callable $heartbeat): array
     {
         $apiKey = (string)($this->config['api_key'] ?? '');
         if ($apiKey === '') {
@@ -137,7 +181,7 @@ final class ImageGenerationService
         $url = 'https://generativelanguage.googleapis.com/v1beta/models/'
             . rawurlencode($modelName) . ':generateContent?key=' . rawurlencode($apiKey);
         $ch = curl_init($url);
-        curl_setopt_array($ch, [
+        $options = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
@@ -146,11 +190,49 @@ final class ImageGenerationService
             CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_VERIFYHOST => 2,
-        ]);
+        ];
+        if ($heartbeat !== null) {
+            $jobConfig = is_array($this->config['generation_jobs'] ?? null) ? $this->config['generation_jobs'] : [];
+            $heartbeatInterval = max(0.5, min(10.0, (float)($jobConfig['cancellation_check_interval'] ?? 2.0)));
+            $lastHeartbeatAt = 0.0;
+            $cancelledByHeartbeat = false;
+            $heartbeatFailure = null;
+            $options[CURLOPT_NOPROGRESS] = false;
+            $options[CURLOPT_XFERINFOFUNCTION] = static function () use (
+                &$lastHeartbeatAt,
+                &$cancelledByHeartbeat,
+                &$heartbeatFailure,
+                $heartbeat,
+                $heartbeatInterval
+            ): int {
+                $now = microtime(true);
+                if ($now - $lastHeartbeatAt < $heartbeatInterval) {
+                    return 0;
+                }
+                $lastHeartbeatAt = $now;
+                try {
+                    if ($heartbeat() === false) {
+                        $cancelledByHeartbeat = true;
+                        return 1;
+                    }
+                } catch (Throwable $e) {
+                    $heartbeatFailure = $e;
+                    return 1;
+                }
+                return 0;
+            };
+        }
+        curl_setopt_array($ch, $options);
         $response = curl_exec($ch);
         $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $error = curl_error($ch);
         curl_close($ch);
+        if (($cancelledByHeartbeat ?? false) === true) {
+            throw new ImageGenerationCancelledException('图片生成请求已由用户取消', 499);
+        }
+        if (($heartbeatFailure ?? null) instanceof Throwable) {
+            throw $heartbeatFailure;
+        }
         if (!is_string($response) || $error !== '') {
             throw new ImageGenerationExecutionException('Gemini 请求失败: ' . ($error ?: 'empty response'), 502, true);
         }
@@ -244,6 +326,24 @@ final class ImageGenerationService
             throw new ImageGenerationExecutionException('图片输出目录不可写', 500, true);
         }
         return $directory;
+    }
+
+    private function assertCanContinue(?callable $heartbeat): void
+    {
+        if ($heartbeat !== null && $heartbeat() === false) {
+            throw new ImageGenerationCancelledException('图片生成任务已取消', 499);
+        }
+    }
+
+    private function isDirectChildPath(string $root, string $target): bool
+    {
+        $normalizedRoot = rtrim(str_replace('\\', '/', $root), '/');
+        $normalizedTarget = str_replace('\\', '/', $target);
+        if (DIRECTORY_SEPARATOR === '\\') {
+            $normalizedRoot = strtolower($normalizedRoot);
+            $normalizedTarget = strtolower($normalizedTarget);
+        }
+        return dirname($normalizedTarget) === $normalizedRoot;
     }
 
     private function normalizeWarnings(mixed $rawWarnings): array

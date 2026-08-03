@@ -302,6 +302,7 @@ return [
         // 结果区域
         'result_title' => '生成结果',
         'generating' => '正在疯狂生成中，请稍候...',
+        'cancel_generation' => '取消任务',
         'elapsed_time' => '已耗时',
         'generated_time' => '生成耗时',
         'save_notice_title' => '请及时保存图片',
@@ -485,6 +486,8 @@ return [
         'generation_job_invalid' => '图片任务标识无效',
         'generation_job_not_found' => '图片任务不存在或已过期',
         'generation_job_failed' => '图片生成任务失败',
+        'generation_job_cancelling' => '取消请求已确认，服务端正在安全终止任务',
+        'generation_job_cancelled' => '图片任务已安全取消',
         'generation_job_refunded' => '本次费用已自动退还',
         'generation_job_refund_failed' => '自动退款失败，请联系管理员并提供任务编号',
         'generation_idempotency_invalid' => '请求标识无效，请刷新页面后重试',

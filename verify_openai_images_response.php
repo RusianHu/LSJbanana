@@ -50,6 +50,24 @@ $ipv6AllowedAdapter = new OpenAIImagesAdapter([
 ]);
 $assert($forceIpv4Property->getValue($ipv6AllowedAdapter) === false, '可显式关闭 OpenAI Images IPv4 限制');
 
+$heartbeatMethod = new ReflectionMethod(OpenAIImagesAdapter::class, 'heartbeatAllowsTransfer');
+$heartbeatMethod->setAccessible(true);
+$assert($heartbeatMethod->invoke($adapter, static fn(): bool => true) === true, 'heartbeat 允许时继续上游传输');
+$assert($heartbeatMethod->invoke($adapter, static fn(): bool => false) === false, 'heartbeat 返回 false 时请求中止上游传输');
+$heartbeatIntervalProperty = new ReflectionProperty(OpenAIImagesAdapter::class, 'heartbeatInterval');
+$heartbeatIntervalProperty->setAccessible(true);
+$assert(abs((float)$heartbeatIntervalProperty->getValue($adapter) - 2.0) < 0.001, '取消检查默认间隔为 2 秒');
+$fastHeartbeatAdapter = new OpenAIImagesAdapter([
+    'generation_jobs' => ['cancellation_check_interval' => 0.1],
+    'openai_images' => [
+        'base_url' => 'https://example.invalid',
+        'api_key' => 'test-key',
+        'public_base_url' => 'https://example.invalid/LSJbanana',
+        'log_response_errors' => false,
+    ],
+]);
+$assert(abs((float)$heartbeatIntervalProperty->getValue($fastHeartbeatAdapter) - 0.5) < 0.001, '取消检查间隔有安全下限');
+
 $applyImageConfigMethod = new ReflectionMethod(OpenAIImagesAdapter::class, 'applyImageConfig');
 $applyImageConfigMethod->setAccessible(true);
 $applyImageConfig = static function (

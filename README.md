@@ -220,7 +220,7 @@ systemctl enable --now lsjbanana-generation-worker.service
 systemctl status lsjbanana-generation-worker.service
 ```
 
-worker 同一时间只执行一个图片任务；网络断开、429、5xx 和网关超时按 `generation_jobs.retry_delays` 有限重试。任务入队时原子预扣，成功时只结算一次，最终失败只退款一次。相同浏览器提交使用幂等键，传输层重试不会创建重复任务。
+worker 同一时间只执行一个图片任务；网络断开、429、5xx 和网关超时按 `generation_jobs.retry_delays` 有限重试。任务入队时原子预扣，成功时只结算一次，最终失败只退款一次。相同浏览器提交使用幂等键，传输层重试不会创建重复任务。处理中可点击“取消任务”：服务端先将任务锁定为 `cancelling`，worker 按 `generation_jobs.cancellation_check_interval` 检查并中止上游 cURL，清理结果文件后只退款一次；浏览器会持续轮询到 `cancelled`，不会仅停止界面轮询而留下后台扣费任务。存活 worker 的取消收尾不会被其他进程抢占；异常退出后超过 `generation_jobs.cancellation_takeover_after` 的任务才会被新 worker 接管。
 
 ## 技术栈细节
 

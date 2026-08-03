@@ -220,7 +220,7 @@ systemctl enable --now lsjbanana-generation-worker.service
 systemctl status lsjbanana-generation-worker.service
 ```
 
-The worker executes one image job at a time. Network disconnects, 429s, 5xx responses, and gateway timeouts receive bounded retries configured by `generation_jobs.retry_delays`. Enqueue atomically reserves the charge, success settles exactly once, and terminal failure refunds exactly once. A stable browser idempotency key prevents transport retries from creating duplicate jobs.
+The worker executes one image job at a time. Network disconnects, 429s, 5xx responses, and gateway timeouts receive bounded retries configured by `generation_jobs.retry_delays`. Enqueue atomically reserves the charge, success settles exactly once, and terminal failure refunds exactly once. A stable browser idempotency key prevents transport retries from creating duplicate jobs. While a job is active, the user can cancel it: the server first locks it as `cancelling`, the worker checks `generation_jobs.cancellation_check_interval` and aborts the upstream cURL request, cleans generated files, and refunds exactly once. The browser keeps polling until `cancelled`, so stopping the UI never leaves a billable background task running. A live worker retains ownership of cancellation settlement; only jobs whose heartbeat exceeds `generation_jobs.cancellation_takeover_after` are reclaimed after a worker exits unexpectedly.
 
 ## Tech Stack Details
 

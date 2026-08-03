@@ -257,19 +257,54 @@ SQL);
 
     public function findForUser(string $publicId, int $userId): ?array
     {
-        $stmt = $this->pdo->prepare(
-            'SELECT * FROM generation_jobs WHERE public_id = :public_id AND user_id = :user_id LIMIT 1'
-        );
-        $stmt->execute([':public_id' => $publicId, ':user_id' => $userId]);
-        $job = $stmt->fetch(PDO::FETCH_ASSOC);
-        return is_array($job) ? $job : null;
+        return $this->findForUserInternal($publicId, $userId);
+    }
+
+    /**
+     * 请求取消任务。这里只锁定状态，退款和文件清理由 API 或 worker 完成。
+     */
+    public function requestCancellation(string $publicId, int $userId): ?array
+    {
+        return $this->db->transaction(function () use ($publicId, $userId): ?array {
+            $job = $this->findForUserInternal($publicId, $userId, true);
+            if ($job === null) {
+                return null;
+            }
+
+            $status = (string)($job['status'] ?? '');
+            if (!in_array($status, ['queued', 'processing', 'retry_wait'], true)) {
+                return $job;
+            }
+
+            $now = $this->now();
+            $isProcessing = $status === 'processing';
+            $stmt = $this->pdo->prepare(
+                "UPDATE generation_jobs
+                 SET status = 'cancelling', next_attempt_at = NULL,
+                     worker_id = :worker_id, locked_at = :locked_at,
+                     heartbeat_at = :heartbeat_at, error_code = 'GENERATION_CANCEL_REQUESTED',
+                     error_message = :error_message, updated_at = :updated_at
+                 WHERE id = :id AND status = :status"
+            );
+            $stmt->execute([
+                ':worker_id' => $isProcessing ? ($job['worker_id'] ?? null) : null,
+                ':locked_at' => $isProcessing ? ($job['locked_at'] ?? null) : null,
+                ':heartbeat_at' => $isProcessing ? ($job['heartbeat_at'] ?? null) : null,
+                ':error_message' => '用户已请求取消，正在安全终止任务。',
+                ':updated_at' => $now,
+                ':id' => (int)$job['id'],
+                ':status' => $status,
+            ]);
+
+            return $this->findById((int)$job['id']) ?? $job;
+        });
     }
 
     public function findLatestActiveForUser(int $userId): ?array
     {
         $stmt = $this->pdo->prepare(
             "SELECT * FROM generation_jobs
-             WHERE user_id = :user_id AND status IN ('queued', 'processing', 'retry_wait')
+             WHERE user_id = :user_id AND status IN ('queued', 'processing', 'retry_wait', 'cancelling')
              ORDER BY id DESC LIMIT 1"
         );
         $stmt->execute([':user_id' => $userId]);
@@ -352,6 +387,55 @@ SQL);
         });
     }
 
+    /**
+     * worker 优先接管没有完成收尾的取消任务，包括进程重启前遗留的任务。
+     */
+    public function claimCancellationForSettlement(string $workerId, int $staleAfterSeconds = 30): ?array
+    {
+        return $this->db->transaction(function () use ($workerId, $staleAfterSeconds): ?array {
+            $staleBefore = date('Y-m-d H:i:s', time() - max(0, min(3600, $staleAfterSeconds)));
+            $claimable = "status = 'cancelling'
+                          AND (worker_id IS NULL OR worker_id = '' OR worker_id = :worker_id
+                               OR heartbeat_at IS NULL OR heartbeat_at <= :stale_before)";
+            $sql = "SELECT * FROM generation_jobs WHERE {$claimable} ORDER BY id ASC LIMIT 1";
+            if ($this->driver === 'mysql') {
+                $sql .= ' FOR UPDATE';
+            }
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([
+                ':worker_id' => $workerId,
+                ':stale_before' => $staleBefore,
+            ]);
+            $job = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($job)) {
+                return null;
+            }
+
+            $now = $this->now();
+            $update = $this->pdo->prepare(
+                "UPDATE generation_jobs
+                 SET worker_id = :worker_id, locked_at = :locked_at,
+                     heartbeat_at = :heartbeat_at, updated_at = :updated_at
+                 WHERE id = :id AND status = 'cancelling'
+                   AND (worker_id IS NULL OR worker_id = '' OR worker_id = :expected_worker_id
+                        OR heartbeat_at IS NULL OR heartbeat_at <= :stale_before)"
+            );
+            $update->execute([
+                ':worker_id' => $workerId,
+                ':expected_worker_id' => $workerId,
+                ':stale_before' => $staleBefore,
+                ':locked_at' => $now,
+                ':heartbeat_at' => $now,
+                ':updated_at' => $now,
+                ':id' => (int)$job['id'],
+            ]);
+            if ($update->rowCount() !== 1) {
+                return null;
+            }
+            return $this->findById((int)$job['id']);
+        });
+    }
+
     /** @return array<int,array{position:int,mime_type:string,data:string}> */
     public function getInputs(int $jobId): array
     {
@@ -376,17 +460,46 @@ SQL);
 
     public function heartbeat(int $jobId, string $workerId): void
     {
+        $this->heartbeatAndContinue($jobId, $workerId);
+    }
+
+    /**
+     * 原子确认任务仍归当前 worker 执行；取消请求一旦先获得行锁就会返回 false。
+     */
+    public function heartbeatAndContinue(int $jobId, string $workerId): bool
+    {
+        return $this->db->transaction(function () use ($jobId, $workerId): bool {
+            $job = $this->findById($jobId, true);
+            if ($job === null
+                || ($job['status'] ?? '') !== 'processing'
+                || ($job['worker_id'] ?? '') !== $workerId) {
+                return false;
+            }
+
+            $now = $this->now();
+            $stmt = $this->pdo->prepare(
+                "UPDATE generation_jobs SET heartbeat_at = :heartbeat_at, updated_at = :updated_at
+                 WHERE id = :id AND status = 'processing' AND worker_id = :worker_id"
+            );
+            $stmt->execute([
+                ':heartbeat_at' => $now,
+                ':updated_at' => $now,
+                ':id' => $jobId,
+                ':worker_id' => $workerId,
+            ]);
+            return true;
+        });
+    }
+
+    public function getCancellationForWorker(int $jobId, string $workerId): ?array
+    {
         $stmt = $this->pdo->prepare(
-            "UPDATE generation_jobs SET heartbeat_at = :heartbeat_at, updated_at = :updated_at
-             WHERE id = :id AND status = 'processing' AND worker_id = :worker_id"
+            "SELECT * FROM generation_jobs
+             WHERE id = :id AND status = 'cancelling' AND worker_id = :worker_id LIMIT 1"
         );
-        $now = $this->now();
-        $stmt->execute([
-            ':heartbeat_at' => $now,
-            ':updated_at' => $now,
-            ':id' => $jobId,
-            ':worker_id' => $workerId,
-        ]);
+        $stmt->execute([':id' => $jobId, ':worker_id' => $workerId]);
+        $job = $stmt->fetch(PDO::FETCH_ASSOC);
+        return is_array($job) ? $job : null;
     }
 
     public function storeProvisionalResult(int $jobId, string $workerId, array $result): void
@@ -480,7 +593,7 @@ SQL);
         string $errorCode,
         string $errorMessage,
         int $delaySeconds
-    ): void {
+    ): bool {
         $nextAttempt = date('Y-m-d H:i:s', time() + max(1, $delaySeconds));
         $stmt = $this->pdo->prepare(
             "UPDATE generation_jobs
@@ -497,6 +610,67 @@ SQL);
             ':id' => $jobId,
             ':worker_id' => $workerId,
         ]);
+        return $stmt->rowCount() === 1;
+    }
+
+    /**
+     * 完成取消结算。调用方必须先清理 job.result_json 及当前内存中的结果文件。
+     */
+    public function finalizeCancellation(int $jobId, ?string $workerId = null): array
+    {
+        return $this->db->transaction(function () use ($jobId, $workerId): array {
+            $job = $this->findById($jobId, true);
+            if ($job === null) {
+                throw new RuntimeException('待取消任务不存在');
+            }
+            if (($job['status'] ?? '') === 'cancelled') {
+                return $job;
+            }
+            if (in_array($job['status'] ?? '', ['succeeded', 'failed'], true)) {
+                return $job;
+            }
+            if (($job['status'] ?? '') !== 'cancelling') {
+                throw new RuntimeException('任务未处于取消状态');
+            }
+
+            $owner = (string)($job['worker_id'] ?? '');
+            if (($workerId === null && $owner !== '')
+                || ($workerId !== null && $owner !== $workerId)) {
+                return $job;
+            }
+
+            $billingState = (string)($job['billing_state'] ?? 'deducted');
+            if ($billingState === 'deducted') {
+                $refunded = $this->db->atomicRefundBalance(
+                    (int)$job['user_id'],
+                    (float)$job['billing_amount']
+                );
+                $billingState = $refunded ? 'refunded' : 'refund_failed';
+            }
+
+            $now = $this->now();
+            $stmt = $this->pdo->prepare(
+                "UPDATE generation_jobs
+                 SET status = 'cancelled', billing_state = :billing_state, result_json = NULL,
+                     worker_id = NULL, locked_at = NULL, heartbeat_at = :heartbeat_at,
+                     error_code = 'GENERATION_CANCELLED', error_message = :error_message,
+                     completed_at = :completed_at, updated_at = :updated_at
+                 WHERE id = :id AND status = 'cancelling'"
+            );
+            $stmt->execute([
+                ':billing_state' => $billingState,
+                ':heartbeat_at' => $now,
+                ':error_message' => '任务已由用户取消。',
+                ':completed_at' => $now,
+                ':updated_at' => $now,
+                ':id' => $jobId,
+            ]);
+            if ($stmt->rowCount() !== 1) {
+                throw new RuntimeException('任务取消状态写入失败');
+            }
+            $this->deleteInputs($jobId);
+            return $this->findById($jobId) ?? $job;
+        });
     }
 
     public function failAndRefund(
@@ -510,7 +684,7 @@ SQL);
             if ($job === null) {
                 throw new RuntimeException('待退款任务不存在');
             }
-            if (in_array($job['status'] ?? '', ['succeeded', 'failed'], true)) {
+            if (in_array($job['status'] ?? '', ['succeeded', 'failed', 'cancelled', 'cancelling'], true)) {
                 return $job;
             }
             if (($job['status'] ?? '') !== 'processing' || ($job['worker_id'] ?? '') !== $workerId) {
@@ -566,6 +740,18 @@ SQL);
         }
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([':user_id' => $userId, ':key' => $key]);
+        $job = $stmt->fetch(PDO::FETCH_ASSOC);
+        return is_array($job) ? $job : null;
+    }
+
+    private function findForUserInternal(string $publicId, int $userId, bool $forUpdate = false): ?array
+    {
+        $sql = 'SELECT * FROM generation_jobs WHERE public_id = :public_id AND user_id = :user_id LIMIT 1';
+        if ($forUpdate && $this->driver === 'mysql') {
+            $sql .= ' FOR UPDATE';
+        }
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':public_id' => $publicId, ':user_id' => $userId]);
         $job = $stmt->fetch(PDO::FETCH_ASSOC);
         return is_array($job) ? $job : null;
     }

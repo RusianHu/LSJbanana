@@ -498,6 +498,56 @@ textarea {
     padding: 20px;
 }
 
+.generation-cancel-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 38px;
+    margin-top: 14px;
+    padding: 8px 14px;
+    border: 1px solid #c62828;
+    border-radius: 6px;
+    background: #fff;
+    color: #b71c1c;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.generation-cancel-btn:hover:not(:disabled) {
+    background: #ffebee;
+}
+
+.generation-cancel-btn:focus-visible {
+    outline: 3px solid rgba(198, 40, 40, 0.24);
+    outline-offset: 2px;
+}
+
+.generation-cancel-btn:disabled {
+    border-color: #bdbdbd;
+    color: #757575;
+    cursor: wait;
+}
+
+.generation-cancel-result {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-top: 12px;
+    padding: 12px 14px;
+    border: 1px solid #a5d6a7;
+    border-radius: 6px;
+    background: #f1f8e9;
+    color: #2e5d32;
+}
+
+.generation-cancel-result.refund-warning {
+    border-color: #ffcc80;
+    background: #fff8e1;
+    color: #8a4b08;
+}
+
 /* 思考过程面板 */
 .thinking-panel {
     border: 1px solid rgba(255, 193, 7, 0.35);

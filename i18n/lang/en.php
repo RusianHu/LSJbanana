@@ -302,6 +302,7 @@ return [
         // Result Area
         'result_title' => 'Generation Result',
         'generating' => 'Generating, please wait...',
+        'cancel_generation' => 'Cancel task',
         'elapsed_time' => 'Elapsed',
         'generated_time' => 'Generation time',
         'save_notice_title' => 'Please save images promptly',
@@ -485,6 +486,8 @@ return [
         'generation_job_invalid' => 'Invalid image task identifier',
         'generation_job_not_found' => 'Image task not found or expired',
         'generation_job_failed' => 'Image generation task failed',
+        'generation_job_cancelling' => 'Cancellation confirmed; the server is safely stopping the task',
+        'generation_job_cancelled' => 'The image task was safely cancelled',
         'generation_job_refunded' => 'The charge was automatically refunded',
         'generation_job_refund_failed' => 'Automatic refund failed. Contact the administrator with the task ID.',
         'generation_idempotency_invalid' => 'Invalid request identifier. Refresh the page and try again.',

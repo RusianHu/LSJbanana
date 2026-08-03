@@ -309,6 +309,8 @@ return [
         'max_attempts' => 3,                 // 包含首次调用在内最多尝试次数
         'retry_delays' => [10, 30],           // 可重试网关/网络错误的退避秒数
         'worker_poll_interval' => 2,
+        'cancellation_check_interval' => 2,   // 上游传输中检查取消请求的间隔（秒）
+        'cancellation_takeover_after' => 30,  // worker 异常退出后接管取消收尾的心跳超时（秒）
         'worker_lock_file' => __DIR__ . '/logs/generation_worker.lock',
     ],
 

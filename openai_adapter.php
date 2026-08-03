@@ -36,6 +36,7 @@ class GeminiOpenAIAdapter {
     private int $timeout;
     private int $connectTimeout;
     private bool $enableThinking;
+    private float $heartbeatInterval;
 
     // 思考模式精细配置
     private string $thinkingMode;       // 'auto' | 'force' | 'off'
@@ -52,6 +53,8 @@ class GeminiOpenAIAdapter {
         $this->timeout = (int)($openaiConfig['timeout'] ?? 300);
         $this->connectTimeout = (int)($openaiConfig['connect_timeout'] ?? 30);
         $this->enableThinking = (bool)($openaiConfig['enable_thinking'] ?? true);
+        $jobConfig = is_array($config['generation_jobs'] ?? null) ? $config['generation_jobs'] : [];
+        $this->heartbeatInterval = max(0.5, min(10.0, (float)($jobConfig['cancellation_check_interval'] ?? 2.0)));
 
         // 解析思考模式配置
         $thinkingModeConfig = $openaiConfig['thinking_mode'] ?? [];
@@ -108,7 +111,7 @@ class GeminiOpenAIAdapter {
      * @return array 转换后的响应（Gemini 格式）
      * @throws OpenAIAdapterException
      */
-    public function generateContent(string $modelName, array $payload): array {
+    public function generateContent(string $modelName, array $payload, ?callable $heartbeat = null): array {
         $openaiPayload = $this->convertToOpenAIFormat($modelName, $payload);
 
         // 根据思考模式策略决定是否携带 reasoning_effort
@@ -117,7 +120,7 @@ class GeminiOpenAIAdapter {
         if ($shouldTryThinking) {
             // 尝试带 reasoning_effort 的请求
             try {
-                $response = $this->sendRequest($openaiPayload);
+                $response = $this->sendRequest($openaiPayload, $heartbeat);
                 return $this->convertToGeminiFormat($response);
             } catch (OpenAIAdapterException $e) {
                 // 仅在 auto 模式下尝试降级
@@ -134,7 +137,7 @@ class GeminiOpenAIAdapter {
 
                     // 移除 reasoning_effort 重试
                     unset($openaiPayload['reasoning_effort']);
-                    $response = $this->sendRequest($openaiPayload);
+                    $response = $this->sendRequest($openaiPayload, $heartbeat);
                     return $this->convertToGeminiFormat($response);
                 }
 
@@ -144,7 +147,7 @@ class GeminiOpenAIAdapter {
         } else {
             // 直接发送不带 reasoning_effort 的请求
             unset($openaiPayload['reasoning_effort']);
-            $response = $this->sendRequest($openaiPayload);
+            $response = $this->sendRequest($openaiPayload, $heartbeat);
             return $this->convertToGeminiFormat($response);
         }
     }
@@ -457,11 +460,11 @@ class GeminiOpenAIAdapter {
     /**
      * 发送 HTTP 请求
      */
-    private function sendRequest(array $payload): array {
+    private function sendRequest(array $payload, ?callable $heartbeat = null): array {
         $url = $this->baseUrl . '/v1/chat/completions';
 
         $ch = curl_init($url);
-        curl_setopt_array($ch, [
+        $options = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST => true,
             CURLOPT_HTTPHEADER => [
@@ -473,12 +476,48 @@ class GeminiOpenAIAdapter {
             CURLOPT_CONNECTTIMEOUT => $this->connectTimeout,
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_SSL_VERIFYHOST => false
-        ]);
+        ];
+        if ($heartbeat !== null) {
+            $lastHeartbeatAt = 0.0;
+            $cancelledByHeartbeat = false;
+            $heartbeatFailure = null;
+            $options[CURLOPT_NOPROGRESS] = false;
+            $options[CURLOPT_XFERINFOFUNCTION] = function () use (
+                &$lastHeartbeatAt,
+                &$cancelledByHeartbeat,
+                &$heartbeatFailure,
+                $heartbeat
+            ): int {
+                $now = microtime(true);
+                if ($now - $lastHeartbeatAt < $this->heartbeatInterval) {
+                    return 0;
+                }
+                $lastHeartbeatAt = $now;
+                try {
+                    if ($heartbeat() === false) {
+                        $cancelledByHeartbeat = true;
+                        return 1;
+                    }
+                } catch (Throwable $e) {
+                    $heartbeatFailure = $e;
+                    return 1;
+                }
+                return 0;
+            };
+        }
+        curl_setopt_array($ch, $options);
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $error = curl_error($ch);
         curl_close($ch);
+
+        if (($cancelledByHeartbeat ?? false) === true) {
+            throw new OpenAIAdapterException('图片生成请求已由用户取消', 499);
+        }
+        if (($heartbeatFailure ?? null) instanceof Throwable) {
+            throw $heartbeatFailure;
+        }
 
         if ($error) {
             throw new OpenAIAdapterException(__('adapter.openai.error.request_failed', ['error' => $error]), 500);

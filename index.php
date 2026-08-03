@@ -365,6 +365,10 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
                     <div class="spinner"></div>
                     <p id="generation-status" aria-live="polite"><?php _e('index.generating'); ?></p>
                     <p id="timer" style="font-weight: bold; color: #666; margin-top: 10px;"><?php _e('index.elapsed_time', ['time' => '0.00']); ?></p>
+                    <button id="cancel-generation-btn" type="button" class="generation-cancel-btn hidden" aria-describedby="generation-status">
+                        <i class="fas fa-stop" aria-hidden="true"></i>
+                        <span><?php _e('index.cancel_generation'); ?></span>
+                    </button>
                 </div>
                 <div id="error-message" class="hidden error-box"></div>
                 

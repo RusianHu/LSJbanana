@@ -34,6 +34,7 @@ class GeminiProxyAdapter {
     private bool $useStreaming;
     private int $thinkingBudget;
     private bool $debug;
+    private float $heartbeatInterval;
 
     public function __construct(array $config) {
         $proxyConfig = $config['gemini_proxy'] ?? [];
@@ -44,6 +45,8 @@ class GeminiProxyAdapter {
         $this->useStreaming = (bool)($proxyConfig['use_streaming'] ?? true);
         $this->thinkingBudget = (int)($proxyConfig['thinking_budget'] ?? 26240);
         $this->debug = (bool)($config['debug'] ?? false);
+        $jobConfig = is_array($config['generation_jobs'] ?? null) ? $config['generation_jobs'] : [];
+        $this->heartbeatInterval = max(0.5, min(10.0, (float)($jobConfig['cancellation_check_interval'] ?? 2.0)));
     }
 
     /**
@@ -61,7 +64,7 @@ class GeminiProxyAdapter {
      * @return array Gemini 格式的响应
      * @throws GeminiProxyAdapterException
      */
-    public function generateContent(string $modelName, array $payload): array {
+    public function generateContent(string $modelName, array $payload, ?callable $heartbeat = null): array {
         // 确保 generationConfig 存在
         if (!isset($payload['generationConfig'])) {
             $payload['generationConfig'] = [];
@@ -84,9 +87,9 @@ class GeminiProxyAdapter {
         $payload['generationConfig']['thinkingConfig']['includeThoughts'] = true;
 
         if ($this->useStreaming) {
-            return $this->streamGenerateContent($modelName, $payload);
+            return $this->streamGenerateContent($modelName, $payload, $heartbeat);
         }
-        return $this->nonStreamGenerateContent($modelName, $payload);
+        return $this->nonStreamGenerateContent($modelName, $payload, $heartbeat);
     }
 
     /**
@@ -115,11 +118,11 @@ class GeminiProxyAdapter {
      *
      * SSE 端点：{base_url}/v1beta/models/{model}:streamGenerateContent?alt=sse
      */
-    private function streamGenerateContent(string $modelName, array $payload): array {
+    private function streamGenerateContent(string $modelName, array $payload, ?callable $heartbeat = null): array {
         $url = $this->baseUrl . "/v1beta/models/{$modelName}:streamGenerateContent?alt=sse";
 
         $ch = curl_init($url);
-        curl_setopt_array($ch, [
+        $options = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST => true,
             CURLOPT_HTTPHEADER => [
@@ -132,12 +135,23 @@ class GeminiProxyAdapter {
             CURLOPT_CONNECTTIMEOUT => $this->connectTimeout,
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_SSL_VERIFYHOST => false,
-        ]);
+        ];
+        $cancelledByHeartbeat = false;
+        $heartbeatFailure = null;
+        $this->attachHeartbeat($options, $heartbeat, $cancelledByHeartbeat, $heartbeatFailure);
+        curl_setopt_array($ch, $options);
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $error = curl_error($ch);
         curl_close($ch);
+
+        if ($cancelledByHeartbeat) {
+            throw new GeminiProxyAdapterException('图片生成请求已由用户取消', 499);
+        }
+        if ($heartbeatFailure instanceof Throwable) {
+            throw $heartbeatFailure;
+        }
 
         if ($error) {
             throw new GeminiProxyAdapterException(__('adapter.gemini.error.request_failed', ['error' => $error]), 500);
@@ -153,11 +167,11 @@ class GeminiProxyAdapter {
     /**
      * 非流式生成内容
      */
-    private function nonStreamGenerateContent(string $modelName, array $payload): array {
+    private function nonStreamGenerateContent(string $modelName, array $payload, ?callable $heartbeat = null): array {
         $url = $this->baseUrl . "/v1beta/models/{$modelName}:generateContent";
 
         $ch = curl_init($url);
-        curl_setopt_array($ch, [
+        $options = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST => true,
             CURLOPT_HTTPHEADER => [
@@ -169,12 +183,23 @@ class GeminiProxyAdapter {
             CURLOPT_CONNECTTIMEOUT => $this->connectTimeout,
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_SSL_VERIFYHOST => false,
-        ]);
+        ];
+        $cancelledByHeartbeat = false;
+        $heartbeatFailure = null;
+        $this->attachHeartbeat($options, $heartbeat, $cancelledByHeartbeat, $heartbeatFailure);
+        curl_setopt_array($ch, $options);
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $error = curl_error($ch);
         curl_close($ch);
+
+        if ($cancelledByHeartbeat) {
+            throw new GeminiProxyAdapterException('图片生成请求已由用户取消', 499);
+        }
+        if ($heartbeatFailure instanceof Throwable) {
+            throw $heartbeatFailure;
+        }
 
         if ($error) {
             throw new GeminiProxyAdapterException(__('adapter.gemini.error.request_failed', ['error' => $error]), 500);
@@ -191,6 +216,41 @@ class GeminiProxyAdapter {
         }
 
         return $data;
+    }
+
+    private function attachHeartbeat(
+        array &$options,
+        ?callable $heartbeat,
+        bool &$cancelled,
+        ?Throwable &$failure
+    ): void {
+        if ($heartbeat === null) {
+            return;
+        }
+        $lastHeartbeatAt = 0.0;
+        $options[CURLOPT_NOPROGRESS] = false;
+        $options[CURLOPT_XFERINFOFUNCTION] = function () use (
+            &$lastHeartbeatAt,
+            &$cancelled,
+            &$failure,
+            $heartbeat
+        ): int {
+            $now = microtime(true);
+            if ($now - $lastHeartbeatAt < $this->heartbeatInterval) {
+                return 0;
+            }
+            $lastHeartbeatAt = $now;
+            try {
+                if ($heartbeat() === false) {
+                    $cancelled = true;
+                    return 1;
+                }
+            } catch (Throwable $e) {
+                $failure = $e;
+                return 1;
+            }
+            return 0;
+        };
     }
 
     /**

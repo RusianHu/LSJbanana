@@ -18,6 +18,7 @@ require_once __DIR__ . '/openai_images_adapter.php';
 require_once __DIR__ . '/image_channel_lock.php';
 require_once __DIR__ . '/gemini_proxy_adapter.php';
 require_once __DIR__ . '/generation_jobs.php';
+require_once __DIR__ . '/image_generation_service.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/i18n/I18n.php';
@@ -139,7 +140,9 @@ function buildGenerationJobResponse(
             'created_at' => $job['created_at'] ?? null,
             'started_at' => $job['started_at'] ?? null,
             'completed_at' => $job['completed_at'] ?? null,
-            'poll_after_ms' => 2000,
+            'poll_after_ms' => $status === 'cancelling' ? 1000 : 2000,
+            'cancelable' => in_array($status, ['queued', 'processing', 'retry_wait'], true),
+            'cancel_requested' => in_array($status, ['cancelling', 'cancelled'], true),
         ],
         'billing' => [
             'charged' => $billingState === 'charged',
@@ -170,6 +173,18 @@ function buildGenerationJobResponse(
         }
         $response['message'] = $message;
         $response['code'] = (string)($job['error_code'] ?? 'GENERATION_JOB_FAILED');
+    } elseif ($status === 'cancelling') {
+        $response['message'] = __('api.generation_job_cancelling');
+        $response['code'] = 'GENERATION_CANCEL_REQUESTED';
+    } elseif ($status === 'cancelled') {
+        $message = __('api.generation_job_cancelled');
+        if ($billingState === 'refunded') {
+            $message .= ' ' . __('api.generation_job_refunded');
+        } elseif ($billingState === 'refund_failed') {
+            $message .= ' ' . __('api.generation_job_refund_failed');
+        }
+        $response['message'] = $message;
+        $response['code'] = 'GENERATION_JOB_CANCELLED';
     }
 
     return $response;
@@ -485,7 +500,7 @@ try {
 }
 
 if (!in_array($action, [
-    'generate', 'edit', 'generation_status', 'resume_generation_job',
+    'generate', 'edit', 'generation_status', 'resume_generation_job', 'cancel_generation_job',
     'optimize_prompt', 'transcribe', 'get_user_status',
     'get_announcements', 'dismiss_announcement',
 ], true)) {
@@ -819,24 +834,48 @@ if (in_array($action, ['optimize_prompt', 'transcribe'], true)) {
     validateUserAuthAndStatus($auth, false);
 }
 
-if (in_array($action, ['generation_status', 'resume_generation_job'], true)) {
+if (in_array($action, ['generation_status', 'resume_generation_job', 'cancel_generation_job'], true)) {
     validateUserAuthAndStatus($auth, false);
     $repository = new GenerationJobRepository($db);
     $repository->ensureSchema();
     $userId = (int)$auth->getCurrentUserId();
 
-    if ($action === 'generation_status') {
+    if (in_array($action, ['generation_status', 'cancel_generation_job'], true)) {
         $publicId = strtolower(trim((string)($_POST['job_id'] ?? '')));
         if (preg_match('/^[a-f0-9]{32}$/', $publicId) !== 1) {
             sendError(__('api.generation_job_invalid'), 400, 'INVALID_GENERATION_JOB');
         }
-        $job = $repository->findForUser($publicId, $userId);
+        if ($action === 'cancel_generation_job') {
+            $job = $repository->requestCancellation($publicId, $userId);
+            if ($job !== null
+                && ($job['status'] ?? '') === 'cancelling'
+                && trim((string)($job['worker_id'] ?? '')) === '') {
+                $storedResult = json_decode((string)($job['result_json'] ?? ''), true);
+                if (is_array($storedResult)) {
+                    try {
+                        (new ImageGenerationService($config))->discardResult($storedResult);
+                    } catch (Throwable $cleanupError) {
+                        error_log(sprintf(
+                            'Generation job %s cancellation cleanup warning: %s',
+                            $publicId,
+                            $cleanupError->getMessage()
+                        ));
+                    }
+                }
+                $job = $repository->finalizeCancellation((int)$job['id']);
+            }
+        } else {
+            $job = $repository->findForUser($publicId, $userId);
+        }
     } else {
         $job = $repository->findLatestActiveForUser($userId);
     }
 
     if ($job === null) {
         sendError(__('api.generation_job_not_found'), 404, 'GENERATION_JOB_NOT_FOUND');
+    }
+    if (($job['status'] ?? '') === 'cancelling') {
+        http_response_code(202);
     }
     echo json_encode(buildGenerationJobResponse($repository, $db, $job));
     exit;

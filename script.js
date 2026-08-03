@@ -374,8 +374,12 @@ window.addEventListener('i18nReady', () => {
     const outputContainer = document.getElementById('output-container');
     const timerDisplay = document.getElementById('timer');
     const generationStatus = document.getElementById('generation-status');
+    const cancelGenerationButton = document.getElementById('cancel-generation-btn');
+    const cancelGenerationLabel = cancelGenerationButton ? cancelGenerationButton.querySelector('span') : null;
     const pendingJobStorageKey = 'lsjbanana.pendingGenerationJob';
     let activeGenerationJobId = null;
+    let lastGenerationJob = null;
+    let cancellationRequestInFlight = false;
 
     function savePendingGeneration(job) {
         try {
@@ -628,6 +632,66 @@ window.addEventListener('i18nReady', () => {
         throw lastError || new Error(window.i18n.t('error.unknown'));
     }
 
+    function isTerminalGenerationStatus(status) {
+        return status === 'succeeded' || status === 'failed' || status === 'cancelled';
+    }
+
+    function updateCancellationControl(job) {
+        if (!cancelGenerationButton || !cancelGenerationLabel) return;
+        const status = job && job.status;
+        const isCancelling = status === 'cancelling';
+        const canCancel = Boolean(job && job.cancelable && activeGenerationJobId);
+        if (!canCancel && !isCancelling && !cancellationRequestInFlight) {
+            cancelGenerationButton.classList.add('hidden');
+            cancelGenerationButton.disabled = false;
+            cancelGenerationLabel.textContent = window.i18n.t('index.cancel_generation');
+            return;
+        }
+
+        cancelGenerationButton.classList.remove('hidden');
+        cancelGenerationButton.disabled = isCancelling || cancellationRequestInFlight;
+        cancelGenerationLabel.textContent = isCancelling
+            ? window.i18n.t('index.cancel_in_progress')
+            : (cancellationRequestInFlight
+                ? window.i18n.t('index.cancel_requesting')
+                : window.i18n.t('index.cancel_generation'));
+    }
+
+    async function requestActiveGenerationCancellation() {
+        if (!activeGenerationJobId || cancellationRequestInFlight) return;
+        if (!window.confirm(window.i18n.t('index.cancel_confirm'))) return;
+
+        cancellationRequestInFlight = true;
+        updateCancellationControl(lastGenerationJob);
+        const cancelForm = new FormData();
+        cancelForm.append('action', 'cancel_generation_job');
+        cancelForm.append('job_id', activeGenerationJobId);
+        try {
+            const {response, data} = await postFormWithRetry(cancelForm, 2);
+            if (!response.ok || !data.job) {
+                throw new Error(data.message || `HTTP error! status: ${response.status}`);
+            }
+            const pending = loadPendingGeneration() || {};
+            savePendingGeneration({...pending, id: activeGenerationJobId, cancelRequested: true});
+            if (data.billing && data.billing.balance !== null) {
+                updateBalanceDisplay(data.billing.balance);
+            }
+            updateGenerationStatus(data.job);
+            if (errorMessage) {
+                errorMessage.classList.add('hidden');
+                errorMessage.textContent = '';
+            }
+        } catch (error) {
+            if (errorMessage) {
+                errorMessage.textContent = window.i18n.t('index.cancel_failed', {message: error.message});
+                errorMessage.classList.remove('hidden');
+            }
+        } finally {
+            cancellationRequestInFlight = false;
+            updateCancellationControl(lastGenerationJob);
+        }
+    }
+
     function updateGenerationStatus(job, connectionRetry = 0) {
         if (!generationStatus) return;
         if (connectionRetry > 0) {
@@ -638,6 +702,8 @@ window.addEventListener('i18nReady', () => {
             generationStatus.textContent = window.i18n.t('index.generation_submitting');
             return;
         }
+        lastGenerationJob = job;
+        updateCancellationControl(job);
         if (job.status === 'queued') {
             generationStatus.textContent = window.i18n.t('index.generation_queued', {
                 position: Math.max(1, Number(job.queue_position) || 1)
@@ -647,6 +713,10 @@ window.addEventListener('i18nReady', () => {
                 attempt: Number(job.attempt) || 1,
                 max: Number(job.max_attempts) || 1
             });
+        } else if (job.status === 'cancelling') {
+            generationStatus.textContent = window.i18n.t('index.generation_cancelling');
+        } else if (job.status === 'cancelled') {
+            generationStatus.textContent = window.i18n.t('index.generation_cancelled');
         } else {
             generationStatus.textContent = window.i18n.t('index.generation_processing', {
                 attempt: Math.max(1, Number(job.attempt) || 1),
@@ -676,9 +746,10 @@ window.addEventListener('i18nReady', () => {
                 consecutiveFailures = 0;
                 updateGenerationStatus(data.job);
                 pollDelay = Math.max(1000, Math.min(5000, Number(data.job && data.job.poll_after_ms) || 2000));
-                if (data.job && (data.job.status === 'succeeded' || data.job.status === 'failed')) {
+                if (data.job && isTerminalGenerationStatus(data.job.status)) {
                     clearPendingGeneration();
                     activeGenerationJobId = null;
+                    updateCancellationControl(data.job);
                     return data;
                 }
             } catch (error) {
@@ -824,6 +895,28 @@ window.addEventListener('i18nReady', () => {
         outputContainer.appendChild(timeDiv);
     }
 
+    function renderCancelledGeneration(data) {
+        if (data.billing && data.billing.balance !== null) {
+            updateBalanceDisplay(data.billing.balance);
+        }
+        if (!outputContainer) return;
+
+        const notice = document.createElement('div');
+        notice.className = 'generation-cancel-result';
+        notice.setAttribute('role', 'status');
+        const refundFailed = Boolean(data.billing && data.billing.refund_failed);
+        if (refundFailed) notice.classList.add('refund-warning');
+        const icon = document.createElement('i');
+        icon.className = refundFailed ? 'fas fa-exclamation-triangle' : 'fas fa-check-circle';
+        icon.setAttribute('aria-hidden', 'true');
+        const message = document.createElement('span');
+        message.textContent = refundFailed
+            ? window.i18n.t('index.cancellation_refund_failed')
+            : window.i18n.t('index.cancellation_refunded');
+        notice.append(icon, message);
+        outputContainer.appendChild(notice);
+    }
+
     // 通用提交函数
     async function handleFormSubmit(event, type) {
         event.preventDefault();
@@ -942,6 +1035,10 @@ window.addEventListener('i18nReady', () => {
             updateGenerationStatus(data.job);
             data = await pollGenerationJob(activeGenerationJobId);
 
+            if (data.job && data.job.status === 'cancelled') {
+                renderCancelledGeneration(data);
+                return;
+            }
             if (data.success) {
                 renderCompletedGeneration(data, startTime);
                 return;
@@ -974,6 +1071,9 @@ window.addEventListener('i18nReady', () => {
 
     generateForm.addEventListener('submit', (e) => handleFormSubmit(e, 'generate'));
     editForm.addEventListener('submit', (e) => handleFormSubmit(e, 'edit'));
+    if (cancelGenerationButton) {
+        cancelGenerationButton.addEventListener('click', requestActiveGenerationCancellation);
+    }
 
     async function resumePendingGeneration() {
         if (activeGenerationJobId) return;
@@ -1001,10 +1101,17 @@ window.addEventListener('i18nReady', () => {
                 }
             }, 250);
             try {
-                const data = initialData.job.status === 'succeeded' || initialData.job.status === 'failed'
+                const data = isTerminalGenerationStatus(initialData.job.status)
                     ? initialData
                     : await pollGenerationJob(activeGenerationJobId);
-                if (data.success) {
+                if (isTerminalGenerationStatus(data.job && data.job.status)) {
+                    clearPendingGeneration();
+                    activeGenerationJobId = null;
+                    updateCancellationControl(data.job);
+                }
+                if (data.job && data.job.status === 'cancelled') {
+                    renderCancelledGeneration(data);
+                } else if (data.success) {
                     renderCompletedGeneration(data, startedAt);
                 } else if (errorMessage) {
                     errorMessage.textContent = window.i18n.t('index.generate_failed', {message: data.message || window.i18n.t('error.unknown')});
