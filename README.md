@@ -130,7 +130,7 @@ php generation_worker.php
 |--------|------|
 | `api_provider` | `native` (直连) / `openai_compatible` (中转) / `gemini_proxy` (SSE代理) |
 | `image_api_provider` | 独立图片渠道；可设置为 `openai_images`，不影响提示词优化等文本调用 |
-| `openai_images` | OpenAI `/v1/images/generations` 与 `/v1/images/edits` 配置；GPT Image 2 会把宽高比和 1K / 2K / 4K 档位转换为官方 `WIDTHxHEIGHT`；`verify_output_size` 会报告上游尺寸偏差，`reject_output_size_mismatch` 可切换为严格拒绝，`force_ipv4` 可规避部分 IPv6 长连接断流 |
+| `openai_images` | OpenAI `/v1/images/generations` 与 `/v1/images/edits` 配置；GPT Image 2 会把宽高比和 1K / 2K / 4K 档位转换为官方 `WIDTHxHEIGHT`；对可能把尺寸改为 `auto` 的 Sub2API OAuth 路由，可启用 `prompt_aspect_ratio_hint` 并将 `output_size_correction` 设为 `cover`（需要 PHP GD），以补强构图比例并确定性输出精确像素；`verify_output_size`/`reject_output_size_mismatch` 保留校验与严格拒绝能力，`force_ipv4` 可规避部分 IPv6 长连接断流 |
 | `generation_jobs` | 持久化图片任务、worker 轮询间隔、最多尝试次数和退避时间；浏览器只提交并轮询，长请求不再占用 Cloudflare/FastCGI 连接 |
 | `active_image_model` | `pro` / `flash` / `gpt_image_2`，由部署配置选择 |
 | `thinking_config` | 思考模式配置，支持 `reasoning_content` 透传 |

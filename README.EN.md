@@ -130,7 +130,7 @@ Edit `config.php`, the system provides fine-grained feature control:
 |---------------|-------------|
 | `api_provider` | `native` (direct) / `openai_compatible` (relay) / `gemini_proxy` (SSE proxy) |
 | `image_api_provider` | Dedicated image route; may use `openai_images` without changing prompt-optimization/text calls |
-| `openai_images` | OpenAI `/v1/images/generations` and `/v1/images/edits` settings; GPT Image 2 maps aspect ratio plus the 1K / 2K / 4K tier to an official `WIDTHxHEIGHT`; `verify_output_size` reports upstream size deviations, `reject_output_size_mismatch` enables strict rejection, and `force_ipv4` avoids long-lived connection resets on some IPv6 paths |
+| `openai_images` | OpenAI `/v1/images/generations` and `/v1/images/edits` settings; GPT Image 2 maps aspect ratio plus the 1K / 2K / 4K tier to an official `WIDTHxHEIGHT`; for Sub2API OAuth routes that may normalize size to `auto`, enable `prompt_aspect_ratio_hint` and set `output_size_correction` to `cover` (PHP GD required) to reinforce composition and deterministically emit exact pixels; `verify_output_size`/`reject_output_size_mismatch` retain validation and strict rejection, while `force_ipv4` avoids long-lived connection resets on some IPv6 paths |
 | `generation_jobs` | Persistent image jobs, worker polling, maximum attempts, and retry delays; browsers submit and poll while long requests run independently of Cloudflare/FastCGI connections |
 | `active_image_model` | `pro` / `flash` / `gpt_image_2`, selected by deployment configuration |
 | `thinking_config` | Thinking mode config, supports `reasoning_content` passthrough |

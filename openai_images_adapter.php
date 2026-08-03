@@ -47,6 +47,8 @@ class OpenAIImagesAdapter
     private bool $logResponseErrors;
     private bool $verifyOutputSize;
     private bool $rejectOutputSizeMismatch;
+    private bool $promptAspectRatioHint;
+    private string $outputSizeCorrection;
     private int $responsePreviewBytes;
 
     public function __construct(array $config)
@@ -68,6 +70,11 @@ class OpenAIImagesAdapter
             ? (bool)$provider['verify_output_size']
             : true;
         $this->rejectOutputSizeMismatch = (bool)($provider['reject_output_size_mismatch'] ?? false);
+        $this->promptAspectRatioHint = (bool)($provider['prompt_aspect_ratio_hint'] ?? false);
+        $outputSizeCorrection = strtolower(trim((string)($provider['output_size_correction'] ?? 'off')));
+        $this->outputSizeCorrection = in_array($outputSizeCorrection, ['off', 'cover'], true)
+            ? $outputSizeCorrection
+            : 'off';
         $this->responsePreviewBytes = max(0, min(2048, (int)($provider['response_preview_bytes'] ?? 256)));
 
         $quality = strtolower((string)($provider['quality'] ?? 'low'));
@@ -103,6 +110,14 @@ class OpenAIImagesAdapter
             throw new OpenAIImagesAdapterException('OpenAI 图片请求缺少提示词', 400);
         }
 
+        $imageConfig = $payload['generationConfig']['imageConfig'] ?? [];
+        if ($this->promptAspectRatioHint && is_array($imageConfig)) {
+            $prompt = $this->applyPromptAspectRatioHint(
+                $prompt,
+                trim((string)($imageConfig['aspectRatio'] ?? ''))
+            );
+        }
+
         $request = [
             'model' => $modelName,
             'prompt' => $prompt,
@@ -111,7 +126,7 @@ class OpenAIImagesAdapter
         $expectedDimensions = $this->applyImageConfig(
             $request,
             $modelName,
-            $payload['generationConfig']['imageConfig'] ?? []
+            $imageConfig
         );
 
         $temporaryFiles = [];
@@ -301,6 +316,25 @@ class OpenAIImagesAdapter
     private function supportsArbitraryImageSize(string $modelName): bool
     {
         return str_starts_with(strtolower(trim($modelName)), 'gpt-image-2');
+    }
+
+    private function applyPromptAspectRatioHint(string $prompt, string $aspectRatio): string
+    {
+        if (!$this->isSupportedAspectRatio($aspectRatio)) {
+            return $prompt;
+        }
+
+        [$width, $height] = array_map('intval', explode(':', $aspectRatio, 2));
+        $orientation = $width === $height ? 'square' : ($width > $height ? 'landscape' : 'portrait');
+        $instruction = sprintf(
+            'STRICT CANVAS REQUIREMENT: Use a %s %s canvas. The canvas aspect ratio must be exactly %s. '
+            . 'Keep every important subject inside that frame even if other prompt text suggests a different orientation.',
+            $aspectRatio,
+            $orientation,
+            $aspectRatio
+        );
+
+        return $instruction . "\n\n" . $prompt . "\n\n" . $instruction;
     }
 
     private function greatestCommonDivisor(int $a, int $b): int
@@ -833,6 +867,16 @@ class OpenAIImagesAdapter
             throw new OpenAIImagesAdapterException('OpenAI 图片接口返回的图片文件无效', 502);
         }
 
+        if ($mimeType === 'image/png' && class_exists('finfo')) {
+            $detected = (new finfo(FILEINFO_MIME_TYPE))->buffer($imageBytes);
+            if (is_string($detected) && str_starts_with($detected, 'image/')) {
+                $mimeType = $detected;
+            }
+        }
+        if (!in_array($mimeType, ['image/png', 'image/jpeg', 'image/webp'], true)) {
+            throw new OpenAIImagesAdapterException('OpenAI 图片接口返回了不支持的文件格式', 502);
+        }
+
         $warnings = [];
         if ($this->verifyOutputSize && $expectedDimensions !== null) {
             $actualWidth = (int)($detectedDimensions[0] ?? 0);
@@ -842,6 +886,32 @@ class OpenAIImagesAdapter
                 $actualHeight,
                 $expectedDimensions
             );
+            $dimensionsDiffer = $actualWidth !== (int)$expectedDimensions['width']
+                || $actualHeight !== (int)$expectedDimensions['height'];
+            if ($dimensionsDiffer && $this->outputSizeCorrection === 'cover') {
+                [$imageBytes, $mimeType] = $this->correctOutputSizeWithCover(
+                    $imageBytes,
+                    $mimeType,
+                    $actualWidth,
+                    $actualHeight,
+                    (int)$expectedDimensions['width'],
+                    (int)$expectedDimensions['height']
+                );
+                $correctedDimensions = @getimagesizefromstring($imageBytes);
+                if (
+                    !is_array($correctedDimensions)
+                    || (int)($correctedDimensions[0] ?? 0) !== (int)$expectedDimensions['width']
+                    || (int)($correctedDimensions[1] ?? 0) !== (int)$expectedDimensions['height']
+                ) {
+                    throw new OpenAIImagesAdapterException('OpenAI 图片尺寸校正失败', 502);
+                }
+                error_log('[OpenAIImagesAdapter] Corrected output size: ' . json_encode([
+                    'mode' => 'cover',
+                    'expected' => $expectedDimensions['width'] . 'x' . $expectedDimensions['height'],
+                    'actual' => $actualWidth . 'x' . $actualHeight,
+                ], JSON_UNESCAPED_SLASHES));
+                $sizeIsAcceptable = true;
+            }
             if (!$sizeIsAcceptable) {
                 $mismatchContext = [
                     'expected' => $expectedDimensions['width'] . 'x' . $expectedDimensions['height'],
@@ -869,25 +939,15 @@ class OpenAIImagesAdapter
                     $mismatchContext,
                     JSON_UNESCAPED_SLASHES
                 ));
-            } elseif (
+            } elseif ($this->outputSizeCorrection === 'off' && (
                 $actualWidth !== $expectedDimensions['width']
                 || $actualHeight !== $expectedDimensions['height']
-            ) {
+            )) {
                 error_log('[OpenAIImagesAdapter] Accepted minor output size variance: ' . json_encode([
                     'expected' => $expectedDimensions['width'] . 'x' . $expectedDimensions['height'],
                     'actual' => $actualWidth . 'x' . $actualHeight,
                 ], JSON_UNESCAPED_SLASHES));
             }
-        }
-
-        if ($mimeType === 'image/png' && class_exists('finfo')) {
-            $detected = (new finfo(FILEINFO_MIME_TYPE))->buffer($imageBytes);
-            if (is_string($detected) && str_starts_with($detected, 'image/')) {
-                $mimeType = $detected;
-            }
-        }
-        if (!in_array($mimeType, ['image/png', 'image/jpeg', 'image/webp'], true)) {
-            throw new OpenAIImagesAdapterException('OpenAI 图片接口返回了不支持的文件格式', 502);
         }
 
         $parts = [];
@@ -912,6 +972,103 @@ class OpenAIImagesAdapter
             'usageMetadata' => $response['usage'] ?? null,
             'warnings' => $warnings,
         ];
+    }
+
+    /**
+     * @return array{0:string,1:string}
+     */
+    private function correctOutputSizeWithCover(
+        string $imageBytes,
+        string $mimeType,
+        int $sourceWidth,
+        int $sourceHeight,
+        int $targetWidth,
+        int $targetHeight
+    ): array {
+        if (
+            !function_exists('imagecreatefromstring')
+            || !function_exists('imagecreatetruecolor')
+            || !function_exists('imagecopyresampled')
+        ) {
+            throw new OpenAIImagesAdapterException('服务器缺少 GD 扩展，无法校正上游图片尺寸', 500);
+        }
+        if (min($sourceWidth, $sourceHeight, $targetWidth, $targetHeight) <= 0) {
+            throw new OpenAIImagesAdapterException('OpenAI 图片尺寸校正参数无效', 502);
+        }
+
+        $source = @imagecreatefromstring($imageBytes);
+        $target = @imagecreatetruecolor($targetWidth, $targetHeight);
+        if ($source === false || $target === false) {
+            if ($source !== false) {
+                imagedestroy($source);
+            }
+            if ($target !== false) {
+                imagedestroy($target);
+            }
+            throw new OpenAIImagesAdapterException('无法解码上游图片进行尺寸校正', 502);
+        }
+
+        if (function_exists('imagesetinterpolation') && defined('IMG_BICUBIC_FIXED')) {
+            imagesetinterpolation($source, IMG_BICUBIC_FIXED);
+            imagesetinterpolation($target, IMG_BICUBIC_FIXED);
+        }
+        if (in_array($mimeType, ['image/png', 'image/webp'], true)) {
+            imagealphablending($target, false);
+            imagesavealpha($target, true);
+            $transparent = imagecolorallocatealpha($target, 0, 0, 0, 127);
+            imagefill($target, 0, 0, $transparent);
+        }
+
+        $sourceRatio = $sourceWidth / $sourceHeight;
+        $targetRatio = $targetWidth / $targetHeight;
+        $cropX = 0;
+        $cropY = 0;
+        $cropWidth = $sourceWidth;
+        $cropHeight = $sourceHeight;
+        if ($sourceRatio > $targetRatio) {
+            $cropWidth = max(1, (int)round($sourceHeight * $targetRatio));
+            $cropX = max(0, intdiv($sourceWidth - $cropWidth, 2));
+        } elseif ($sourceRatio < $targetRatio) {
+            $cropHeight = max(1, (int)round($sourceWidth / $targetRatio));
+            $cropY = max(0, intdiv($sourceHeight - $cropHeight, 2));
+        }
+
+        $copied = imagecopyresampled(
+            $target,
+            $source,
+            0,
+            0,
+            $cropX,
+            $cropY,
+            $targetWidth,
+            $targetHeight,
+            $cropWidth,
+            $cropHeight
+        );
+        if (!$copied) {
+            imagedestroy($source);
+            imagedestroy($target);
+            throw new OpenAIImagesAdapterException('OpenAI 图片尺寸校正失败', 502);
+        }
+
+        ob_start();
+        $encoded = match ($mimeType) {
+            'image/jpeg' => imagejpeg($target, null, 92),
+            'image/webp' => function_exists('imagewebp') ? imagewebp($target, null, 92) : false,
+            default => imagepng($target, null, 6),
+        };
+        $correctedBytes = ob_get_clean();
+        imagedestroy($source);
+        imagedestroy($target);
+
+        if (!$encoded || !is_string($correctedBytes) || strlen($correctedBytes) < 16) {
+            throw new OpenAIImagesAdapterException('无法编码校正后的图片', 502);
+        }
+        if (strlen($correctedBytes) > $this->maxDownloadBytes) {
+            throw new OpenAIImagesAdapterException('校正后的图片超过允许大小', 502);
+        }
+
+        return [$correctedBytes, $mimeType];
     }
 
     private function normalizeClientRequestId(?string $clientRequestId): string

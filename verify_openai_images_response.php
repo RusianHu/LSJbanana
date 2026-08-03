@@ -127,6 +127,13 @@ $assert(($legacyTier2K['size'] ?? '') === '2048x1152', '旧 tier 配置对 GPT I
 [$legacyModel] = $applyImageConfig($adapter, 'gpt-image-1', '16:9', '2K');
 $assert(($legacyModel['size'] ?? '') === '1536x1024', '旧图片模型继续使用兼容尺寸');
 
+$promptHintMethod = new ReflectionMethod(OpenAIImagesAdapter::class, 'applyPromptAspectRatioHint');
+$promptHintMethod->setAccessible(true);
+$hintedPrompt = $promptHintMethod->invoke($adapter, '用户要求一张横向全景图', '9:16');
+$assert(substr_count($hintedPrompt, 'STRICT CANVAS REQUIREMENT') === 2, '宽高比约束同时包裹用户提示词首尾');
+$assert(str_contains($hintedPrompt, '9:16 portrait'), '竖屏比例约束包含明确方向和宽高比');
+$assert($promptHintMethod->invoke($adapter, 'unchanged', 'invalid') === 'unchanged', '无效宽高比不修改提示词');
+
 $convertMethod = new ReflectionMethod(OpenAIImagesAdapter::class, 'convertToGeminiFormat');
 $convertMethod->setAccessible(true);
 $sizeAcceptableMethod = new ReflectionMethod(OpenAIImagesAdapter::class, 'isOutputSizeAcceptable');
@@ -146,6 +153,35 @@ $mismatched = $convertMethod->invoke($adapter, ['data' => [['b64_json' => $onePi
 $assert(isset($mismatched['candidates'][0]['content']['parts'][0]['inlineData']), '尺寸不匹配时默认保留有效图片');
 $assert(($mismatched['warnings'][0]['code'] ?? '') === 'OUTPUT_SIZE_MISMATCH', '尺寸不匹配时返回结构化警告');
 $assert(($mismatched['warnings'][0]['actual'] ?? null) === ['width' => 1, 'height' => 1], '尺寸警告包含实际像素');
+
+if (function_exists('imagecreatefromstring')) {
+    $correctionFixture = imagecreatetruecolor(4, 2);
+    $fixtureColor = imagecolorallocate($correctionFixture, 20, 120, 220);
+    imagefill($correctionFixture, 0, 0, $fixtureColor);
+    ob_start();
+    imagepng($correctionFixture);
+    $correctionBytes = ob_get_clean();
+    imagedestroy($correctionFixture);
+    $correctingAdapter = new OpenAIImagesAdapter([
+        'openai_images' => [
+            'base_url' => 'https://example.invalid',
+            'api_key' => 'test-key',
+            'public_base_url' => 'https://example.invalid/LSJbanana',
+            'output_size_correction' => 'cover',
+            'log_response_errors' => false,
+        ],
+    ]);
+    $corrected = $convertMethod->invoke(
+        $correctingAdapter,
+        ['data' => [['b64_json' => base64_encode((string)$correctionBytes)]]],
+        ['width' => 2, 'height' => 3]
+    );
+    $correctedBase64 = $corrected['candidates'][0]['content']['parts'][0]['inlineData']['data'] ?? '';
+    $correctedBytes = base64_decode((string)$correctedBase64, true);
+    $correctedSize = is_string($correctedBytes) ? @getimagesizefromstring($correctedBytes) : false;
+    $assert(is_array($correctedSize) && $correctedSize[0] === 2 && $correctedSize[1] === 3, 'cover 校正输出严格匹配目标像素');
+    $assert(($corrected['warnings'] ?? null) === [], '尺寸校正成功后不再返回尺寸失配告警');
+}
 
 $strictSizeAdapter = new OpenAIImagesAdapter([
     'openai_images' => [

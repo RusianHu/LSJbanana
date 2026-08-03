@@ -289,6 +289,9 @@ return [
         // 旧配置中的 size_mode=tier 可以保留，但不再发送非标准的 `size: 2K` / `aspect_ratio` 字段。
         'verify_output_size' => true,        // 校验实际图片像素，并在上游忽略 size 时返回警告
         'reject_output_size_mismatch' => false, // true 时尺寸不符将按失败处理；默认保留有效图片
+        // Sub2API 的 OpenAI OAuth 路由可能把精确 size 归一化为 auto；以下两项可补强比例并确定性校正像素。
+        'prompt_aspect_ratio_hint' => false, // true 时在提示词首尾加入严格画布比例约束
+        'output_size_correction' => 'off',   // off | cover；cover 需要 PHP GD，居中裁切/缩放为请求尺寸
         'verify_ssl' => true,
         'force_http1' => true,              // 部分中转站的编辑接口在 HTTP/2 下会断流
         'force_ipv4' => true,               // 避免部分 Cloudflare IPv6 路径在长时间图片请求中无响应断开
