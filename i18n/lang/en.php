@@ -844,8 +844,10 @@ return [
             'error' => [
                 'request_encoding_failed' => 'Failed to encode the image request: :error',
                 'request_failed' => 'Image upstream request failed: :error:trace',
+                'upstream_disconnected' => 'Image upstream disconnected before returning a result: :error:trace',
                 'request_failed_status' => 'Image upstream request failed (HTTP :code): :message:trace',
-                'gateway_timeout' => 'The only image channel did not finish within the gateway time limit. Please try again later:trace',
+                'gateway_timeout' => 'The only image channel did not finish within the gateway time limit (HTTP :code). Please try again later:trace',
+                'gateway_bad_gateway' => 'The upstream gateway for the only image channel returned an error (HTTP :code). Please try again later:trace',
                 'non_json_status' => 'Image upstream request failed (HTTP :code) and returned a non-JSON response (:content_type, :bytes bytes):trace',
                 'invalid_json' => 'Image upstream returned invalid JSON (HTTP :code, :content_type, :bytes bytes): :error:trace',
                 'invalid_shape' => 'Image upstream returned an unexpected JSON structure (HTTP :code, :content_type, :bytes bytes):trace',

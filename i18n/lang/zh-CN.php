@@ -844,8 +844,10 @@ return [
             'error' => [
                 'request_encoding_failed' => '图片请求编码失败: :error',
                 'request_failed' => '请求图片上游失败: :error:trace',
+                'upstream_disconnected' => '图片上游在返回结果前断开连接: :error:trace',
                 'request_failed_status' => '图片上游请求失败 (HTTP :code): :message:trace',
-                'gateway_timeout' => '唯一图片渠道在网关等待时限内未完成，请稍后重试:trace',
+                'gateway_timeout' => '唯一图片渠道在网关等待时限内未完成 (HTTP :code)，请稍后重试:trace',
+                'gateway_bad_gateway' => '唯一图片渠道的上游网关返回异常 (HTTP :code)，请稍后重试:trace',
                 'non_json_status' => '图片上游请求失败 (HTTP :code)，返回了非 JSON 响应（:content_type，:bytes 字节）:trace',
                 'invalid_json' => '图片上游返回了无效 JSON（HTTP :code，:content_type，:bytes 字节）: :error:trace',
                 'invalid_shape' => '图片上游返回了异常 JSON 结构（HTTP :code，:content_type，:bytes 字节）:trace',

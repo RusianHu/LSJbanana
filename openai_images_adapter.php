@@ -464,8 +464,11 @@ class OpenAIImagesAdapter
                 $clientRequestId,
                 $diagnostics
             );
+            $errorKey = $curlErrno === 52
+                ? 'adapter.openai_images.error.upstream_disconnected'
+                : 'adapter.openai_images.error.request_failed';
             throw new OpenAIImagesAdapterException(
-                __('adapter.openai_images.error.request_failed', [
+                __($errorKey, [
                     'error' => $errorMessage,
                     'trace' => $this->formatTraceSuffix($responseHeaders, $clientRequestId),
                 ]),
@@ -514,8 +517,12 @@ class OpenAIImagesAdapter
                     $clientRequestId,
                     $diagnostics
                 );
+                $translationKey = in_array($httpCode, [504, 524], true)
+                    ? 'adapter.openai_images.error.gateway_timeout'
+                    : 'adapter.openai_images.error.gateway_bad_gateway';
                 throw new OpenAIImagesAdapterException(
-                    __('adapter.openai_images.error.gateway_timeout', [
+                    __($translationKey, [
+                        'code' => $httpCode,
                         'trace' => $this->formatTraceSuffix($responseHeaders, $clientRequestId),
                     ]),
                     $this->normalizeHttpCode($httpCode)

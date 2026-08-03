@@ -219,7 +219,8 @@ try {
     $invoke('<html><title>Bad Gateway</title></html>', 502, 'text/html');
     $assert(false, '英文非 JSON 错误应抛出异常');
 } catch (OpenAIImagesAdapterException $e) {
-    $assert(str_contains($e->getMessage(), 'only image channel'), '英文网关超时文案可用');
+    $assert(str_contains($e->getMessage(), 'upstream gateway'), '英文 502 网关异常文案可用');
+    $assert(str_contains($e->getMessage(), 'HTTP 502'), '英文网关异常文案包含 HTTP 状态');
     $assert(str_contains($e->getMessage(), 'trace ID'), '英文错误包含追踪 ID');
 }
 $assert(
