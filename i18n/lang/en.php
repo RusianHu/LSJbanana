@@ -855,6 +855,9 @@ return [
                 'output_size_mismatch' => 'The image upstream returned :actual instead of :expected. It may have ignored the size parameter; with sub2api, check whether the group is actually routed through OpenAI OAuth/Codex.',
                 'trace_suffix' => '; trace ID: :id',
             ],
+            'warning' => [
+                'output_size_mismatch' => 'The image was preserved, but the upstream returned :actual instead of the requested :expected.',
+            ],
         ],
     ],
 

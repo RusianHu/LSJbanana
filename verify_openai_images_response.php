@@ -137,17 +137,57 @@ $assert(
 );
 $assert(
     $sizeAcceptableMethod->invoke($adapter, 1024, 576, ['width' => 2048, 'height' => 1152]) === false,
-    '仍然拒绝实际降为 1K 的输出'
+    '识别实际降为 1K 的输出尺寸不符'
 );
 $onePixelPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZqKQAAAAASUVORK5CYII=';
 $converted = $convertMethod->invoke($adapter, ['data' => [['b64_json' => $onePixelPng]]], ['width' => 1, 'height' => 1]);
 $assert(isset($converted['candidates'][0]['content']['parts'][0]['inlineData']), '返回尺寸匹配时正常转换图片响应');
+$mismatched = $convertMethod->invoke($adapter, ['data' => [['b64_json' => $onePixelPng]]], ['width' => 2, 'height' => 2]);
+$assert(isset($mismatched['candidates'][0]['content']['parts'][0]['inlineData']), '尺寸不匹配时默认保留有效图片');
+$assert(($mismatched['warnings'][0]['code'] ?? '') === 'OUTPUT_SIZE_MISMATCH', '尺寸不匹配时返回结构化警告');
+$assert(($mismatched['warnings'][0]['actual'] ?? null) === ['width' => 1, 'height' => 1], '尺寸警告包含实际像素');
+
+$strictSizeAdapter = new OpenAIImagesAdapter([
+    'openai_images' => [
+        'base_url' => 'https://example.invalid',
+        'api_key' => 'test-key',
+        'public_base_url' => 'https://example.invalid/LSJbanana',
+        'reject_output_size_mismatch' => true,
+        'log_response_errors' => false,
+    ],
+]);
 try {
-    $convertMethod->invoke($adapter, ['data' => [['b64_json' => $onePixelPng]]], ['width' => 2, 'height' => 2]);
-    $assert(false, '返回尺寸不匹配时应抛出异常');
+    $convertMethod->invoke($strictSizeAdapter, ['data' => [['b64_json' => $onePixelPng]]], ['width' => 2, 'height' => 2]);
+    $assert(false, '严格模式下尺寸不匹配时应抛出异常');
 } catch (OpenAIImagesAdapterException $e) {
-    $assert($e->getHttpCode() === 502, '返回尺寸不匹配映射为上游错误');
-    $assert(str_contains($e->getMessage(), '1x1') && str_contains($e->getMessage(), '2x2'), '尺寸不匹配错误包含实际与期望尺寸');
+    $assert($e->getHttpCode() === 502, '严格模式将尺寸不匹配映射为上游错误');
+    $assert(str_contains($e->getMessage(), '1x1') && str_contains($e->getMessage(), '2x2'), '严格模式错误包含实际与期望尺寸');
+}
+
+$onePixelGif = 'R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+try {
+    $convertMethod->invoke($adapter, ['data' => [['b64_json' => $onePixelGif]]], ['width' => 1, 'height' => 1]);
+    $assert(false, '不支持的图片格式不应输出');
+} catch (OpenAIImagesAdapterException $e) {
+    $assert(str_contains($e->getMessage(), '不支持的文件格式'), '非 PNG/JPEG/WebP 仍被安全拒绝');
+}
+
+try {
+    $smallLimitAdapter = new OpenAIImagesAdapter([
+        'openai_images' => [
+            'base_url' => 'https://example.invalid',
+            'api_key' => 'test-key',
+            'public_base_url' => 'https://example.invalid/LSJbanana',
+            'max_download_bytes' => 1024 * 1024,
+            'log_response_errors' => false,
+        ],
+    ]);
+    $convertMethod->invoke($smallLimitAdapter, ['data' => [[
+        'b64_json' => base64_encode(str_repeat('x', 1024 * 1024 + 1)),
+    ]]]);
+    $assert(false, '超出大小上限的图片不应输出');
+} catch (OpenAIImagesAdapterException $e) {
+    $assert(str_contains($e->getMessage(), '超过允许大小'), '过大图片仍被安全拒绝');
 }
 
 $invoke = static function (

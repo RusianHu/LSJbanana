@@ -21,6 +21,8 @@
     "generated_time": "生成耗时: {time} 秒",
     "save_notice_title": "请及时保存图片",
     "save_notice_desc": "生成的图片仅临时存储在服务器上，不会永久保留。建议立即下载保存到本地。",
+    "output_size_warning_title": "输出尺寸与请求不一致",
+    "output_size_warning_desc": "图片已保留，但上游返回 {actual}，未遵守请求的 {expected}。请按实际尺寸确认构图与方向。",
     "download_image": "下载图片",
     "search_sources": "搜索来源信息"
   },

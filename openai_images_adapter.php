@@ -46,6 +46,7 @@ class OpenAIImagesAdapter
     private bool $forceIpv4;
     private bool $logResponseErrors;
     private bool $verifyOutputSize;
+    private bool $rejectOutputSizeMismatch;
     private int $responsePreviewBytes;
 
     public function __construct(array $config)
@@ -66,6 +67,7 @@ class OpenAIImagesAdapter
         $this->verifyOutputSize = array_key_exists('verify_output_size', $provider)
             ? (bool)$provider['verify_output_size']
             : true;
+        $this->rejectOutputSizeMismatch = (bool)($provider['reject_output_size_mismatch'] ?? false);
         $this->responsePreviewBytes = max(0, min(2048, (int)($provider['response_preview_bytes'] ?? 256)));
 
         $quality = strtolower((string)($provider['quality'] ?? 'low'));
@@ -795,25 +797,52 @@ class OpenAIImagesAdapter
             [$imageBytes, $mimeType] = $this->downloadImage($url);
         }
 
+        if (is_string($imageBytes) && strlen($imageBytes) > $this->maxDownloadBytes) {
+            throw new OpenAIImagesAdapterException('OpenAI 图片响应超过允许大小', 502);
+        }
+
         $detectedDimensions = is_string($imageBytes) ? @getimagesizefromstring($imageBytes) : false;
         if (!is_string($imageBytes) || strlen($imageBytes) < 16 || $detectedDimensions === false) {
             throw new OpenAIImagesAdapterException('OpenAI 图片接口返回的图片文件无效', 502);
         }
 
+        $warnings = [];
         if ($this->verifyOutputSize && $expectedDimensions !== null) {
             $actualWidth = (int)($detectedDimensions[0] ?? 0);
             $actualHeight = (int)($detectedDimensions[1] ?? 0);
-            if (!$this->isOutputSizeAcceptable($actualWidth, $actualHeight, $expectedDimensions)) {
-                throw new OpenAIImagesAdapterException(
-                    __('adapter.openai_images.error.output_size_mismatch', [
-                        'expected' => $expectedDimensions['width'] . 'x' . $expectedDimensions['height'],
-                        'actual' => $actualWidth . 'x' . $actualHeight,
-                    ]),
-                    502
-                );
-            }
+            $sizeIsAcceptable = $this->isOutputSizeAcceptable(
+                $actualWidth,
+                $actualHeight,
+                $expectedDimensions
+            );
+            if (!$sizeIsAcceptable) {
+                $mismatchContext = [
+                    'expected' => $expectedDimensions['width'] . 'x' . $expectedDimensions['height'],
+                    'actual' => $actualWidth . 'x' . $actualHeight,
+                ];
+                if ($this->rejectOutputSizeMismatch) {
+                    throw new OpenAIImagesAdapterException(
+                        __('adapter.openai_images.error.output_size_mismatch', $mismatchContext),
+                        502
+                    );
+                }
 
-            if (
+                $warnings[] = [
+                    'code' => 'OUTPUT_SIZE_MISMATCH',
+                    'expected' => [
+                        'width' => (int)$expectedDimensions['width'],
+                        'height' => (int)$expectedDimensions['height'],
+                    ],
+                    'actual' => [
+                        'width' => $actualWidth,
+                        'height' => $actualHeight,
+                    ],
+                ];
+                error_log('[OpenAIImagesAdapter] Preserved output size mismatch: ' . json_encode(
+                    $mismatchContext,
+                    JSON_UNESCAPED_SLASHES
+                ));
+            } elseif (
                 $actualWidth !== $expectedDimensions['width']
                 || $actualHeight !== $expectedDimensions['height']
             ) {
@@ -829,6 +858,9 @@ class OpenAIImagesAdapter
             if (is_string($detected) && str_starts_with($detected, 'image/')) {
                 $mimeType = $detected;
             }
+        }
+        if (!in_array($mimeType, ['image/png', 'image/jpeg', 'image/webp'], true)) {
+            throw new OpenAIImagesAdapterException('OpenAI 图片接口返回了不支持的文件格式', 502);
         }
 
         $parts = [];
@@ -851,6 +883,7 @@ class OpenAIImagesAdapter
                 'finishReason' => 'STOP',
             ]],
             'usageMetadata' => $response['usage'] ?? null,
+            'warnings' => $warnings,
         ];
     }
 

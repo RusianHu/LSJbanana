@@ -1057,7 +1057,38 @@ if (!isset($responseData['candidates'][0])) {
 $resultImages = [];
 $resultText = '';
 $resultThoughts = [];
+$resultWarnings = [];
 $groundingMetadata = null;
+
+// 仅透传本站定义且字段完整的警告，避免把任意上游内容带到前端。
+foreach (array_slice(is_array($responseData['warnings'] ?? null) ? $responseData['warnings'] : [], 0, 5) as $warning) {
+    if (!is_array($warning) || ($warning['code'] ?? '') !== 'OUTPUT_SIZE_MISMATCH') {
+        continue;
+    }
+
+    $expectedWidth = (int)($warning['expected']['width'] ?? 0);
+    $expectedHeight = (int)($warning['expected']['height'] ?? 0);
+    $actualWidth = (int)($warning['actual']['width'] ?? 0);
+    $actualHeight = (int)($warning['actual']['height'] ?? 0);
+    if (
+        min($expectedWidth, $expectedHeight, $actualWidth, $actualHeight) <= 0
+        || max($expectedWidth, $expectedHeight, $actualWidth, $actualHeight) > 100000
+    ) {
+        continue;
+    }
+
+    $expected = $expectedWidth . 'x' . $expectedHeight;
+    $actual = $actualWidth . 'x' . $actualHeight;
+    $resultWarnings[] = [
+        'code' => 'OUTPUT_SIZE_MISMATCH',
+        'expected' => ['width' => $expectedWidth, 'height' => $expectedHeight],
+        'actual' => ['width' => $actualWidth, 'height' => $actualHeight],
+        'message' => __('adapter.openai_images.warning.output_size_mismatch', [
+            'expected' => $expected,
+            'actual' => $actual,
+        ]),
+    ];
+}
 
 // 提取 Grounding Metadata
 if (isset($responseData['candidates'][0]['groundingMetadata'])) {
@@ -1157,6 +1188,7 @@ echo json_encode([
     'images' => $resultImages,
     'text' => trim($resultText),
     'thoughts' => $resultThoughts,
+    'warnings' => $resultWarnings,
     'groundingMetadata' => $groundingMetadata,
     'billing' => $billingResult ? [
         'charged' => $billingResult['success'],

@@ -21,6 +21,8 @@
     "generated_time": "Generation time: {time} seconds",
     "save_notice_title": "Please save images promptly",
     "save_notice_desc": "Generated images are temporarily stored on the server and will not be kept permanently. Please download and save locally immediately.",
+    "output_size_warning_title": "Output size differs from request",
+    "output_size_warning_desc": "The image was preserved, but the upstream returned {actual} instead of the requested {expected}. Check the composition and orientation using the actual dimensions.",
     "download_image": "Download Image",
     "search_sources": "Search Sources"
   },

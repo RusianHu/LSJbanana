@@ -855,6 +855,9 @@ return [
                 'output_size_mismatch' => '图片上游返回了 :actual，期望 :expected。上游可能忽略了 size 参数；使用 sub2api 时请检查账号组是否实际走 OpenAI OAuth/Codex 路由。',
                 'trace_suffix' => '；追踪 ID: :id',
             ],
+            'warning' => [
+                'output_size_mismatch' => '图片已保留，但上游返回了 :actual，未遵守请求的 :expected。',
+            ],
         ],
     ],
 

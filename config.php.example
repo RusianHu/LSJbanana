@@ -287,7 +287,8 @@ return [
         'quality' => 'low',                 // auto | low | medium | high
         // GPT Image 2 会把界面选择的宽高比 + 1K/2K/4K 转换为官方 WIDTHxHEIGHT 尺寸。
         // 旧配置中的 size_mode=tier 可以保留，但不再发送非标准的 `size: 2K` / `aspect_ratio` 字段。
-        'verify_output_size' => true,        // 校验实际图片像素；上游忽略 size 时直接报错
+        'verify_output_size' => true,        // 校验实际图片像素，并在上游忽略 size 时返回警告
+        'reject_output_size_mismatch' => false, // true 时尺寸不符将按失败处理；默认保留有效图片
         'verify_ssl' => true,
         'force_http1' => true,              // 部分中转站的编辑接口在 HTTP/2 下会断流
         'force_ipv4' => true,               // 避免部分 Cloudflare IPv6 路径在长时间图片请求中无响应断开

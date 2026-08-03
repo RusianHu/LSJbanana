@@ -381,6 +381,54 @@ window.addEventListener('i18nReady', () => {
         container.classList.add('optimize-thoughts-hidden');
     }
 
+    function renderResultWarnings(warnings) {
+        if (!outputContainer || !Array.isArray(warnings)) {
+            return;
+        }
+
+        warnings.forEach((warning) => {
+            if (!warning || warning.code !== 'OUTPUT_SIZE_MISMATCH') {
+                return;
+            }
+
+            const expectedWidth = Number(warning.expected && warning.expected.width);
+            const expectedHeight = Number(warning.expected && warning.expected.height);
+            const actualWidth = Number(warning.actual && warning.actual.width);
+            const actualHeight = Number(warning.actual && warning.actual.height);
+            if (![expectedWidth, expectedHeight, actualWidth, actualHeight].every(Number.isInteger)) {
+                return;
+            }
+
+            const notice = document.createElement('div');
+            notice.className = 'output-item save-notice result-warning';
+            notice.setAttribute('role', 'status');
+
+            const content = document.createElement('div');
+            content.className = 'save-notice-content';
+
+            const icon = document.createElement('i');
+            icon.className = 'fas fa-exclamation-triangle';
+            icon.setAttribute('aria-hidden', 'true');
+
+            const text = document.createElement('div');
+            text.className = 'save-notice-text';
+            const title = document.createElement('strong');
+            title.textContent = window.i18n.t('index.output_size_warning_title');
+            const description = document.createElement('p');
+            description.textContent = window.i18n.t('index.output_size_warning_desc', {
+                actual: `${actualWidth}×${actualHeight}`,
+                expected: `${expectedWidth}×${expectedHeight}`
+            });
+
+            text.appendChild(title);
+            text.appendChild(description);
+            content.appendChild(icon);
+            content.appendChild(text);
+            notice.appendChild(content);
+            outputContainer.appendChild(notice);
+        });
+    }
+
     function splitThoughtsIntoStages(thoughts) {
         const stages = [];
         let stageIndex = 1;
@@ -632,6 +680,8 @@ window.addEventListener('i18nReady', () => {
                 if (data.billing && data.billing.balance !== null) {
                     updateBalanceDisplay(data.billing.balance);
                 }
+
+                renderResultWarnings(data.warnings);
 
                 if (data.thoughts && data.thoughts.length > 0) {
                     renderThinkingPanel(data.thoughts, finalTime);
