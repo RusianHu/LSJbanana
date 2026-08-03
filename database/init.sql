@@ -92,6 +92,51 @@ CREATE INDEX IF NOT EXISTS idx_consumption_created_at ON consumption_logs(create
 -- 操作类型索引
 CREATE INDEX IF NOT EXISTS idx_consumption_action ON consumption_logs(action);
 
+CREATE TABLE IF NOT EXISTS generation_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id VARCHAR(32) NOT NULL UNIQUE,
+    user_id INTEGER NOT NULL,
+    idempotency_key VARCHAR(64) NOT NULL,
+    action VARCHAR(20) NOT NULL,
+    provider VARCHAR(32) NOT NULL,
+    model_name VARCHAR(100) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'queued',
+    request_json TEXT NOT NULL,
+    result_json TEXT,
+    billing_amount DECIMAL(10, 4) NOT NULL,
+    balance_before DECIMAL(10, 2) NOT NULL,
+    balance_after DECIMAL(10, 2) NOT NULL,
+    billing_state VARCHAR(20) NOT NULL DEFAULT 'deducted',
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 3,
+    next_attempt_at DATETIME,
+    worker_id VARCHAR(100),
+    locked_at DATETIME,
+    heartbeat_at DATETIME,
+    error_code VARCHAR(64),
+    error_message TEXT,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    started_at DATETIME,
+    completed_at DATETIME,
+    UNIQUE (user_id, idempotency_key),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_generation_jobs_dispatch ON generation_jobs(status, next_attempt_at, id);
+CREATE INDEX IF NOT EXISTS idx_generation_jobs_user_created ON generation_jobs(user_id, created_at);
+
+CREATE TABLE IF NOT EXISTS generation_job_inputs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id INTEGER NOT NULL,
+    position INTEGER NOT NULL,
+    mime_type VARCHAR(64) NOT NULL,
+    image_data BLOB NOT NULL,
+    created_at DATETIME NOT NULL,
+    UNIQUE (job_id, position),
+    FOREIGN KEY (job_id) REFERENCES generation_jobs(id) ON DELETE CASCADE
+);
+
 -- 登录日志表 (可选，用于安全审计)
 CREATE TABLE IF NOT EXISTS login_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

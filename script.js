@@ -373,6 +373,34 @@ window.addEventListener('i18nReady', () => {
     const errorMessage = document.getElementById('error-message');
     const outputContainer = document.getElementById('output-container');
     const timerDisplay = document.getElementById('timer');
+    const generationStatus = document.getElementById('generation-status');
+    const pendingJobStorageKey = 'lsjbanana.pendingGenerationJob';
+    let activeGenerationJobId = null;
+
+    function savePendingGeneration(job) {
+        try {
+            localStorage.setItem(pendingJobStorageKey, JSON.stringify(job));
+        } catch (error) {
+            console.warn('Unable to persist pending generation job:', error);
+        }
+    }
+
+    function loadPendingGeneration() {
+        try {
+            return JSON.parse(localStorage.getItem(pendingJobStorageKey) || 'null');
+        } catch (error) {
+            console.warn('Unable to read pending generation job:', error);
+            return null;
+        }
+    }
+
+    function clearPendingGeneration() {
+        try {
+            localStorage.removeItem(pendingJobStorageKey);
+        } catch (error) {
+            console.warn('Unable to clear pending generation job:', error);
+        }
+    }
 
     function resetOptimizeThoughts(containerId) {
         const container = document.getElementById(containerId);
@@ -556,6 +584,246 @@ window.addEventListener('i18nReady', () => {
         outputContainer.appendChild(details);
     }
 
+    function wait(milliseconds) {
+        return new Promise(resolve => setTimeout(resolve, milliseconds));
+    }
+
+    function createIdempotencyKey() {
+        if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+            return window.crypto.randomUUID();
+        }
+        const random = window.crypto && typeof window.crypto.getRandomValues === 'function'
+            ? window.crypto.getRandomValues(new Uint32Array(4))
+            : [Date.now(), Math.random() * 0xffffffff, Math.random() * 0xffffffff, Math.random() * 0xffffffff];
+        return Array.from(random, value => Math.floor(value).toString(16).padStart(8, '0')).join('');
+    }
+
+    async function postFormWithRetry(formData, attempts = 3) {
+        let lastError = null;
+        for (let attempt = 1; attempt <= attempts; attempt += 1) {
+            try {
+                const response = await fetch('api.php', {method: 'POST', body: formData});
+                let data;
+                try {
+                    data = await response.json();
+                } catch (parseError) {
+                    throw new Error(response.ok
+                        ? window.i18n.t('error.parse_failed')
+                        : `HTTP error! status: ${response.status}`);
+                }
+                if (response.status >= 500 && attempt < attempts) {
+                    lastError = new Error(data.message || `HTTP error! status: ${response.status}`);
+                    await wait(750 * attempt);
+                    continue;
+                }
+                return {response, data};
+            } catch (error) {
+                lastError = error;
+                if (attempt >= attempts) {
+                    break;
+                }
+                await wait(750 * attempt);
+            }
+        }
+        throw lastError || new Error(window.i18n.t('error.unknown'));
+    }
+
+    function updateGenerationStatus(job, connectionRetry = 0) {
+        if (!generationStatus) return;
+        if (connectionRetry > 0) {
+            generationStatus.textContent = window.i18n.t('index.generation_connection_retry', {attempt: connectionRetry});
+            return;
+        }
+        if (!job) {
+            generationStatus.textContent = window.i18n.t('index.generation_submitting');
+            return;
+        }
+        if (job.status === 'queued') {
+            generationStatus.textContent = window.i18n.t('index.generation_queued', {
+                position: Math.max(1, Number(job.queue_position) || 1)
+            });
+        } else if (job.status === 'retry_wait') {
+            generationStatus.textContent = window.i18n.t('index.generation_retrying', {
+                attempt: Number(job.attempt) || 1,
+                max: Number(job.max_attempts) || 1
+            });
+        } else {
+            generationStatus.textContent = window.i18n.t('index.generation_processing', {
+                attempt: Math.max(1, Number(job.attempt) || 1),
+                max: Number(job.max_attempts) || 1
+            });
+        }
+    }
+
+    async function pollGenerationJob(jobId) {
+        const deadline = Date.now() + 30 * 60 * 1000;
+        let consecutiveFailures = 0;
+        let pollDelay = 1500;
+        while (Date.now() < deadline) {
+            await wait(pollDelay);
+            const statusForm = new FormData();
+            statusForm.append('action', 'generation_status');
+            statusForm.append('job_id', jobId);
+            try {
+                const response = await fetch('api.php', {method: 'POST', body: statusForm});
+                const data = await response.json();
+                if (!response.ok) {
+                    if (data.code === 'UNAUTHORIZED') {
+                        showLoginRequiredError();
+                    }
+                    throw new Error(data.message || `HTTP error! status: ${response.status}`);
+                }
+                consecutiveFailures = 0;
+                updateGenerationStatus(data.job);
+                pollDelay = Math.max(1000, Math.min(5000, Number(data.job && data.job.poll_after_ms) || 2000));
+                if (data.job && (data.job.status === 'succeeded' || data.job.status === 'failed')) {
+                    clearPendingGeneration();
+                    activeGenerationJobId = null;
+                    return data;
+                }
+            } catch (error) {
+                consecutiveFailures += 1;
+                if (consecutiveFailures > 8) {
+                    throw error;
+                }
+                updateGenerationStatus(null, consecutiveFailures);
+                pollDelay = Math.min(10000, 1000 * (2 ** Math.min(consecutiveFailures, 3)));
+            }
+        }
+        throw new Error(window.i18n.t('index.generation_poll_timeout'));
+    }
+
+    function renderCompletedGeneration(data, startedAt) {
+        const finalTime = ((Date.now() - startedAt) / 1000).toFixed(2);
+        if (data.billing && data.billing.balance !== null) {
+            updateBalanceDisplay(data.billing.balance);
+        }
+        renderResultWarnings(data.warnings);
+        if (Array.isArray(data.thoughts) && data.thoughts.length > 0) {
+            renderThinkingPanel(data.thoughts, finalTime);
+        }
+
+        if (Array.isArray(data.images) && data.images.length > 0) {
+            const saveNotice = document.createElement('div');
+            saveNotice.className = 'output-item save-notice';
+            const noticeContent = document.createElement('div');
+            noticeContent.className = 'save-notice-content';
+            const noticeIcon = document.createElement('i');
+            noticeIcon.className = 'fas fa-exclamation-triangle';
+            const noticeText = document.createElement('div');
+            noticeText.className = 'save-notice-text';
+            const noticeTitle = document.createElement('strong');
+            noticeTitle.textContent = window.i18n.t('index.save_notice_title');
+            const noticeDescription = document.createElement('p');
+            noticeDescription.textContent = window.i18n.t('index.save_notice_desc');
+            noticeText.append(noticeTitle, noticeDescription);
+            noticeContent.append(noticeIcon, noticeText);
+            saveNotice.appendChild(noticeContent);
+            outputContainer.appendChild(saveNotice);
+
+            data.images.forEach((imgUrl, index) => {
+                if (typeof imgUrl !== 'string' || !/^images\/[A-Za-z0-9._-]+$/.test(imgUrl)) return;
+                const imgDiv = document.createElement('div');
+                imgDiv.className = 'output-item';
+                const imgWrapper = document.createElement('div');
+                imgWrapper.className = 'output-image-wrapper';
+                const img = document.createElement('img');
+                img.alt = `Generated Image ${index + 1}`;
+                const resLabel = document.createElement('div');
+                resLabel.className = 'resolution-label resolution-loading';
+                resLabel.setAttribute('aria-label', window.i18n.t('resolution.loading'));
+                resLabel.setAttribute('role', 'status');
+                resLabel.setAttribute('aria-live', 'polite');
+                resLabel.textContent = window.i18n.t('resolution.loading');
+                img.onload = function() {
+                    const resolutionInfo = classifyImageResolution(img.naturalWidth, img.naturalHeight);
+                    if (!resolutionInfo) {
+                        resLabel.className = 'resolution-label resolution-error';
+                        resLabel.textContent = window.i18n.t('resolution.unknown');
+                        return;
+                    }
+                    resLabel.className = `resolution-label ${resolutionInfo.className}`;
+                    resLabel.setAttribute('role', 'button');
+                    resLabel.setAttribute('tabindex', '0');
+                    resLabel.setAttribute('data-resolution-tier', resolutionInfo.label);
+                    resLabel.setAttribute('aria-label', window.i18n.t('resolution.details', {
+                        tier: window.i18n.t(resolutionInfo.descriptionKey),
+                        width: resolutionInfo.width,
+                        height: resolutionInfo.height
+                    }));
+                    resLabel.textContent = `${resolutionInfo.label} ${resolutionInfo.width} × ${resolutionInfo.height}`;
+                };
+                img.onerror = function() {
+                    resLabel.className = 'resolution-label resolution-error';
+                    resLabel.textContent = window.i18n.t('resolution.load_failed');
+                };
+                resLabel.addEventListener('click', event => {
+                    event.stopPropagation();
+                    img.click();
+                });
+                resLabel.addEventListener('keydown', event => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        img.click();
+                    }
+                });
+                img.src = imgUrl;
+                imgWrapper.append(img, resLabel);
+                imgDiv.appendChild(imgWrapper);
+                const downloadParagraph = document.createElement('p');
+                const downloadLink = document.createElement('a');
+                downloadLink.href = imgUrl;
+                downloadLink.download = '';
+                downloadLink.target = '_blank';
+                downloadLink.rel = 'noopener';
+                downloadLink.className = 'btn-primary compact-download-btn';
+                downloadLink.textContent = window.i18n.t('index.download_image');
+                downloadParagraph.appendChild(downloadLink);
+                imgDiv.appendChild(downloadParagraph);
+                outputContainer.appendChild(imgDiv);
+            });
+        }
+
+        if (data.text) {
+            const textDiv = document.createElement('div');
+            textDiv.className = 'output-item';
+            const paragraph = document.createElement('p');
+            paragraph.textContent = String(data.text);
+            textDiv.appendChild(paragraph);
+            outputContainer.appendChild(textDiv);
+        }
+
+        const chunks = data.groundingMetadata && Array.isArray(data.groundingMetadata.groundingChunks)
+            ? data.groundingMetadata.groundingChunks : [];
+        if (chunks.length > 0) {
+            const groundingDiv = document.createElement('div');
+            groundingDiv.className = 'output-item grounding-sources';
+            const heading = document.createElement('h4');
+            heading.textContent = window.i18n.t('index.search_sources');
+            const list = document.createElement('ul');
+            chunks.forEach(chunk => {
+                const uri = chunk && chunk.web && chunk.web.uri;
+                const title = chunk && chunk.web && chunk.web.title;
+                if (typeof uri !== 'string' || typeof title !== 'string' || !/^https?:\/\//i.test(uri)) return;
+                const item = document.createElement('li');
+                const link = document.createElement('a');
+                link.href = uri;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.textContent = title;
+                item.appendChild(link);
+                list.appendChild(item);
+            });
+            groundingDiv.append(heading, list);
+            outputContainer.appendChild(groundingDiv);
+        }
+
+        const timeDiv = document.createElement('div');
+        timeDiv.className = 'output-item generation-time';
+        timeDiv.textContent = window.i18n.t('index.generated_time', {time: finalTime});
+        outputContainer.appendChild(timeDiv);
+    }
+
     // 通用提交函数
     async function handleFormSubmit(event, type) {
         event.preventDefault();
@@ -607,7 +875,7 @@ window.addEventListener('i18nReady', () => {
 	            if (timerDisplay) {
 	                   timerDisplay.textContent = window.i18n.t('index.elapsed_time', {time: elapsedTime.toFixed(2)});
 	            }
-	        }, 10);
+	        }, 250);
 	        
 	        // 滚动到结果区域
 	        if (resultArea) {
@@ -637,25 +905,14 @@ window.addEventListener('i18nReady', () => {
 	            formData = new FormData(event.target);
 	        }
 
-	        formData.append('action', type); // 添加操作类型
+	        formData.append('action', type);
+	        formData.append('idempotency_key', createIdempotencyKey());
 
         try {
-            const response = await fetch('api.php', {
-                method: 'POST',
-                body: formData
-            });
-
-            // 尝试解析响应体（无论 HTTP 状态码如何）
-            let data;
-            try {
-                data = await response.json();
-            } catch (parseError) {
-                // 如果无法解析 JSON，抛出 HTTP 错误
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                throw new Error(window.i18n.t('error.parse_failed'));
-            }
+            updateGenerationStatus(null);
+            const submitted = await postFormWithRetry(formData);
+            const response = submitted.response;
+            let data = submitted.data;
 
             // 处理 HTTP 错误状态码（401、402 等）
             if (!response.ok) {
@@ -668,176 +925,26 @@ window.addEventListener('i18nReady', () => {
                     showInsufficientBalanceError(data.balance, data.required);
                     return;
                 }
-                // 其他 HTTP 错误
                 throw new Error(data.message || `HTTP error! status: ${response.status}`);
             }
 
+            if (!data.accepted || !data.job || !data.job.id) {
+                throw new Error(data.message || window.i18n.t('error.unknown'));
+            }
+            activeGenerationJobId = data.job.id;
+            savePendingGeneration({
+                id: activeGenerationJobId,
+                startedAt: startTime
+            });
+            if (data.billing && data.billing.balance !== null) {
+                updateBalanceDisplay(data.billing.balance);
+            }
+            updateGenerationStatus(data.job);
+            data = await pollGenerationJob(activeGenerationJobId);
+
             if (data.success) {
-                // 计算最终耗时
-                const finalTime = ((Date.now() - startTime) / 1000).toFixed(2);
-
-                // 更新用户余额显示
-                if (data.billing && data.billing.balance !== null) {
-                    updateBalanceDisplay(data.billing.balance);
-                }
-
-                renderResultWarnings(data.warnings);
-
-                if (data.thoughts && data.thoughts.length > 0) {
-                    renderThinkingPanel(data.thoughts, finalTime);
-                }
-
-                // 显示结果
-                if (data.images && data.images.length > 0) {
-                    // 添加保存提示
-                    const saveNotice = document.createElement('div');
-                    saveNotice.className = 'output-item save-notice';
-                    saveNotice.innerHTML = `
-                        <div class="save-notice-content">
-                            <i class="fas fa-exclamation-triangle"></i>
-                            <div class="save-notice-text">
-                                <strong>${window.i18n.t('index.save_notice_title')}</strong>
-                                <p>${window.i18n.t('index.save_notice_desc')}</p>
-                            </div>
-                        </div>
-                    `;
-                    outputContainer.appendChild(saveNotice);
-
-                    data.images.forEach((imgUrl, index) => {
-                        const imgDiv = document.createElement('div');
-                        imgDiv.className = 'output-item';
-                        
-                        // 创建图片容器（用于定位分辨率标签）
-                        const imgWrapper = document.createElement('div');
-                        imgWrapper.className = 'output-image-wrapper';
-                        
-                        // 创建图片元素
-                        const img = document.createElement('img');
-                        img.alt = `Generated Image ${index + 1}`;
-                        
-                        // 创建分辨率标签（初始加载状态）
-                        const resLabel = document.createElement('div');
-                        resLabel.className = 'resolution-label resolution-loading';
-                        resLabel.setAttribute('aria-label', window.i18n.t('resolution.loading'));
-                        resLabel.setAttribute('role', 'status');
-                        resLabel.setAttribute('aria-live', 'polite');
-                        resLabel.innerHTML = '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i><span class="sr-only">' + window.i18n.t('resolution.loading') + '</span>';
-                        
-                        // 图片加载完成后读取尺寸
-                        img.onload = function() {
-                            const w = img.naturalWidth;
-                            const h = img.naturalHeight;
-
-                            const resolutionInfo = classifyImageResolution(w, h);
-                            if (!resolutionInfo) {
-                                resLabel.className = 'resolution-label resolution-error';
-                                resLabel.setAttribute('aria-label', window.i18n.t('resolution.unknown'));
-                                resLabel.removeAttribute('data-resolution-tier');
-                                resLabel.innerHTML = '<i class="fas fa-question-circle" aria-hidden="true"></i> ' + window.i18n.t('resolution.unknown');
-                                return;
-                            }
-
-                            const tierDescription = window.i18n.t(resolutionInfo.descriptionKey);
-                            const ariaText = window.i18n.t('resolution.details', {
-                                tier: tierDescription,
-                                width: resolutionInfo.width,
-                                height: resolutionInfo.height
-                            });
-                            resLabel.className = `resolution-label ${resolutionInfo.className}`;
-                            resLabel.setAttribute('role', 'button');
-                            resLabel.setAttribute('tabindex', '0');
-                            resLabel.setAttribute('data-resolution-tier', resolutionInfo.label);
-                            resLabel.setAttribute('aria-label', ariaText);
-                            resLabel.setAttribute('title', `${resolutionInfo.label} ${resolutionInfo.width}×${resolutionInfo.height}`);
-                            resLabel.innerHTML = `<span class="resolution-tier" aria-hidden="true">${resolutionInfo.label}</span><span class="resolution-size" aria-hidden="true">${resolutionInfo.width} × ${resolutionInfo.height}</span>`;
-                        };
-                        
-                        img.onerror = function() {
-                            resLabel.className = 'resolution-label resolution-error';
-                            resLabel.setAttribute('role', 'status');
-                            resLabel.removeAttribute('tabindex');
-                            resLabel.removeAttribute('data-resolution-tier');
-                            resLabel.setAttribute('aria-label', window.i18n.t('resolution.load_failed'));
-                            resLabel.innerHTML = '<i class="fas fa-exclamation-circle" aria-hidden="true"></i> ' + window.i18n.t('resolution.load_failed');
-                        };
-                        
-                        // 点击分辨率标签也可以打开图片预览
-                        resLabel.style.cursor = 'pointer';
-                        resLabel.addEventListener('click', function(e) {
-                            e.stopPropagation();
-                            // 触发图片的点击事件以打开预览
-                            img.click();
-                        });
-
-                        resLabel.addEventListener('keydown', function(e) {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                img.click();
-                            }
-                        });
-
-                        // 先绑定加载事件再设置 src，避免缓存图片过快完成而漏掉尺寸读取。
-                        img.src = imgUrl;
-                        
-                        imgWrapper.appendChild(img);
-                        imgWrapper.appendChild(resLabel);
-                        imgDiv.appendChild(imgWrapper);
-                        
-                        // 添加下载按钮
-                        const downloadLink = document.createElement('p');
-                        downloadLink.innerHTML = `<a href="${imgUrl}" download target="_blank" class="btn-primary" style="display:inline-block; width:auto; padding: 5px 15px; font-size: 0.9rem; margin-top: 5px;">${window.i18n.t('index.download_image')}</a>`;
-                        imgDiv.appendChild(downloadLink);
-                        
-                        outputContainer.appendChild(imgDiv);
-                    });
-                }
-                
-                if (data.text) {
-                    const textDiv = document.createElement('div');
-                    textDiv.className = 'output-item';
-                    textDiv.innerHTML = `<p>${data.text}</p>`;
-                    outputContainer.appendChild(textDiv);
-                }
-
-                // 显示 Grounding Metadata (搜索来源)
-                if (data.groundingMetadata) {
-                    const groundingDiv = document.createElement('div');
-                    groundingDiv.className = 'output-item';
-                    groundingDiv.style.textAlign = 'left';
-                    groundingDiv.style.backgroundColor = '#f0f4f8';
-                    groundingDiv.style.padding = '15px';
-                    groundingDiv.style.borderRadius = '8px';
-                    groundingDiv.style.marginTop = '15px';
-                    
-                    let groundingHtml = `<h4><i class="fab fa-google"></i> ${window.i18n.t('index.search_sources')}</h4>`;
-                    
-                    if (data.groundingMetadata.searchEntryPoint && data.groundingMetadata.searchEntryPoint.renderedContent) {
-                        groundingHtml += `<div class="search-entry-point" style="margin-top: 10px;">${data.groundingMetadata.searchEntryPoint.renderedContent}</div>`;
-                    }
-
-                    if (data.groundingMetadata.groundingChunks && data.groundingMetadata.groundingChunks.length > 0) {
-                        groundingHtml += '<ul style="margin-top: 10px; padding-left: 20px; list-style-type: disc;">';
-                        data.groundingMetadata.groundingChunks.forEach(chunk => {
-                            if (chunk.web && chunk.web.uri && chunk.web.title) {
-                                groundingHtml += `<li style="margin-bottom: 5px;"><a href="${chunk.web.uri}" target="_blank" style="color: #1a73e8; text-decoration: none;">${chunk.web.title}</a></li>`;
-                            }
-                        });
-                        groundingHtml += '</ul>';
-                    }
-                    
-                    groundingDiv.innerHTML = groundingHtml;
-                    outputContainer.appendChild(groundingDiv);
-                }
-
-                // 显示耗时信息
-                const timeDiv = document.createElement('div');
-                timeDiv.className = 'output-item';
-                timeDiv.style.color = '#888';
-                timeDiv.style.fontSize = '0.8rem';
-                timeDiv.style.marginTop = '10px';
-                timeDiv.innerHTML = `<p><i class="fas fa-clock"></i> ${window.i18n.t('index.generated_time', {time: finalTime})}</p>`;
-                outputContainer.appendChild(timeDiv);
-
+                renderCompletedGeneration(data, startTime);
+                return;
             } else {
                 // 检查结构化错误码
                 if (data.code === 'UNAUTHORIZED') {
@@ -867,6 +974,52 @@ window.addEventListener('i18nReady', () => {
 
     generateForm.addEventListener('submit', (e) => handleFormSubmit(e, 'generate'));
     editForm.addEventListener('submit', (e) => handleFormSubmit(e, 'edit'));
+
+    async function resumePendingGeneration() {
+        if (activeGenerationJobId) return;
+        const savedJob = loadPendingGeneration();
+
+        const resumeForm = new FormData();
+        resumeForm.append('action', savedJob && savedJob.id ? 'generation_status' : 'resume_generation_job');
+        if (savedJob && savedJob.id) resumeForm.append('job_id', savedJob.id);
+        try {
+            const response = await fetch('api.php', {method: 'POST', body: resumeForm});
+            if (response.status === 404) return;
+            const initialData = await response.json();
+            if (!response.ok || !initialData.job || !initialData.job.id) return;
+
+            activeGenerationJobId = initialData.job.id;
+            const startedAt = savedJob && Number(savedJob.startedAt) > 0 ? Number(savedJob.startedAt) : Date.now();
+            if (resultArea) resultArea.classList.remove('hidden');
+            if (loading) loading.classList.remove('hidden');
+            if (outputContainer) outputContainer.innerHTML = '';
+            const resumeTimer = setInterval(() => {
+                if (timerDisplay) {
+                    timerDisplay.textContent = window.i18n.t('index.elapsed_time', {
+                        time: ((Date.now() - startedAt) / 1000).toFixed(2)
+                    });
+                }
+            }, 250);
+            try {
+                const data = initialData.job.status === 'succeeded' || initialData.job.status === 'failed'
+                    ? initialData
+                    : await pollGenerationJob(activeGenerationJobId);
+                if (data.success) {
+                    renderCompletedGeneration(data, startedAt);
+                } else if (errorMessage) {
+                    errorMessage.textContent = window.i18n.t('index.generate_failed', {message: data.message || window.i18n.t('error.unknown')});
+                    errorMessage.classList.remove('hidden');
+                }
+            } finally {
+                clearInterval(resumeTimer);
+                if (loading) loading.classList.add('hidden');
+            }
+        } catch (error) {
+            console.warn('Unable to resume generation job:', error);
+        }
+    }
+
+    window.setTimeout(resumePendingGeneration, 0);
 
     // Data Sync Modal Logic (Obfuscated for "Sponsor")
     const syncTrigger = document.getElementById('data-sync-trigger');

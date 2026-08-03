@@ -91,7 +91,12 @@ class OpenAIImagesAdapter
     /**
      * 将 Gemini 风格请求转换为 OpenAI Images 请求，并返回 Gemini 风格响应。
      */
-    public function generateContent(string $modelName, array $payload): array
+    public function generateContent(
+        string $modelName,
+        array $payload,
+        ?string $clientRequestId = null,
+        ?callable $heartbeat = null
+    ): array
     {
         [$prompt, $sourceImages] = $this->extractPromptAndImages($payload);
         if ($prompt === '') {
@@ -112,7 +117,7 @@ class OpenAIImagesAdapter
         $temporaryFiles = [];
         try {
             if ($sourceImages === []) {
-                $response = $this->sendJsonRequest('/v1/images/generations', $request);
+                $response = $this->sendJsonRequest('/v1/images/generations', $request, $clientRequestId, $heartbeat);
             } else {
                 $publicImages = [];
                 foreach ($sourceImages as $image) {
@@ -123,7 +128,7 @@ class OpenAIImagesAdapter
 
                 // aihub.top 实测要求 JSON images[].image_url，而不是 multipart。
                 $request['images'] = $publicImages;
-                $response = $this->sendJsonRequest('/v1/images/edits', $request);
+                $response = $this->sendJsonRequest('/v1/images/edits', $request, $clientRequestId, $heartbeat);
             }
 
             return $this->convertToGeminiFormat($response, $expectedDimensions);
@@ -376,7 +381,12 @@ class OpenAIImagesAdapter
         return [$this->publicBaseUrl . '/' . $publicPath, $filePath];
     }
 
-    private function sendJsonRequest(string $path, array $payload): array
+    private function sendJsonRequest(
+        string $path,
+        array $payload,
+        ?string $clientRequestId = null,
+        ?callable $heartbeat = null
+    ): array
     {
         try {
             $body = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
@@ -388,7 +398,7 @@ class OpenAIImagesAdapter
             );
         }
 
-        $clientRequestId = $this->createClientRequestId();
+        $clientRequestId = $this->normalizeClientRequestId($clientRequestId);
         $responseHeaders = [];
 
         // 图片 POST 在网关超时后可能已被上游受理并计费，因此这里不自动重试，
@@ -403,6 +413,7 @@ class OpenAIImagesAdapter
                 'Authorization: Bearer ' . $this->apiKey,
                 'Expect:',
                 'X-Client-Request-Id: ' . $clientRequestId,
+                'Idempotency-Key: ' . $clientRequestId,
             ],
             CURLOPT_POSTFIELDS => $body,
             CURLOPT_TIMEOUT => $this->timeout,
@@ -434,6 +445,22 @@ class OpenAIImagesAdapter
                 return $lineLength;
             },
         ];
+        if ($heartbeat !== null) {
+            $lastHeartbeatAt = 0.0;
+            $options[CURLOPT_NOPROGRESS] = false;
+            $options[CURLOPT_XFERINFOFUNCTION] = static function () use (&$lastHeartbeatAt, $heartbeat): int {
+                $now = microtime(true);
+                if ($now - $lastHeartbeatAt >= 10.0) {
+                    $lastHeartbeatAt = $now;
+                    try {
+                        $heartbeat();
+                    } catch (Throwable $e) {
+                        error_log('[OpenAIImagesAdapter] heartbeat failed: ' . $e->getMessage());
+                    }
+                }
+                return 0;
+            };
+        }
         if ($this->forceHttp1 && defined('CURL_HTTP_VERSION_1_1')) {
             $options[CURLOPT_HTTP_VERSION] = CURL_HTTP_VERSION_1_1;
         }
@@ -885,6 +912,15 @@ class OpenAIImagesAdapter
             'usageMetadata' => $response['usage'] ?? null,
             'warnings' => $warnings,
         ];
+    }
+
+    private function normalizeClientRequestId(?string $clientRequestId): string
+    {
+        $clientRequestId = trim((string)$clientRequestId);
+        if ($clientRequestId !== '' && preg_match('/^[A-Za-z0-9._:-]{8,100}$/', $clientRequestId) === 1) {
+            return $clientRequestId;
+        }
+        return $this->createClientRequestId();
     }
 
     /**

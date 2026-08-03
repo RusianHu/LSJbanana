@@ -363,7 +363,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
                 <h2><?php _e('index.result_title'); ?></h2>
                 <div id="loading" class="hidden">
                     <div class="spinner"></div>
-                    <p><?php _e('index.generating'); ?></p>
+                    <p id="generation-status" aria-live="polite"><?php _e('index.generating'); ?></p>
                     <p id="timer" style="font-weight: bold; color: #666; margin-top: 10px;"><?php _e('index.elapsed_time', ['time' => '0.00']); ?></p>
                 </div>
                 <div id="error-message" class="hidden error-box"></div>

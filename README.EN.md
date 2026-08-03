@@ -68,6 +68,8 @@ mindmap
         Session hardening
       Concurrency Safety
         Atomic deduction
+        Persistent job queue
+        Bounded background retries
 ```
 
 ## Quick Start
@@ -106,10 +108,13 @@ cp config.php.example config.php
 # 3. When upgrading, back up the SQLite file and migrate its data
 php migrate_sqlite_to_mysql.php
 
-# 4. Fill in API/payment settings and start the server
+# 4. Fill in API/payment settings and start the web server
 php -S 127.0.0.1:8000
 
-# 5. Access the application
+# 5. Start the image worker in another terminal (use systemd in production)
+php generation_worker.php
+
+# 6. Access the application
 # Frontend: http://127.0.0.1:8000
 # Admin: http://127.0.0.1:8000/admin
 ```
@@ -126,6 +131,7 @@ Edit `config.php`, the system provides fine-grained feature control:
 | `api_provider` | `native` (direct) / `openai_compatible` (relay) / `gemini_proxy` (SSE proxy) |
 | `image_api_provider` | Dedicated image route; may use `openai_images` without changing prompt-optimization/text calls |
 | `openai_images` | OpenAI `/v1/images/generations` and `/v1/images/edits` settings; GPT Image 2 maps aspect ratio plus the 1K / 2K / 4K tier to an official `WIDTHxHEIGHT`; `verify_output_size` reports upstream size deviations, `reject_output_size_mismatch` enables strict rejection, and `force_ipv4` avoids long-lived connection resets on some IPv6 paths |
+| `generation_jobs` | Persistent image jobs, worker polling, maximum attempts, and retry delays; browsers submit and poll while long requests run independently of Cloudflare/FastCGI connections |
 | `active_image_model` | `pro` / `flash` / `gpt_image_2`, selected by deployment configuration |
 | `thinking_config` | Thinking mode config, supports `reasoning_content` passthrough |
 | `speech_to_text` | Speech-to-text config, defaults to `gemini-2.5-flash` |
@@ -202,6 +208,19 @@ location ~ \.php$ {
     fastcgi_buffer_size 32k;
 }
 ```
+
+### Background Worker (Required in Production)
+
+The repository includes `lsjbanana-generation-worker.service`. Verify its PHP and project paths, then install it:
+
+```bash
+cp lsjbanana-generation-worker.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now lsjbanana-generation-worker.service
+systemctl status lsjbanana-generation-worker.service
+```
+
+The worker executes one image job at a time. Network disconnects, 429s, 5xx responses, and gateway timeouts receive bounded retries configured by `generation_jobs.retry_delays`. Enqueue atomically reserves the charge, success settles exactly once, and terminal failure refunds exactly once. A stable browser idempotency key prevents transport retries from creating duplicate jobs.
 
 ## Tech Stack Details
 

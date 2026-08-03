@@ -78,6 +78,53 @@ CREATE TABLE IF NOT EXISTS consumption_logs (
     CONSTRAINT fk_consumption_user FOREIGN KEY (user_id) REFERENCES users (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS generation_jobs (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    public_id CHAR(32) NOT NULL,
+    user_id BIGINT UNSIGNED NOT NULL,
+    idempotency_key VARCHAR(64) NOT NULL,
+    action VARCHAR(20) NOT NULL,
+    provider VARCHAR(32) NOT NULL,
+    model_name VARCHAR(100) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'queued',
+    request_json LONGTEXT NOT NULL,
+    result_json LONGTEXT NULL,
+    billing_amount DECIMAL(10, 4) NOT NULL,
+    balance_before DECIMAL(10, 2) NOT NULL,
+    balance_after DECIMAL(10, 2) NOT NULL,
+    billing_state VARCHAR(20) NOT NULL DEFAULT 'deducted',
+    attempt_count INT NOT NULL DEFAULT 0,
+    max_attempts INT NOT NULL DEFAULT 3,
+    next_attempt_at DATETIME NULL,
+    worker_id VARCHAR(100) NULL,
+    locked_at DATETIME NULL,
+    heartbeat_at DATETIME NULL,
+    error_code VARCHAR(64) NULL,
+    error_message TEXT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    started_at DATETIME NULL,
+    completed_at DATETIME NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_generation_jobs_public_id (public_id),
+    UNIQUE KEY uq_generation_jobs_user_idempotency (user_id, idempotency_key),
+    KEY idx_generation_jobs_dispatch (status, next_attempt_at, id),
+    KEY idx_generation_jobs_user_created (user_id, created_at),
+    CONSTRAINT fk_generation_jobs_user FOREIGN KEY (user_id) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS generation_job_inputs (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    job_id BIGINT UNSIGNED NOT NULL,
+    position INT NOT NULL,
+    mime_type VARCHAR(64) NOT NULL,
+    image_data MEDIUMBLOB NOT NULL,
+    created_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_generation_job_inputs_position (job_id, position),
+    CONSTRAINT fk_generation_job_inputs_job FOREIGN KEY (job_id) REFERENCES generation_jobs (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS login_logs (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     user_id BIGINT UNSIGNED NOT NULL,

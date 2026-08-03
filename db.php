@@ -324,6 +324,8 @@ class Database {
             'users',
             'recharge_orders',
             'consumption_logs',
+            'generation_jobs',
+            'generation_job_inputs',
             'login_logs',
             'user_sessions'
         ];
@@ -1211,8 +1213,10 @@ class Database {
             $result = $callback($this);
             $this->commit();
             return $result;
-        } catch (Exception $e) {
-            $this->rollback();
+        } catch (Throwable $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->rollback();
+            }
             throw $e;
         }
     }

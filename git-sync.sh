@@ -125,7 +125,15 @@ fi
 echo "[3/4] 运行部署检查..."
 if [ "$RUN_CHECKS" -eq 1 ]; then
     if command -v php >/dev/null 2>&1; then
-        for php_file in index.php api.php db.php openai_images_adapter.php debug_diagnostic.php; do
+        for php_file in \
+            index.php \
+            api.php \
+            db.php \
+            openai_images_adapter.php \
+            generation_jobs.php \
+            generation_worker.php \
+            image_generation_service.php \
+            debug_diagnostic.php; do
             [ ! -f "$php_file" ] || php -l "$php_file" >/dev/null
         done
     else

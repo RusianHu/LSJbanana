@@ -68,6 +68,8 @@ mindmap
         会话加固
       并发安全
         原子扣费
+        持久任务队列
+        后台有限重试
 ```
 
 ## 快速开始
@@ -106,10 +108,13 @@ cp config.php.example config.php
 # 3. 从旧版升级时先备份 SQLite 文件，再迁移数据
 php migrate_sqlite_to_mysql.php
 
-# 4. 填写 API 密钥与支付配置并启动服务
+# 4. 填写 API 密钥与支付配置并启动 Web 服务
 php -S 127.0.0.1:8000
 
-# 5. 访问应用
+# 5. 另开终端启动图片任务 worker（生产环境应交给 systemd）
+php generation_worker.php
+
+# 6. 访问应用
 # 前台: http://127.0.0.1:8000
 # 后台: http://127.0.0.1:8000/admin
 ```
@@ -126,6 +131,7 @@ php -S 127.0.0.1:8000
 | `api_provider` | `native` (直连) / `openai_compatible` (中转) / `gemini_proxy` (SSE代理) |
 | `image_api_provider` | 独立图片渠道；可设置为 `openai_images`，不影响提示词优化等文本调用 |
 | `openai_images` | OpenAI `/v1/images/generations` 与 `/v1/images/edits` 配置；GPT Image 2 会把宽高比和 1K / 2K / 4K 档位转换为官方 `WIDTHxHEIGHT`；`verify_output_size` 会报告上游尺寸偏差，`reject_output_size_mismatch` 可切换为严格拒绝，`force_ipv4` 可规避部分 IPv6 长连接断流 |
+| `generation_jobs` | 持久化图片任务、worker 轮询间隔、最多尝试次数和退避时间；浏览器只提交并轮询，长请求不再占用 Cloudflare/FastCGI 连接 |
 | `active_image_model` | `pro` / `flash` / `gpt_image_2`，由部署配置选择 |
 | `thinking_config` | 思考模式配置，支持 `reasoning_content` 透传 |
 | `speech_to_text` | 语音转文字配置，默认使用 `gemini-2.5-flash` |
@@ -202,6 +208,19 @@ location ~ \.php$ {
     fastcgi_buffer_size 32k;
 }
 ```
+
+### 后台 worker（生产必需）
+
+仓库提供 `lsjbanana-generation-worker.service`。确认其中 PHP 与项目路径后安装：
+
+```bash
+cp lsjbanana-generation-worker.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now lsjbanana-generation-worker.service
+systemctl status lsjbanana-generation-worker.service
+```
+
+worker 同一时间只执行一个图片任务；网络断开、429、5xx 和网关超时按 `generation_jobs.retry_delays` 有限重试。任务入队时原子预扣，成功时只结算一次，最终失败只退款一次。相同浏览器提交使用幂等键，传输层重试不会创建重复任务。
 
 ## 技术栈细节
 

@@ -294,12 +294,19 @@ return [
         'force_ipv4' => true,               // 避免部分 Cloudflare IPv6 路径在长时间图片请求中无响应断开
         'log_response_errors' => true,       // 非 JSON/截断响应写入 PHP 错误日志（不记录请求正文或密钥）
         'response_preview_bytes' => 256,     // 错误响应预览长度；设为 0 可关闭正文预览
-        // 唯一图片渠道使用非阻塞全站锁；忙时立即返回 429，不扣费、不重试、不降级。
+        // worker 使用全站锁确保唯一图片渠道串行执行。
         'request_lock_file' => __DIR__ . '/logs/openai_images_channel.lock',
-        'request_lock_retry_after' => 30,
         'max_download_bytes' => 32 * 1024 * 1024,
         'temporary_image_dir' => __DIR__ . '/images',
         'temporary_public_path' => 'images',
+    ],
+
+    // 持久化图片任务队列。提交请求不会等待上游，CLI worker 负责执行和结算。
+    'generation_jobs' => [
+        'max_attempts' => 3,                 // 包含首次调用在内最多尝试次数
+        'retry_delays' => [10, 30],           // 可重试网关/网络错误的退避秒数
+        'worker_poll_interval' => 2,
+        'worker_lock_file' => __DIR__ . '/logs/generation_worker.lock',
     ],
 
     // Gemini 原生格式代理配置 (当 api_provider 为 'gemini_proxy' 时使用) 适用于国内代理站点，NewAPI 类中转站

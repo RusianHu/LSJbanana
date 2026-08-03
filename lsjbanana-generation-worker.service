@@ -1,0 +1,22 @@
+[Unit]
+Description=LSJbanana persistent image generation worker
+After=network-online.target mariadb.service mysql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www
+Group=www
+WorkingDirectory=/www/wwwroot/yanshanlaosiji.top/LSJbanana
+ExecStart=/www/server/php/84/bin/php /www/wwwroot/yanshanlaosiji.top/LSJbanana/generation_worker.php
+Restart=always
+RestartSec=3
+TimeoutStopSec=15
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/www/wwwroot/yanshanlaosiji.top/LSJbanana/images /www/wwwroot/yanshanlaosiji.top/LSJbanana/logs
+
+[Install]
+WantedBy=multi-user.target

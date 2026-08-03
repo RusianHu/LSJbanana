@@ -841,6 +841,32 @@ textarea {
     box-shadow: 0 2px 8px rgba(106, 27, 154, 0.45);
 }
 
+.compact-download-btn {
+    display: inline-block;
+    width: auto;
+    padding: 5px 15px;
+    margin-top: 5px;
+    font-size: 0.9rem;
+}
+
+.grounding-sources {
+    margin-top: 15px;
+    padding: 15px;
+    text-align: left;
+    background: #f0f4f8;
+}
+
+.grounding-sources ul {
+    margin-top: 10px;
+    padding-left: 20px;
+}
+
+.generation-time {
+    margin-top: 10px;
+    color: #666;
+    font-size: 0.8rem;
+}
+
 /* 2K 分辨率 - 绿色 */
 .resolution-label.resolution-2k {
     background: linear-gradient(135deg, #2e7d32 0%, #43a047 100%);

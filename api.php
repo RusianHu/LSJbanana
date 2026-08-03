@@ -17,6 +17,7 @@ require_once __DIR__ . '/openai_adapter.php';
 require_once __DIR__ . '/openai_images_adapter.php';
 require_once __DIR__ . '/image_channel_lock.php';
 require_once __DIR__ . '/gemini_proxy_adapter.php';
+require_once __DIR__ . '/generation_jobs.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/i18n/I18n.php';
@@ -114,6 +115,64 @@ function refundPreDeductedBalance(Database $db, int $userId, float $amount, stri
     }
 
     return $success;
+}
+
+function buildGenerationJobResponse(
+    GenerationJobRepository $repository,
+    Database $db,
+    array $job
+): array {
+    $status = (string)($job['status'] ?? 'queued');
+    $result = json_decode((string)($job['result_json'] ?? ''), true);
+    $result = is_array($result) ? $result : [];
+    $user = $db->getUserById((int)$job['user_id']);
+    $billingState = (string)($job['billing_state'] ?? 'deducted');
+    $response = [
+        'success' => $status !== 'failed',
+        'job' => [
+            'id' => (string)$job['public_id'],
+            'status' => $status,
+            'queue_position' => $repository->getQueuePosition($job),
+            'attempt' => (int)($job['attempt_count'] ?? 0),
+            'max_attempts' => (int)($job['max_attempts'] ?? 1),
+            'next_attempt_at' => $job['next_attempt_at'] ?? null,
+            'created_at' => $job['created_at'] ?? null,
+            'started_at' => $job['started_at'] ?? null,
+            'completed_at' => $job['completed_at'] ?? null,
+            'poll_after_ms' => 2000,
+        ],
+        'billing' => [
+            'charged' => $billingState === 'charged',
+            'reserved' => $billingState === 'deducted',
+            'refunded' => $billingState === 'refunded',
+            'refund_failed' => $billingState === 'refund_failed',
+            'amount' => (float)($job['billing_amount'] ?? 0),
+            'balance' => $user !== null ? (float)($user['balance'] ?? 0) : null,
+        ],
+    ];
+
+    if ($status === 'succeeded') {
+        $response += [
+            'images' => array_values(array_filter($result['images'] ?? [], 'is_string')),
+            'text' => is_string($result['text'] ?? null) ? $result['text'] : '',
+            'thoughts' => is_array($result['thoughts'] ?? null) ? $result['thoughts'] : [],
+            'warnings' => is_array($result['warnings'] ?? null) ? $result['warnings'] : [],
+            'groundingMetadata' => is_array($result['groundingMetadata'] ?? null)
+                ? $result['groundingMetadata']
+                : null,
+        ];
+    } elseif ($status === 'failed') {
+        $message = trim((string)($job['error_message'] ?? '')) ?: __('api.generation_job_failed');
+        if ($billingState === 'refunded') {
+            $message .= ' ' . __('api.generation_job_refunded');
+        } elseif ($billingState === 'refund_failed') {
+            $message .= ' ' . __('api.generation_job_refund_failed');
+        }
+        $response['message'] = $message;
+        $response['code'] = (string)($job['error_code'] ?? 'GENERATION_JOB_FAILED');
+    }
+
+    return $response;
 }
 
 /**
@@ -425,7 +484,11 @@ try {
     sendError(__('api.invalid_action'), 400);
 }
 
-if (!in_array($action, ['generate', 'edit', 'optimize_prompt', 'transcribe', 'get_user_status', 'get_announcements', 'dismiss_announcement'], true)) {
+if (!in_array($action, [
+    'generate', 'edit', 'generation_status', 'resume_generation_job',
+    'optimize_prompt', 'transcribe', 'get_user_status',
+    'get_announcements', 'dismiss_announcement',
+], true)) {
     sendError(__('api.unknown_action'), 400);
 }
 
@@ -745,15 +808,38 @@ if ($action === 'get_user_status') {
     exit;
 }
 
-// 对于图片生成和编辑操作，需要检查用户登录和余额
-// 注意：这里只做初步检查，实际扣费在生成成功后使用原子操作
+// 图片任务只在这里校验登录与账号状态。余额必须在幂等任务查询之后原子检查，
+// 否则首次入队响应丢失后的同键重试会被预扣后的余额错误拦截。
 if (in_array($action, ['generate', 'edit'], true)) {
-    validateUserAuthAndStatus($auth, true, $pricePerTask);
+    validateUserAuthAndStatus($auth, false);
 }
 
 // 对于提示词优化和语音转文字，需要登录但不需要余额（防止匿名滥用）
 if (in_array($action, ['optimize_prompt', 'transcribe'], true)) {
     validateUserAuthAndStatus($auth, false);
+}
+
+if (in_array($action, ['generation_status', 'resume_generation_job'], true)) {
+    validateUserAuthAndStatus($auth, false);
+    $repository = new GenerationJobRepository($db);
+    $repository->ensureSchema();
+    $userId = (int)$auth->getCurrentUserId();
+
+    if ($action === 'generation_status') {
+        $publicId = strtolower(trim((string)($_POST['job_id'] ?? '')));
+        if (preg_match('/^[a-f0-9]{32}$/', $publicId) !== 1) {
+            sendError(__('api.generation_job_invalid'), 400, 'INVALID_GENERATION_JOB');
+        }
+        $job = $repository->findForUser($publicId, $userId);
+    } else {
+        $job = $repository->findLatestActiveForUser($userId);
+    }
+
+    if ($job === null) {
+        sendError(__('api.generation_job_not_found'), 404, 'GENERATION_JOB_NOT_FOUND');
+    }
+    echo json_encode(buildGenerationJobResponse($repository, $db, $job));
+    exit;
 }
 
 // Gemini API Key
@@ -825,6 +911,7 @@ $requestData = [
     'contents' => [],
     'generationConfig' => $config['generation_config']
 ];
+$jobInputs = [];
 
 $thinkingConfig = buildThinkingConfig($config, $modelName);
 if (!empty($thinkingConfig)) {
@@ -948,13 +1035,9 @@ if ($action === 'generate') {
             continue;
         }
         
-        $base64Image = base64_encode($imageData);
-
-        $parts[] = [
-            'inline_data' => [
-                'mime_type' => $validated['mime_type'],
-                'data' => $base64Image
-            ]
+        $jobInputs[] = [
+            'mime_type' => $validated['mime_type'],
+            'data' => $imageData,
         ];
         $validImageCount++;
     }
@@ -970,229 +1053,51 @@ if ($action === 'generate') {
     sendError(__('api.unknown_action'), 400);
 }
 
-// 当前只有一个可用图片渠道。请求参数验证完成后、预扣费之前尝试获取全站独占锁：
-// 渠道忙时立即返回 429，不等待、不扣费，也不会向上游发出第二次请求。
-$imageChannelLock = null;
-if ($imageApiProvider === 'openai_images') {
-    $openaiImagesConfig = is_array($config['openai_images'] ?? null) ? $config['openai_images'] : [];
-    $lockFile = trim((string)($openaiImagesConfig['request_lock_file'] ?? ''));
-    $retryAfter = max(1, min(300, (int)($openaiImagesConfig['request_lock_retry_after'] ?? 30)));
-
-    try {
-        $imageChannelLock = ImageChannelLock::tryAcquire($lockFile !== '' ? $lockFile : null);
-    } catch (RuntimeException $e) {
-        error_log('Image channel lock unavailable: ' . $e->getMessage());
-        sendError(__('api.image_queue_unavailable'), 503, 'IMAGE_QUEUE_UNAVAILABLE');
-    }
-
-    if ($imageChannelLock === null) {
-        header('Retry-After: ' . $retryAfter);
-        sendError(__('api.image_queue_busy'), 429, 'IMAGE_QUEUE_BUSY');
-    }
-
-    // 即使后续出现 fatal error 或提前 exit，也显式释放锁；flock 还会在进程结束时兜底释放。
-    register_shutdown_function(static function () use ($imageChannelLock): void {
-        $imageChannelLock->release();
-    });
+$idempotencyKey = trim((string)($_POST['idempotency_key'] ?? ''));
+if (preg_match('/^[A-Za-z0-9_-]{16,64}$/', $idempotencyKey) !== 1) {
+    sendError(__('api.generation_idempotency_invalid'), 400, 'INVALID_IDEMPOTENCY_KEY');
 }
 
-// === 预扣费机制：在调用 API 前使用原子操作扣除余额 ===
-// 这可以防止并发请求导致的余额透支问题（竞态条件）
-$db = Database::getInstance();
-$userId = $auth->getCurrentUserId();
-$preDeductResult = $db->atomicDeductBalance($userId, $pricePerTask);
+$jobConfig = is_array($config['generation_jobs'] ?? null) ? $config['generation_jobs'] : [];
+$maxAttempts = max(1, min(5, (int)($jobConfig['max_attempts'] ?? 3)));
+$repository = new GenerationJobRepository($db);
+$repository->ensureSchema();
+$userId = (int)$auth->getCurrentUserId();
 
-if (!$preDeductResult['success']) {
-    // 原子扣费失败，说明余额不足或用户不存在
-    $errorCode = $preDeductResult['error'] ?? 'DEDUCT_FAILED';
-    if ($errorCode === 'INSUFFICIENT_BALANCE') {
+try {
+    $createdJob = $repository->createJob(
+        $userId,
+        $idempotencyKey,
+        $action,
+        $imageApiProvider,
+        $modelName,
+        ['prompt' => $prompt, 'request_data' => $requestData],
+        $jobInputs,
+        $pricePerTask,
+        $maxAttempts
+    );
+} catch (GenerationJobBillingException $e) {
+    if ($e->getMessage() === 'INSUFFICIENT_BALANCE') {
         http_response_code(402);
         echo json_encode([
             'success' => false,
             'message' => __('api.balance_low'),
             'code' => 'INSUFFICIENT_BALANCE',
-            'balance' => $preDeductResult['balance_before'] ?? 0,
+            'balance' => $e->getBalance() ?? 0,
             'required' => $pricePerTask,
-            'action' => [
-                'type' => 'redirect',
-                'url' => 'recharge.php',
-                'label' => __('balance.recharge')
-            ]
         ]);
         exit;
     }
-    sendError(__('api.deduct_failed') . ': ' . $errorCode, 500, $errorCode);
+    sendError(__('api.deduct_failed') . ': ' . $e->getMessage(), 500, $e->getMessage());
+} catch (Throwable $e) {
+    error_log('Generation job enqueue failed: ' . $e->getMessage());
+    sendError(__('api.generation_enqueue_failed'), 500, 'GENERATION_ENQUEUE_FAILED');
 }
 
-// 记录预扣费信息，用于后续日志
-$balanceBeforeDeduct = $preDeductResult['balance_before'];
-$balanceAfterDeduct = $preDeductResult['balance_after'];
-
-// 调用 Gemini 生成/编辑
-// 注意：如果 API 调用失败，需要退还已扣除的余额
-try {
-    $responseData = callGeminiApiSafe($modelName, $requestData, 300, 30, $imageApiProvider);
-} catch (GeminiApiException $e) {
-    if ($imageChannelLock instanceof ImageChannelLock) {
-        $imageChannelLock->release();
-    }
-    // API 调用失败，退还余额
-    $refundSuccess = refundPreDeductedBalance($db, $userId, $pricePerTask, 'API call failure');
-    error_log('Image API call failed: ' . $e->getMessage());
-    $messageKey = $refundSuccess ? 'api.upstream_error_refunded' : 'api.upstream_error_refund_failed';
-    $errorCode = $refundSuccess ? 'UPSTREAM_ERROR_REFUNDED' : 'UPSTREAM_ERROR_REFUND_FAILED';
-    sendError(__($messageKey, ['message' => $e->getMessage()]), $e->getHttpCode(), $errorCode);
+if ($createdJob['created']) {
+    http_response_code(202);
 }
-
-if ($imageChannelLock instanceof ImageChannelLock) {
-    $imageChannelLock->release();
-}
-
-if (!isset($responseData['candidates'][0])) {
-    $refundSuccess = refundPreDeductedBalance($db, $userId, $pricePerTask, 'missing API candidate');
-    $messageKey = $refundSuccess ? 'api.upstream_error_refunded' : 'api.upstream_error_refund_failed';
-    $errorCode = $refundSuccess ? 'UPSTREAM_ERROR_REFUNDED' : 'UPSTREAM_ERROR_REFUND_FAILED';
-    sendError(__($messageKey, ['message' => __('api.no_result')]), 502, $errorCode);
-}
-$resultImages = [];
-$resultText = '';
-$resultThoughts = [];
-$resultWarnings = [];
-$groundingMetadata = null;
-
-// 仅透传本站定义且字段完整的警告，避免把任意上游内容带到前端。
-foreach (array_slice(is_array($responseData['warnings'] ?? null) ? $responseData['warnings'] : [], 0, 5) as $warning) {
-    if (!is_array($warning) || ($warning['code'] ?? '') !== 'OUTPUT_SIZE_MISMATCH') {
-        continue;
-    }
-
-    $expectedWidth = (int)($warning['expected']['width'] ?? 0);
-    $expectedHeight = (int)($warning['expected']['height'] ?? 0);
-    $actualWidth = (int)($warning['actual']['width'] ?? 0);
-    $actualHeight = (int)($warning['actual']['height'] ?? 0);
-    if (
-        min($expectedWidth, $expectedHeight, $actualWidth, $actualHeight) <= 0
-        || max($expectedWidth, $expectedHeight, $actualWidth, $actualHeight) > 100000
-    ) {
-        continue;
-    }
-
-    $expected = $expectedWidth . 'x' . $expectedHeight;
-    $actual = $actualWidth . 'x' . $actualHeight;
-    $resultWarnings[] = [
-        'code' => 'OUTPUT_SIZE_MISMATCH',
-        'expected' => ['width' => $expectedWidth, 'height' => $expectedHeight],
-        'actual' => ['width' => $actualWidth, 'height' => $actualHeight],
-        'message' => __('adapter.openai_images.warning.output_size_mismatch', [
-            'expected' => $expected,
-            'actual' => $actual,
-        ]),
-    ];
-}
-
-// 提取 Grounding Metadata
-if (isset($responseData['candidates'][0]['groundingMetadata'])) {
-    $groundingMetadata = $responseData['candidates'][0]['groundingMetadata'];
-}
-
-// 确保输出目录存在
-if (!is_dir($config['output_dir'])) {
-    mkdir($config['output_dir'], 0755, true);
-}
-
-if (isset($responseData['candidates'][0]['content']['parts'])) {
-    foreach ($responseData['candidates'][0]['content']['parts'] as $part) {
-        // 跳过思考内容 parts（Gemini 原生 API 格式：thought 为布尔值 true）
-        if (isset($part['thought']) && $part['thought'] === true) {
-            continue;
-        }
-        if (isset($part['text'])) {
-            $resultText .= SecurityUtils::sanitizeHtml($part['text']) . "\n";
-        } elseif (isset($part['inlineData'])) {
-            $imageBytes = base64_decode($part['inlineData']['data']);
-            $mimeType = strtolower((string)($part['inlineData']['mimeType'] ?? 'image/png'));
-            $extension = match ($mimeType) {
-                'image/jpeg' => 'jpg',
-                'image/webp' => 'webp',
-                default => 'png',
-            };
-            try {
-                $token = SecurityUtils::generateSecureToken(16);
-            } catch (\Exception $e) {
-                $token = uniqid();
-            }
-            $fileName = 'gen_' . date('Ymd_His') . '_' . $token . '.' . $extension;
-            $filePath = $config['output_dir'] . $fileName;
-            
-            if (file_put_contents($filePath, $imageBytes)) {
-                $resultImages[] = $filePath;
-            }
-        }
-    }
-}
-
-$resultThoughts = extractThoughtsFromResponse($responseData);
-
-// === 计费结果处理 ===
-// 预扣费已在 API 调用前完成，这里只需要处理结果
-$billingResult = null;
-$imageCount = count($resultImages);
-
-if (!empty($resultImages)) {
-    // 构建增强的消费记录备注（包含提示词摘要和图片标识）
-    $remarkData = [
-        'prompt' => mb_substr($prompt, 0, 200, 'UTF-8'),  // 提示词摘要
-        'images' => array_map(function($path) {
-            return basename($path);  // 只保存文件名
-        }, $resultImages)
-    ];
-    $remarkJson = json_encode($remarkData, JSON_UNESCAPED_UNICODE);
-    
-    // 生成成功，记录消费日志
-    $db->logConsumption(
-        $userId,
-        $action,
-        $pricePerTask,
-        $balanceBeforeDeduct,
-        $balanceAfterDeduct,
-        $imageCount,
-        $modelName,
-        $remarkJson
-    );
-    
-    $billingResult = [
-        'success' => true,
-        'amount' => $pricePerTask,
-        'balance_before' => $balanceBeforeDeduct,
-        'balance_after' => $balanceAfterDeduct,
-    ];
-} else {
-    // 没有生成任何图片，退还预扣的余额
-    $refundSuccess = refundPreDeductedBalance($db, $userId, $pricePerTask, 'empty image result');
-    
-    $billingResult = [
-        'success' => false,
-        'amount' => 0,
-        'message' => __('api.refund_success'),
-        'refunded' => $refundSuccess,
-    ];
-}
-
-// 获取更新后的余额
-$updatedUser = $auth->refreshCurrentUser();
-$updatedBalance = $updatedUser ? (float) ($updatedUser['balance'] ?? 0) : null;
-
-// 返回结果
-echo json_encode([
-    'success' => true,
-    'images' => $resultImages,
-    'text' => trim($resultText),
-    'thoughts' => $resultThoughts,
-    'warnings' => $resultWarnings,
-    'groundingMetadata' => $groundingMetadata,
-    'billing' => $billingResult ? [
-        'charged' => $billingResult['success'],
-        'amount' => $billingResult['amount'] ?? 0,
-        'balance' => $updatedBalance,
-    ] : null,
-]);
+$response = buildGenerationJobResponse($repository, $db, $createdJob['job']);
+$response['accepted'] = true;
+$response['created'] = $createdJob['created'];
+echo json_encode($response);
